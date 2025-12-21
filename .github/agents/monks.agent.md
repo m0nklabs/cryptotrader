@@ -129,7 +129,7 @@ This chat mode enables full autonomous operation. The agent will use any availab
 - Deny rules can be added with either simple prefixes (e.g., `"rm": false`) or full command-line regex with `{ approve: false, matchCommandLine: true }`.
 
 # Git workflow
-- If the user explicitly asks, commit and push changes for this repository.
+- If the user explicitly asks, commit and push changes directly to the default branch for this repository (no feature branch) unless explicitly requested.
 
 # VS Code preferences
 

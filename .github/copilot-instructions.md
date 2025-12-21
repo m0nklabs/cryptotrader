@@ -59,4 +59,4 @@ These instructions apply to GitHub Copilot in the context of this repository.
 
 ## Git workflow
 
-- If the user explicitly asks to commit and push changes to GitHub, do so for this repository.
+- If the user explicitly asks to commit and push changes to GitHub, push directly to the default branch in this repository (no PR/feature branch) unless the user asks otherwise.

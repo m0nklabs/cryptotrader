@@ -15,6 +15,7 @@ node_modules/
 # Frontend build artifacts
 frontend/dist/
 frontend/.vite/
+frontend/tsconfig.tsbuildinfo
 
 # Research (local scratch + imported specs)
 research/
