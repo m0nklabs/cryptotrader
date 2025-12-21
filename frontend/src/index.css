@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html, body {
+  height: 100%;
+}
+
+/* Dashboard panel affordance */
+summary::-webkit-details-marker {
+  display: none;
+}
+
+.ct-caret {
+  transition: transform 120ms linear;
+}
+
+details:not([open]) .ct-caret {
+  transform: rotate(180deg);
+}
+
+/* MT4/5-inspired dock layout */
+.ct-dock-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 1024px) {
+  .ct-dock-grid {
+    grid-template-columns: 260px 1fr 280px;
+    grid-template-rows: auto;
+    grid-template-areas: "left center right";
+    align-items: start;
+  }
+
+  .ct-dock-left {
+    grid-area: left;
+  }
+  .ct-dock-center {
+    grid-area: center;
+  }
+  .ct-dock-right {
+    grid-area: right;
+  }
+}

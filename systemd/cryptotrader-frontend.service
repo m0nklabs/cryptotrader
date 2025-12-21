@@ -1,0 +1,26 @@
+[Unit]
+Description=cryptotrader frontend (Vite preview)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/cryptotrader/frontend
+Environment=NODE_ENV=production
+
+# Build static assets on (re)start so the service always serves the latest UI.
+ExecStartPre=/usr/bin/env npm run build
+
+# Serve the built UI on the reserved port.
+ExecStart=/usr/bin/env npm run preview -- --host 0.0.0.0 --port 5176 --strictPort
+
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=%h/cryptotrader/frontend
+
+[Install]
+WantedBy=default.target
