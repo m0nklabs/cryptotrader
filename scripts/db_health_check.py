@@ -57,7 +57,7 @@ def main() -> int:
     # 2. Try to import SQLAlchemy
     try:
         from sqlalchemy import create_engine, text  # type: ignore
-    except Exception as exc:
+    except ImportError as exc:
         print(
             f"❌ db-fail: SQLAlchemy is required. Install: pip install SQLAlchemy psycopg2-binary",
             file=sys.stderr,
