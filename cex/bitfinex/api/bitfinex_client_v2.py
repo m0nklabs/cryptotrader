@@ -18,13 +18,10 @@ Usage:
     ticker = client.get_ticker("tBTCUSD")
 """
 
-import requests
-import hmac
-import hashlib
-import json
-import time
-from typing import Dict, List, Any, Optional
 import os
+from typing import Any, Dict, List, Optional
+
+import requests
 
 
 class BitfinexClient:

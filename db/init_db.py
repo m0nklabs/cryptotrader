@@ -81,7 +81,7 @@ def main() -> int:
         raise SystemExit("DATABASE_URL is not set")
 
     try:
-        from sqlalchemy import create_engine, text  # type: ignore
+        from sqlalchemy import create_engine  # type: ignore
     except Exception as exc:  # pragma: no cover
         raise SystemExit(
             "SQLAlchemy is required to run db init. Install optional deps: pip install SQLAlchemy psycopg2-binary"

@@ -19,6 +19,12 @@ Run an import smoke test:
 
 - `python -c "import shared.technical_indicators, shared.indicator_config; from cex.bitfinex.api.bitfinex_client_v2 import BitfinexClient; print('imports-ok')"`
 
+## Quality gate (lint + tests)
+
+- Install dev deps: `pip install -r requirements-dev.txt`
+- Lint: `ruff check .`
+- Tests: `pytest`
+
 ## Bitfinex candle download smoke test (no DB)
 
 To verify you can download candles from Bitfinex public endpoints without configuring Postgres:
