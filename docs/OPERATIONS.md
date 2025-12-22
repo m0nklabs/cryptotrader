@@ -60,7 +60,7 @@ Restart / stop:
   - Add manual spacing between runs if you are triggering multiple backfills.
     - Example: `sleep 5 && python -m core.market_data.bitfinex_backfill --symbol BTCUSD --timeframe 1h --resume`
 
-### Postgres container (docker-compose)
+### Postgres container (docker compose)
 
 - Check status: `docker compose ps`
 - Tail logs: `docker compose logs -f postgres`
@@ -69,7 +69,17 @@ Restart / stop:
 
 ### systemd --user timers/services
 
-- List timers (next run + last run, includes inactive): `systemctl --user list-timers --all | grep cryptotrader`
-- Service status: `systemctl --user status cryptotrader-frontend.service`
-- Recent logs (without printing secrets): `journalctl --user -u cryptotrader-frontend.service --since "1 hour ago"`
-- Force a run of the service (outside of any timer): `systemctl --user start cryptotrader-frontend.service`
+- List timers (next run + last run, includes inactive):\
+  `systemctl --user list-timers --all | grep -E 'cryptotrader-(bitfinex|frontend)'`
+- Service/timer status (examples):\
+  `systemctl --user status cryptotrader-bitfinex-backfill@BTCUSD-1m.timer`\
+  `systemctl --user status cryptotrader-bitfinex-gap-repair@BTCUSD-1m.timer`\
+  `systemctl --user status cryptotrader-frontend.service`
+- Recent logs for a specific instance (without printing secrets):\
+  `journalctl --user -u cryptotrader-bitfinex-backfill@BTCUSD-1m.service --since "2 hours ago"`\
+  `journalctl --user -u cryptotrader-bitfinex-gap-repair@BTCUSD-1m.service --since "2 hours ago"`\
+  `journalctl --user -u cryptotrader-frontend.service --since "1 hour ago"`
+- Force a one-off run of a specific instance (outside of any timer):\
+  `systemctl --user start cryptotrader-bitfinex-backfill@BTCUSD-1m.service`\
+  `systemctl --user start cryptotrader-bitfinex-gap-repair@BTCUSD-1m.service`\
+  `systemctl --user start cryptotrader-frontend.service`
