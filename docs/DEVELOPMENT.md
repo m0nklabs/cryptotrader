@@ -47,6 +47,29 @@ To apply the schema:
 - Install optional deps: `pip install SQLAlchemy psycopg2-binary`
 - Run: `python -m db.init_db`
 
+### Database healthcheck
+
+To validate DB connectivity and ingestion freshness:
+
+- `python scripts/db_health_check.py --exchange bitfinex --symbol BTCUSD --timeframe 1h`
+
+This script checks:
+
+- DB connectivity (db-ok / db-fail)
+- Schema status (candles table exists)
+- Total candles count
+- Latest candle open_time for a given exchange/symbol/timeframe
+
+Exit codes:
+
+- 0 = success
+- 1 = failure (DB connectivity, schema, or other error)
+
+Notes:
+
+- Does not print DATABASE_URL or any secret values
+- Works with local docker-compose Postgres setup
+
 ### Historical candles backfill (Bitfinex → Postgres)
 
 This job fetches historical OHLCV candles from Bitfinex public endpoints and upserts them into the `candles` table.
