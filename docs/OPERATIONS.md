@@ -57,18 +57,19 @@ Restart / stop:
   - Let the built-in exponential backoff finish (rerun after waiting 30–120s).
   - If a systemd timer or cron wrapper is calling the job, ensure only one instance is running and lengthen the interval before the next run.
   - Reduce the lookback window to shrink request volume (e.g., use `--resume`, or run smaller `--start/--end` slices instead of a huge range).
-  - Add manual spacing between runs if you are triggering multiple backfills: `sleep 5 && <next command>`.
+  - Add manual spacing between runs if you are triggering multiple backfills.
+    - Example: `sleep 5 && python -m core.market_data.bitfinex_backfill --symbol BTCUSD --timeframe 1h --resume`
 
 ### Postgres container (docker-compose)
 
-- Check status: `docker compose ps` (or `docker-compose ps`)
+- Check status: `docker compose ps`
 - Tail logs: `docker compose logs -f postgres`
-- Quick health query: `docker compose exec postgres psql -U postgres -d cryptotrader -c 'select 1'`
+- Quick health query: `docker compose exec postgres psql -U postgres -d cryptotrader -c 'SELECT 1;'`
 - Restart the DB container if needed: `docker compose restart postgres`
 
 ### systemd --user timers/services
 
-- List timers (next run + last run): `systemctl --user list-timers --all | grep cryptotrader`
+- List timers (next run + last run, includes inactive): `systemctl --user list-timers --all | grep cryptotrader`
 - Service status: `systemctl --user status cryptotrader-frontend.service`
 - Recent logs (without printing secrets): `journalctl --user -u cryptotrader-frontend.service --since "1 hour ago"`
 - Force a run of the service (outside of any timer): `systemctl --user start cryptotrader-frontend.service`
