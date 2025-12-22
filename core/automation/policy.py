@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Mapping, Optional
+from typing import Literal, Mapping
 
 from core.types import CostEstimate, Opportunity, OrderIntent
 

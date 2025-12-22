@@ -24,6 +24,7 @@ from core.types import (
     Candle,
     CandleGap,
     Exchange,
+    ExecutionResult,
     FeeSchedule,
     MarketDataJob,
     MarketDataJobRun,

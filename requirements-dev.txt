@@ -1,0 +1,4 @@
+# Development-only dependencies
+-r requirements.txt
+pytest==9.0.2
+ruff==0.8.1

@@ -860,7 +860,7 @@ if __name__ == "__main__":
     print(f"Signal: {result['signal']}")
     print(f"Strength: {result['strength']}%")
     print(f"Confidence: {result['confidence']}%")
-    print(f"\nReasoning:")
+    print("\nReasoning:")
     for reason in result['reasoning']:
         print(reason)
-    print(f"\n✅ Test complete!")
+    print("\n✅ Test complete!")
