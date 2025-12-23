@@ -76,6 +76,14 @@ class _Handler(BaseHTTPRequestHandler):
                 },
             )
 
+        if parsed.path == "/api/gaps/summary":
+            try:
+                summary = _fetch_gap_summary(stores=self.server.stores)
+            except Exception as exc:  # pragma: no cover
+                return _json_response(self, status=500, payload={"error": "db_error", "detail": type(exc).__name__})
+
+            return _json_response(self, status=200, payload=summary)
+
         if parsed.path != "/api/candles":
             return _json_response(self, status=404, payload={"error": "not_found"})
 
@@ -201,6 +209,43 @@ def _fetch_available_pairs(*, stores: PostgresStores, exchange: str) -> list[dic
             }
         )
     return out
+
+
+def _fetch_gap_summary(*, stores: PostgresStores) -> dict[str, Any]:
+    engine = stores._get_engine()  # noqa: SLF001
+    _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+    stmt = text(
+        """
+        SELECT
+            COUNT(*) FILTER (WHERE repaired_at IS NULL) AS open_gaps,
+            COUNT(*) FILTER (WHERE repaired_at >= NOW() - INTERVAL '24 hours') AS repaired_24h,
+            MIN(expected_open_time) FILTER (WHERE repaired_at IS NULL) AS oldest_open_gap
+        FROM candle_gaps
+        """
+    )
+
+    with engine.begin() as conn:
+        row = conn.execute(stmt).fetchone()
+
+    if row is None:
+        return {
+            "open_gaps": 0,
+            "repaired_24h": 0,
+            "oldest_open_gap": None,
+        }
+
+    open_gaps, repaired_24h, oldest_gap = row
+    oldest_gap_ms: int | None = None
+    if oldest_gap is not None:
+        dt = _as_utc(oldest_gap)
+        oldest_gap_ms = int(dt.timestamp() * 1000)
+
+    return {
+        "open_gaps": int(open_gaps or 0),
+        "repaired_24h": int(repaired_24h or 0),
+        "oldest_open_gap": oldest_gap_ms,
+    }
 
 
 def main() -> int:

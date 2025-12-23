@@ -67,6 +67,13 @@ export default function App() {
   const [availableTimeframesBySymbol, setAvailableTimeframesBySymbol] = useState<Record<string, string[]>>({})
   const [availableError, setAvailableError] = useState<string | null>(null)
 
+  const [gapStats, setGapStats] = useState<{
+    open_gaps: number
+    repaired_24h: number
+    oldest_open_gap: number | null
+  } | null>(null)
+  const [gapStatsError, setGapStatsError] = useState<string | null>(null)
+
   const marketCapRank: Record<string, number> = {
     BTC: 1,
     ETH: 2,
@@ -259,6 +266,69 @@ export default function App() {
       if (inFlight) inFlight.abort()
     }
   }, [chartSymbol, chartTimeframe, chartLimit])
+
+  useEffect(() => {
+    let mounted = true
+    let inFlight: AbortController | null = null
+
+    const load = () => {
+      if (!mounted) return
+      if (inFlight) inFlight.abort()
+      const controller = new AbortController()
+      inFlight = controller
+
+      setGapStatsError(null)
+
+      fetch('/api/gaps/summary', { signal: controller.signal })
+        .then(async (resp) => {
+          const bodyText = await resp.text()
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 120)}`)
+          }
+
+          let payload: unknown
+          try {
+            payload = JSON.parse(bodyText) as unknown
+          } catch {
+            throw new Error(`Non-JSON response: ${bodyText.slice(0, 120)}`)
+          }
+
+          if (!payload || typeof payload !== 'object') {
+            throw new Error('Unexpected response format')
+          }
+
+          const stats = payload as { open_gaps?: unknown; repaired_24h?: unknown; oldest_open_gap?: unknown }
+          const openGaps = Number(stats.open_gaps)
+          const repaired24h = Number(stats.repaired_24h)
+          const oldestGap = stats.oldest_open_gap === null ? null : Number(stats.oldest_open_gap)
+
+          if (!Number.isFinite(openGaps) || !Number.isFinite(repaired24h)) {
+            throw new Error('Invalid gap stats format')
+          }
+
+          setGapStats({
+            open_gaps: openGaps,
+            repaired_24h: repaired24h,
+            oldest_open_gap: oldestGap,
+          })
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          setGapStatsError(`Unable to load gap stats (${message})`)
+          setGapStats(null)
+        })
+    }
+
+    load()
+    const id = window.setInterval(load, 60_000)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+      if (inFlight) inFlight.abort()
+    }
+  }, [])
 
   const onChartWheel = (ev: React.WheelEvent<HTMLDivElement>) => {
     // Wheel zoom: scroll up -> zoom in (fewer candles), scroll down -> zoom out (more candles).
@@ -570,10 +640,31 @@ export default function App() {
               </Panel>
 
               <Panel title="Data Quality" subtitle="Candle gaps">
-                <Kvp k="Open gaps" v="—" />
-                <div className="mt-2">
-                  <Kvp k="Last repair" v="—" />
-                </div>
+                {gapStatsError ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">{gapStatsError}</div>
+                ) : gapStats ? (
+                  <>
+                    <Kvp k="Open gaps" v={gapStats.open_gaps} />
+                    <div className="mt-2">
+                      <Kvp k="Repaired (24h)" v={gapStats.repaired_24h} />
+                    </div>
+                    {gapStats.oldest_open_gap !== null ? (
+                      <div className="mt-2">
+                        <Kvp
+                          k="Oldest gap"
+                          v={new Date(gapStats.oldest_open_gap).toISOString().slice(0, 16).replace('T', ' ')}
+                        />
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <Kvp k="Open gaps" v="—" />
+                    <div className="mt-2">
+                      <Kvp k="Repaired (24h)" v="—" />
+                    </div>
+                  </>
+                )}
               </Panel>
 
               <Panel title="Execution" subtitle="Intents / results">
