@@ -17,6 +17,10 @@ export type Candle = {
  * Returns an array of the same length as input, with null for insufficient data points.
  */
 export function calculateSMA(candles: Candle[], period: number): (number | null)[] {
+  if (!candles.length || period < 1 || !Number.isInteger(period)) {
+    return candles.map(() => null)
+  }
+  
   const result: (number | null)[] = []
   
   for (let i = 0; i < candles.length; i++) {
@@ -40,6 +44,10 @@ export function calculateSMA(candles: Candle[], period: number): (number | null)
  * Returns an array of the same length as input, with null for insufficient data points.
  */
 export function calculateEMA(candles: Candle[], period: number): (number | null)[] {
+  if (!candles.length || period < 1 || !Number.isInteger(period)) {
+    return candles.map(() => null)
+  }
+  
   const result: (number | null)[] = []
   const k = 2 / (period + 1)
   
@@ -135,6 +143,17 @@ export function calculateMACD(
   signal: (number | null)[]
   histogram: (number | null)[]
 } {
+  if (
+    !candles.length ||
+    fastPeriod < 1 || !Number.isInteger(fastPeriod) ||
+    slowPeriod < 1 || !Number.isInteger(slowPeriod) ||
+    signalPeriod < 1 || !Number.isInteger(signalPeriod) ||
+    fastPeriod >= slowPeriod
+  ) {
+    const empty = candles.map(() => null)
+    return { macd: empty, signal: empty, histogram: empty }
+  }
+  
   const fastEMA = calculateEMA(candles, fastPeriod)
   const slowEMA = calculateEMA(candles, slowPeriod)
   
