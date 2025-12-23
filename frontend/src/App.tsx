@@ -49,6 +49,8 @@ function Kvp({ k, v }: { k: string; v: ReactNode }) {
   )
 }
 
+const GAP_STATS_REFRESH_INTERVAL_MS = 60_000
+
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme())
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -321,7 +323,7 @@ export default function App() {
     }
 
     load()
-    const id = window.setInterval(load, 60_000)
+    const id = window.setInterval(load, GAP_STATS_REFRESH_INTERVAL_MS)
 
     return () => {
       mounted = false
