@@ -67,6 +67,36 @@ export default function App() {
   const [availableTimeframesBySymbol, setAvailableTimeframesBySymbol] = useState<Record<string, string[]>>({})
   const [availableError, setAvailableError] = useState<string | null>(null)
 
+  const marketCapRank: Record<string, number> = {
+    BTC: 1,
+    ETH: 2,
+    XRP: 3,
+    SOL: 4,
+    ADA: 5,
+    DOGE: 6,
+    LTC: 7,
+    AVAX: 8,
+    LINK: 9,
+    DOT: 10,
+  }
+
+  const baseAssetOf = (symbol: string) => {
+    const s = symbol.toUpperCase().trim()
+    if (s.endsWith('USD') && s.length > 3) return s.slice(0, -3)
+    return s
+  }
+
+  const sortSymbolsByMarketCap = (symbols: string[]) => {
+    const sorted = [...symbols]
+    sorted.sort((a, b) => {
+      const ar = marketCapRank[baseAssetOf(a)] ?? Number.POSITIVE_INFINITY
+      const br = marketCapRank[baseAssetOf(b)] ?? Number.POSITIVE_INFINITY
+      if (ar !== br) return ar - br
+      return a.localeCompare(b)
+    })
+    return sorted
+  }
+
   const pickDefaultTimeframe = (timeframes: string[]) => {
     if (timeframes.includes('1m')) return '1m'
     if (timeframes.includes('5m')) return '5m'
@@ -119,7 +149,7 @@ export default function App() {
           normalized[sym] = Array.from(tfs).sort()
         }
 
-        const symbols = Object.keys(normalized).sort()
+        const symbols = sortSymbolsByMarketCap(Object.keys(normalized))
 
         setAvailableTimeframesBySymbol(normalized)
         setAvailableSymbols(symbols)
