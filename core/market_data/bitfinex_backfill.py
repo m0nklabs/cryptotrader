@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -70,6 +71,9 @@ def _fetch_bitfinex_candles_page(
     sort: int = 1,
     timeout_s: int = 20,
     max_retries: int = 6,
+    initial_backoff_seconds: float = 0.5,
+    max_backoff_seconds: float = 8.0,
+    jitter_seconds: float = 0.0,
 ) -> list[list[object]]:
     """Fetch one page from Bitfinex candles endpoint.
 
@@ -84,15 +88,16 @@ def _fetch_bitfinex_candles_page(
         "sort": str(sort),
     }
 
-    backoff = 0.5
+    backoff = initial_backoff_seconds
     last_err: Exception | None = None
 
     for _ in range(max_retries):
         try:
             resp = requests.get(url, params=params, timeout=timeout_s)
             if resp.status_code == 429:
-                time.sleep(backoff)
-                backoff = min(8.0, backoff * 2)
+                jitter = random.uniform(0, jitter_seconds) if jitter_seconds > 0 else 0
+                time.sleep(backoff + jitter)
+                backoff = min(max_backoff_seconds, backoff * 2)
                 continue
             resp.raise_for_status()
             data = resp.json()
@@ -101,8 +106,9 @@ def _fetch_bitfinex_candles_page(
             return data
         except Exception as exc:
             last_err = exc
-            time.sleep(backoff)
-            backoff = min(8.0, backoff * 2)
+            jitter = random.uniform(0, jitter_seconds) if jitter_seconds > 0 else 0
+            time.sleep(backoff + jitter)
+            backoff = min(max_backoff_seconds, backoff * 2)
 
     raise RuntimeError("Bitfinex candle fetch failed") from last_err
 
@@ -114,6 +120,10 @@ def _iter_bitfinex_candles(
     timeframe: Timeframe,
     start: datetime,
     end: datetime,
+    max_retries: int = 6,
+    initial_backoff_seconds: float = 0.5,
+    max_backoff_seconds: float = 8.0,
+    jitter_seconds: float = 0.0,
 ) -> Iterable[Candle]:
     tf_key = str(timeframe)
     if tf_key not in _TIMEFRAMES:
@@ -132,6 +142,10 @@ def _iter_bitfinex_candles(
             end_ms=end_ms,
             limit=10_000,
             sort=1,
+            max_retries=max_retries,
+            initial_backoff_seconds=initial_backoff_seconds,
+            max_backoff_seconds=max_backoff_seconds,
+            jitter_seconds=jitter_seconds,
         )
 
         if not page:
@@ -184,6 +198,10 @@ def run_backfill(
     end: datetime,
     exchange: str = "bitfinex",
     batch_size: int = 1000,
+    max_retries: int = 6,
+    initial_backoff_seconds: float = 0.5,
+    max_backoff_seconds: float = 8.0,
+    jitter_seconds: float = 0.0,
 ) -> dict[str, int]:
     stores = PostgresStores(config=PostgresConfig(database_url=database_url))
 
@@ -204,7 +222,17 @@ def run_backfill(
     candles_upserted = 0
 
     try:
-        candle_iter = _iter_bitfinex_candles(exchange=exchange, symbol=symbol, timeframe=timeframe, start=start, end=end)
+        candle_iter = _iter_bitfinex_candles(
+            exchange=exchange,
+            symbol=symbol,
+            timeframe=timeframe,
+            start=start,
+            end=end,
+            max_retries=max_retries,
+            initial_backoff_seconds=initial_backoff_seconds,
+            max_backoff_seconds=max_backoff_seconds,
+            jitter_seconds=jitter_seconds,
+        )
         for batch in _batched(candle_iter, batch_size=batch_size):
             candles_fetched += len(batch)
             candles_upserted += stores.upsert_candles(candles=batch)
@@ -249,6 +277,30 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--exchange", default="bitfinex", help="Exchange code stored in DB")
     parser.add_argument("--batch-size", type=int, default=1000, help="DB upsert batch size")
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=6,
+        help="Maximum number of retry attempts for API requests (default: 6)",
+    )
+    parser.add_argument(
+        "--initial-backoff-seconds",
+        type=float,
+        default=0.5,
+        help="Initial backoff delay in seconds before retrying (default: 0.5)",
+    )
+    parser.add_argument(
+        "--max-backoff-seconds",
+        type=float,
+        default=8.0,
+        help="Maximum backoff delay in seconds (backoff doubles each retry up to this cap) (default: 8.0)",
+    )
+    parser.add_argument(
+        "--jitter-seconds",
+        type=float,
+        default=0.0,
+        help="Maximum random jitter in seconds added to backoff delay (default: 0.0)",
+    )
     return parser
 
 
@@ -288,6 +340,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         end=end,
         exchange=args.exchange,
         batch_size=args.batch_size,
+        max_retries=args.max_retries,
+        initial_backoff_seconds=args.initial_backoff_seconds,
+        max_backoff_seconds=args.max_backoff_seconds,
+        jitter_seconds=args.jitter_seconds,
     )
 
     # Keep output small and avoid printing DATABASE_URL.
