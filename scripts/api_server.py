@@ -139,7 +139,7 @@ def _check_systemd_timers() -> dict[str, Any]:
                 for t in cryptotrader_timers[:5]  # Limit to 5 timers
             ],
         }
-    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, Exception):
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
         # systemd might not be available in all environments (e.g., Docker, CI)
         return {"status": "unavailable", "reason": "systemd_not_available"}
 

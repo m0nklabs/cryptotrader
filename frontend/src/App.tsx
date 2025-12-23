@@ -560,7 +560,7 @@ export default function App() {
                       <div className="mt-2">
                         <Kvp
                           k="Latest run"
-                          v={formatTimestamp(Math.max(...systemStatus.ingestion.jobs.map((j) => j.last_run || 0)))}
+                          v={formatTimestamp(Math.max(0, ...systemStatus.ingestion.jobs.map((j) => j.last_run || 0)))}
                         />
                       </div>
                     ) : (
@@ -756,7 +756,7 @@ export default function App() {
                         <div className="text-xs text-gray-600 dark:text-gray-400">Last ingestion:</div>
                         <div className="text-xs">
                           {formatTimestamp(
-                            Math.max(...systemStatus.ingestion.jobs.map((j) => j.last_run || 0))
+                            Math.max(0, ...systemStatus.ingestion.jobs.map((j) => j.last_run || 0))
                           )}
                         </div>
                       </div>
