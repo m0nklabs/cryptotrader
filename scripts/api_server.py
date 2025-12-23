@@ -85,6 +85,40 @@ class _Handler(BaseHTTPRequestHandler):
 
             return _json_response(self, status=200, payload=summary)
 
+        if parsed.path == "/api/signals":
+            qs = parse_qs(parsed.query)
+            exchange = (qs.get("exchange") or ["bitfinex"])[0].strip()
+            symbol = (qs.get("symbol") or [""])[0].strip().upper() if qs.get("symbol") else None
+            timeframe = (qs.get("timeframe") or [""])[0].strip() if qs.get("timeframe") else None
+            limit_raw = (qs.get("limit") or ["20"])[0].strip()
+
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                return _json_response(self, status=400, payload={"error": "invalid_limit"})
+
+            limit = max(1, min(limit, 100))
+
+            try:
+                signals = _fetch_signals(
+                    stores=self.server.stores,
+                    exchange=exchange,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    limit=limit,
+                )
+            except Exception as exc:  # pragma: no cover
+                return _json_response(self, status=500, payload={"error": "db_error", "detail": type(exc).__name__})
+
+            return _json_response(
+                self,
+                status=200,
+                payload={
+                    "exchange": exchange,
+                    "signals": signals,
+                },
+            )
+
         if parsed.path != "/api/candles":
             return _json_response(self, status=404, payload={"error": "not_found"})
 
@@ -239,6 +273,62 @@ def _fetch_gap_summary(*, stores: PostgresStores) -> dict[str, Any]:
     open_gaps, repaired_24h, oldest_gap = row
     oldest_gap_ms: int | None = None
     if oldest_gap is not None:
+        dt = _as_utc(oldest_gap)
+        oldest_gap_ms = int(dt.timestamp() * 1000)
+
+    return {
+        "open_gaps": int(open_gaps),
+        "repaired_24h": int(repaired_24h),
+        "oldest_open_gap": oldest_gap_ms,
+    }
+
+
+def _fetch_signals(
+    *,
+    stores: PostgresStores,
+    exchange: str,
+    symbol: str | None,
+    timeframe: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Fetch latest signals/opportunities from the database."""
+    opportunities = stores.get_opportunities(
+        exchange=exchange,
+        symbol=symbol,
+        timeframe=timeframe,
+        limit=limit,
+    )
+
+    out: list[dict[str, Any]] = []
+    for opp in opportunities:
+        created_ms: int | None = None
+        if opp.created_at is not None:
+            dt = _as_utc(opp.created_at)
+            created_ms = int(dt.timestamp() * 1000)
+
+        signals_list = [
+            {
+                "code": sig.code,
+                "side": sig.side,
+                "strength": sig.strength,
+                "value": sig.value,
+                "reason": sig.reason,
+            }
+            for sig in opp.signals
+        ]
+
+        out.append(
+            {
+                "symbol": opp.symbol,
+                "timeframe": opp.timeframe,
+                "score": opp.score,
+                "side": opp.side,
+                "signals": signals_list,
+                "created_at": created_ms,
+            }
+        )
+
+    return out
         dt = _as_utc(oldest_gap)
         oldest_gap_ms = int(dt.timestamp() * 1000)
 
