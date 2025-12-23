@@ -50,6 +50,22 @@ function Kvp({ k, v }: { k: string; v: ReactNode }) {
 }
 
 const GAP_STATS_REFRESH_INTERVAL_MS = 60_000
+const SIGNALS_REFRESH_INTERVAL_MS = 30_000
+
+type Signal = {
+  symbol: string
+  timeframe: string
+  score: number
+  side: string
+  signals: Array<{
+    code: string
+    side: string
+    strength: number
+    value: string
+    reason: string
+  }>
+  created_at: number
+}
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme())
@@ -75,6 +91,9 @@ export default function App() {
     oldest_open_gap: number | null
   } | null>(null)
   const [gapStatsError, setGapStatsError] = useState<string | null>(null)
+
+  const [signals, setSignals] = useState<Signal[]>([])
+  const [signalsError, setSignalsError] = useState<string | null>(null)
 
   const marketCapRank: Record<string, number> = {
     BTC: 1,
@@ -324,6 +343,77 @@ export default function App() {
 
     load()
     const id = window.setInterval(load, GAP_STATS_REFRESH_INTERVAL_MS)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+      if (inFlight) inFlight.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    let inFlight: AbortController | null = null
+
+    const load = () => {
+      if (!mounted) return
+      if (inFlight) inFlight.abort()
+      const controller = new AbortController()
+      inFlight = controller
+
+      setSignalsError(null)
+
+      fetch('/api/signals?exchange=bitfinex&limit=10', { signal: controller.signal })
+        .then(async (resp) => {
+          const bodyText = await resp.text()
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 120)}`)
+          }
+
+          let payload: unknown
+          try {
+            payload = JSON.parse(bodyText) as unknown
+          } catch {
+            throw new Error(`Non-JSON response: ${bodyText.slice(0, 120)}`)
+          }
+
+          if (!payload || typeof payload !== 'object') {
+            throw new Error('Unexpected response format')
+          }
+
+          const signalsData =
+            payload && typeof payload === 'object' && 'signals' in payload
+              ? (payload as { signals?: unknown }).signals
+              : null
+          if (!Array.isArray(signalsData)) throw new Error('Unexpected response format')
+
+          const parsed: Signal[] = signalsData
+            .map((sig) => {
+              if (!sig || typeof sig !== 'object') return null
+              const s = sig as Record<string, unknown>
+              return {
+                symbol: String(s.symbol || ''),
+                timeframe: String(s.timeframe || ''),
+                score: Number(s.score || 0),
+                side: String(s.side || 'HOLD'),
+                signals: Array.isArray(s.signals) ? s.signals : [],
+                created_at: Number(s.created_at || 0),
+              }
+            })
+            .filter((s): s is Signal => s !== null)
+
+          setSignals(parsed)
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          setSignalsError(`Unable to load signals (${message})`)
+          setSignals([])
+        })
+    }
+
+    load()
+    const id = window.setInterval(load, SIGNALS_REFRESH_INTERVAL_MS)
 
     return () => {
       mounted = false
@@ -635,9 +725,58 @@ export default function App() {
 
             <div className="ct-dock-right flex flex-col gap-3">
               <Panel title="Opportunities" subtitle="Signals snapshot">
-                <Kvp k="Top symbol" v="—" />
-                <div className="mt-2">
-                  <Kvp k="Score" v="—" />
+                {signalsError ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">{signalsError}</div>
+                ) : signals.length > 0 ? (
+                  <>
+                    <div className="space-y-2">
+                      {signals.slice(0, 5).map((sig, idx) => {
+                        const sideColor =
+                          sig.side === 'BUY'
+                            ? 'text-green-600 dark:text-green-400'
+                            : sig.side === 'SELL'
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-gray-600 dark:text-gray-400'
+                        const scoreColor =
+                          sig.score >= 70
+                            ? 'text-green-600 dark:text-green-400'
+                            : sig.score >= 50
+                              ? 'text-yellow-600 dark:text-yellow-400'
+                              : 'text-gray-600 dark:text-gray-400'
+
+                        return (
+                          <div
+                            key={idx}
+                            className="rounded border border-gray-200 bg-white p-2 text-xs dark:border-gray-800 dark:bg-gray-900"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-gray-900 dark:text-gray-100">{sig.symbol}</span>
+                              <span className={sideColor}>{sig.side}</span>
+                            </div>
+                            <div className="mt-1 flex items-center justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">{sig.timeframe}</span>
+                              <span className={scoreColor}>Score: {sig.score}</span>
+                            </div>
+                            {sig.signals.length > 0 && (
+                              <div className="mt-1 space-y-0.5 text-[11px] text-gray-600 dark:text-gray-400">
+                                {sig.signals.map((s, i) => (
+                                  <div key={i}>• {s.code}: {s.reason}</div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Kvp k="Top symbol" v="—" />
+                    <div className="mt-2">
+                      <Kvp k="Score" v="—" />
+                    </div>
+                  </>
+                )}
                 </div>
               </Panel>
 

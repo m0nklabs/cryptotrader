@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any, Optional, Sequence
 
@@ -27,9 +28,11 @@ from core.types import (
     Exchange,
     ExecutionResult,
     FeeSchedule,
+    IndicatorSignal,
     MarketDataJob,
     MarketDataJobRun,
     Opportunity,
+    OpportunitySnapshot,
     OrderIntent,
     OrderRecord,
     PositionSnapshot,
@@ -226,7 +229,114 @@ class PostgresStores(
     # ---- OpportunityStore
 
     def log_opportunity(self, *, opportunity: Opportunity, exchange: str | None = None) -> None:
-        raise NotImplementedError("PostgresStores.log_opportunity")
+        engine = self._get_engine()
+        _, text = self._require_sqlalchemy()
+        
+        # Convert signals to JSON
+        signals_list = [
+            {
+                "code": sig.code,
+                "side": sig.side,
+                "strength": sig.strength,
+                "value": sig.value,
+                "reason": sig.reason,
+            }
+            for sig in opportunity.signals
+        ]
+        signals_json = json.dumps(signals_list, separators=(",", ":"))
+        
+        stmt = text(
+            """
+            INSERT INTO opportunities (exchange, symbol, timeframe, score, side, signals_json)
+            VALUES (:exchange, :symbol, :timeframe, :score, :side, :signals_json)
+            """
+        )
+        
+        with engine.begin() as conn:
+            conn.execute(
+                stmt,
+                {
+                    "exchange": exchange or "bitfinex",
+                    "symbol": opportunity.symbol,
+                    "timeframe": opportunity.timeframe,
+                    "score": opportunity.score,
+                    "side": opportunity.side,
+                    "signals_json": signals_json,
+                },
+            )
+    
+    def get_opportunities(
+        self,
+        *,
+        exchange: str = "bitfinex",
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        limit: int = 20,
+    ) -> Sequence[OpportunitySnapshot]:
+        """Fetch latest opportunities with optional filters."""
+        engine = self._get_engine()
+        _, text = self._require_sqlalchemy()
+        
+        filters = ["exchange = :exchange"]
+        params: dict[str, Any] = {"exchange": exchange, "limit": limit}
+        
+        if symbol:
+            filters.append("symbol = :symbol")
+            params["symbol"] = symbol
+        
+        if timeframe:
+            filters.append("timeframe = :timeframe")
+            params["timeframe"] = timeframe
+        
+        where_clause = " AND ".join(filters)
+        
+        stmt = text(
+            f"""
+            SELECT id, exchange, symbol, timeframe, score, side, signals_json, created_at
+            FROM opportunities
+            WHERE {where_clause}
+            ORDER BY created_at DESC, score DESC
+            LIMIT :limit
+            """
+        )
+        
+        with engine.begin() as conn:
+            rows = conn.execute(stmt, params).fetchall()
+        
+        results: list[OpportunitySnapshot] = []
+        for row in rows:
+            signals_json = row[6]
+            signals: list[IndicatorSignal] = []
+            
+            if signals_json:
+                try:
+                    signals_data = json.loads(signals_json)
+                    signals = [
+                        IndicatorSignal(
+                            code=sig["code"],
+                            side=sig["side"],
+                            strength=sig["strength"],
+                            value=sig["value"],
+                            reason=sig["reason"],
+                        )
+                        for sig in signals_data
+                    ]
+                except Exception:
+                    signals = []
+            
+            results.append(
+                OpportunitySnapshot(
+                    exchange=row[1],
+                    symbol=row[2],
+                    timeframe=row[3],
+                    score=row[4],
+                    side=row[5],
+                    signals=signals,
+                    created_at=row[7],
+                )
+            )
+        
+        return results
 
     # ---- ExecutionStore
 
