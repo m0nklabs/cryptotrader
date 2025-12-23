@@ -338,8 +338,8 @@ export default function App() {
     if (indicators.ema12) allPriceValues.push(...ema12Data.filter((v): v is number => v !== null))
     if (indicators.ema26) allPriceValues.push(...ema26Data.filter((v): v is number => v !== null))
     
-    const min = Math.min(...allPriceValues)
-    const max = Math.max(...allPriceValues)
+    const min = allPriceValues.length > 0 ? Math.min(...allPriceValues) : 0
+    const max = allPriceValues.length > 0 ? Math.max(...allPriceValues) : 1
     const range = max - min
     const safeRange = range === 0 ? 1 : range
 
@@ -755,8 +755,8 @@ export default function App() {
                             ...btcusdChart.macd.signal.filter((v): v is number => v !== null),
                             ...btcusdChart.macd.histogram.filter((v): v is number => v !== null),
                           ]
-                          const macdMin = Math.min(...allMacdValues, 0)
-                          const macdMax = Math.max(...allMacdValues, 0)
+                          const macdMin = allMacdValues.length > 0 ? Math.min(...allMacdValues, 0) : -1
+                          const macdMax = allMacdValues.length > 0 ? Math.max(...allMacdValues, 0) : 1
                           const macdRange = macdMax - macdMin
                           const safeMacdRange = macdRange === 0 ? 1 : macdRange
                           
