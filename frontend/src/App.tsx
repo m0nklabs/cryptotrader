@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { calculateSMA, calculateEMA, calculateRSI, calculateMACD } from './indicators'
 
 type Theme = 'light' | 'dark'
 
@@ -13,6 +14,30 @@ function getInitialTheme(): Theme {
 function applyTheme(theme: Theme) {
   if (typeof document === 'undefined') return
   document.documentElement.classList.toggle('dark', theme === 'dark')
+}
+
+type IndicatorSettings = {
+  sma20: boolean
+  sma50: boolean
+  ema12: boolean
+  ema26: boolean
+  rsi: boolean
+  macd: boolean
+}
+
+function getInitialIndicators(): IndicatorSettings {
+  if (typeof window === 'undefined') {
+    return { sma20: false, sma50: false, ema12: false, ema26: false, rsi: false, macd: false }
+  }
+  const saved = window.localStorage.getItem('indicators')
+  if (saved) {
+    try {
+      return JSON.parse(saved) as IndicatorSettings
+    } catch {
+      // Fall through to defaults
+    }
+  }
+  return { sma20: false, sma50: false, ema12: false, ema26: false, rsi: false, macd: false }
 }
 
 type PanelProps = {
@@ -53,6 +78,8 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settingsRef = useRef<HTMLDivElement | null>(null)
+
+  const [indicators, setIndicators] = useState<IndicatorSettings>(() => getInitialIndicators())
 
   const [chartSymbol, setChartSymbol] = useState<string>('BTCUSD')
   const [chartTimeframe, setChartTimeframe] = useState<string>('1m')
@@ -111,6 +138,10 @@ export default function App() {
     applyTheme(theme)
     window.localStorage.setItem('theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    window.localStorage.setItem('indicators', JSON.stringify(indicators))
+  }, [indicators])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -278,16 +309,37 @@ export default function App() {
     if (!chartCandles.length) return null
 
     const width = 720
-    const height = 320
+    const baseHeight = 320
     const paddingX = 10
     const paddingY = 12
     const volumeHeight = 70
-    const priceHeight = height - volumeHeight
+    
+    // Add sub-panels for RSI and MACD if enabled
+    const rsiHeight = indicators.rsi ? 60 : 0
+    const macdHeight = indicators.macd ? 60 : 0
+    const totalHeight = baseHeight + rsiHeight + macdHeight
+    const priceHeight = baseHeight - volumeHeight
 
     const lows = chartCandles.map((c) => c.l)
     const highs = chartCandles.map((c) => c.h)
-    const min = Math.min(...lows)
-    const max = Math.max(...highs)
+    
+    // Calculate indicator data
+    const sma20Data = indicators.sma20 ? calculateSMA(chartCandles, 20) : []
+    const sma50Data = indicators.sma50 ? calculateSMA(chartCandles, 50) : []
+    const ema12Data = indicators.ema12 ? calculateEMA(chartCandles, 12) : []
+    const ema26Data = indicators.ema26 ? calculateEMA(chartCandles, 26) : []
+    const rsiData = indicators.rsi ? calculateRSI(chartCandles, 14) : []
+    const macdData = indicators.macd ? calculateMACD(chartCandles, 12, 26, 9) : { macd: [], signal: [], histogram: [] }
+    
+    // Adjust price min/max to include indicator values if any MA is enabled
+    const allPriceValues = [...lows, ...highs]
+    if (indicators.sma20) allPriceValues.push(...sma20Data.filter((v): v is number => v !== null))
+    if (indicators.sma50) allPriceValues.push(...sma50Data.filter((v): v is number => v !== null))
+    if (indicators.ema12) allPriceValues.push(...ema12Data.filter((v): v is number => v !== null))
+    if (indicators.ema26) allPriceValues.push(...ema26Data.filter((v): v is number => v !== null))
+    
+    const min = Math.min(...allPriceValues)
+    const max = Math.max(...allPriceValues)
     const range = max - min
     const safeRange = range === 0 ? 1 : range
 
@@ -310,9 +362,11 @@ export default function App() {
 
     return {
       width,
-      height,
+      height: totalHeight,
       priceHeight,
       volumeHeight,
+      rsiHeight,
+      macdHeight,
       x0,
       x1,
       candleW,
@@ -322,8 +376,14 @@ export default function App() {
       lastClose: last.c,
       lastTs,
       candles: chartCandles,
+      sma20: sma20Data,
+      sma50: sma50Data,
+      ema12: ema12Data,
+      ema26: ema26Data,
+      rsi: rsiData,
+      macd: macdData,
     }
-  }, [chartCandles])
+  }, [chartCandles, indicators])
 
   useEffect(() => {
     if (!settingsOpen) return
@@ -467,6 +527,65 @@ export default function App() {
                     ) : null}
                   </div>
 
+                  {/* Indicator toggles */}
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-gray-600 dark:text-gray-400">Indicators:</span>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={indicators.sma20}
+                        onChange={(e) => setIndicators({ ...indicators, sma20: e.target.checked })}
+                        className="rounded"
+                      />
+                      <span className="text-gray-700 dark:text-gray-300">SMA(20)</span>
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={indicators.sma50}
+                        onChange={(e) => setIndicators({ ...indicators, sma50: e.target.checked })}
+                        className="rounded"
+                      />
+                      <span className="text-gray-700 dark:text-gray-300">SMA(50)</span>
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={indicators.ema12}
+                        onChange={(e) => setIndicators({ ...indicators, ema12: e.target.checked })}
+                        className="rounded"
+                      />
+                      <span className="text-gray-700 dark:text-gray-300">EMA(12)</span>
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={indicators.ema26}
+                        onChange={(e) => setIndicators({ ...indicators, ema26: e.target.checked })}
+                        className="rounded"
+                      />
+                      <span className="text-gray-700 dark:text-gray-300">EMA(26)</span>
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={indicators.rsi}
+                        onChange={(e) => setIndicators({ ...indicators, rsi: e.target.checked })}
+                        className="rounded"
+                      />
+                      <span className="text-gray-700 dark:text-gray-300">RSI(14)</span>
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={indicators.macd}
+                        onChange={(e) => setIndicators({ ...indicators, macd: e.target.checked })}
+                        className="rounded"
+                      />
+                      <span className="text-gray-700 dark:text-gray-300">MACD</span>
+                    </label>
+                  </div>
+
                   <div
                     className="rounded border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900"
                     onWheel={onChartWheel}
@@ -539,6 +658,169 @@ export default function App() {
                             />
                           )
                         })}
+
+                        {/* Moving Average indicators on price chart */}
+                        {indicators.sma20 && btcusdChart.sma20.length > 0 && (
+                          <polyline
+                            points={btcusdChart.sma20
+                              .map((val, i) => (val !== null ? `${btcusdChart.toX(i)},${btcusdChart.toY(val)}` : null))
+                              .filter((p): p is string => p !== null)
+                              .join(' ')}
+                            fill="none"
+                            stroke="#3b82f6"
+                            strokeWidth="1"
+                            opacity="0.7"
+                          />
+                        )}
+                        {indicators.sma50 && btcusdChart.sma50.length > 0 && (
+                          <polyline
+                            points={btcusdChart.sma50
+                              .map((val, i) => (val !== null ? `${btcusdChart.toX(i)},${btcusdChart.toY(val)}` : null))
+                              .filter((p): p is string => p !== null)
+                              .join(' ')}
+                            fill="none"
+                            stroke="#8b5cf6"
+                            strokeWidth="1"
+                            opacity="0.7"
+                          />
+                        )}
+                        {indicators.ema12 && btcusdChart.ema12.length > 0 && (
+                          <polyline
+                            points={btcusdChart.ema12
+                              .map((val, i) => (val !== null ? `${btcusdChart.toX(i)},${btcusdChart.toY(val)}` : null))
+                              .filter((p): p is string => p !== null)
+                              .join(' ')}
+                            fill="none"
+                            stroke="#10b981"
+                            strokeWidth="1"
+                            opacity="0.7"
+                          />
+                        )}
+                        {indicators.ema26 && btcusdChart.ema26.length > 0 && (
+                          <polyline
+                            points={btcusdChart.ema26
+                              .map((val, i) => (val !== null ? `${btcusdChart.toX(i)},${btcusdChart.toY(val)}` : null))
+                              .filter((p): p is string => p !== null)
+                              .join(' ')}
+                            fill="none"
+                            stroke="#f59e0b"
+                            strokeWidth="1"
+                            opacity="0.7"
+                          />
+                        )}
+
+                        {/* RSI sub-panel */}
+                        {indicators.rsi && btcusdChart.rsiHeight > 0 && btcusdChart.rsi.length > 0 && (() => {
+                          const rsiY0 = btcusdChart.priceHeight + btcusdChart.volumeHeight
+                          const rsiY1 = rsiY0 + btcusdChart.rsiHeight
+                          const rsiMidY = rsiY0 + btcusdChart.rsiHeight / 2
+                          const toRsiY = (value: number) => rsiY1 - (value / 100) * (btcusdChart.rsiHeight - 10)
+                          
+                          return (
+                            <g>
+                              {/* RSI panel background */}
+                              <rect x={0} y={rsiY0} width={btcusdChart.width} height={btcusdChart.rsiHeight} className="fill-gray-100 dark:fill-gray-900" opacity="0.3" />
+                              
+                              {/* Reference lines */}
+                              <line x1={btcusdChart.x0} y1={toRsiY(70)} x2={btcusdChart.x1} y2={toRsiY(70)} stroke="#ef4444" strokeWidth="0.5" opacity="0.3" strokeDasharray="2,2" />
+                              <line x1={btcusdChart.x0} y1={toRsiY(30)} x2={btcusdChart.x1} y2={toRsiY(30)} stroke="#10b981" strokeWidth="0.5" opacity="0.3" strokeDasharray="2,2" />
+                              <line x1={btcusdChart.x0} y1={toRsiY(50)} x2={btcusdChart.x1} y2={toRsiY(50)} stroke="#6b7280" strokeWidth="0.5" opacity="0.2" />
+                              
+                              {/* RSI line */}
+                              <polyline
+                                points={btcusdChart.rsi
+                                  .map((val, i) => (val !== null ? `${btcusdChart.toX(i)},${toRsiY(val)}` : null))
+                                  .filter((p): p is string => p !== null)
+                                  .join(' ')}
+                                fill="none"
+                                stroke="#8b5cf6"
+                                strokeWidth="1"
+                                opacity="0.8"
+                              />
+                              
+                              {/* RSI label */}
+                              <text x={5} y={rsiY0 + 10} className="fill-gray-600 dark:fill-gray-400" fontSize="9">RSI(14)</text>
+                            </g>
+                          )
+                        })()}
+
+                        {/* MACD sub-panel */}
+                        {indicators.macd && btcusdChart.macdHeight > 0 && btcusdChart.macd.macd.length > 0 && (() => {
+                          const macdY0 = btcusdChart.priceHeight + btcusdChart.volumeHeight + btcusdChart.rsiHeight
+                          const macdY1 = macdY0 + btcusdChart.macdHeight
+                          
+                          // Find min/max for MACD values
+                          const allMacdValues = [
+                            ...btcusdChart.macd.macd.filter((v): v is number => v !== null),
+                            ...btcusdChart.macd.signal.filter((v): v is number => v !== null),
+                            ...btcusdChart.macd.histogram.filter((v): v is number => v !== null),
+                          ]
+                          const macdMin = Math.min(...allMacdValues, 0)
+                          const macdMax = Math.max(...allMacdValues, 0)
+                          const macdRange = macdMax - macdMin
+                          const safeMacdRange = macdRange === 0 ? 1 : macdRange
+                          
+                          const toMacdY = (value: number) => macdY1 - ((value - macdMin) / safeMacdRange) * (btcusdChart.macdHeight - 10) - 5
+                          const zeroY = toMacdY(0)
+                          
+                          return (
+                            <g>
+                              {/* MACD panel background */}
+                              <rect x={0} y={macdY0} width={btcusdChart.width} height={btcusdChart.macdHeight} className="fill-gray-100 dark:fill-gray-900" opacity="0.3" />
+                              
+                              {/* Zero line */}
+                              <line x1={btcusdChart.x0} y1={zeroY} x2={btcusdChart.x1} y2={zeroY} stroke="#6b7280" strokeWidth="0.5" opacity="0.2" />
+                              
+                              {/* Histogram bars */}
+                              {btcusdChart.macd.histogram.map((val, i) => {
+                                if (val === null) return null
+                                const x = btcusdChart.toX(i)
+                                const barH = Math.abs(toMacdY(val) - zeroY)
+                                const barY = val >= 0 ? toMacdY(val) : zeroY
+                                const barClass = val >= 0 ? 'fill-green-500' : 'fill-red-500'
+                                
+                                return (
+                                  <rect
+                                    key={`macd-hist-${i}`}
+                                    x={x - btcusdChart.candleW / 2}
+                                    y={barY}
+                                    width={btcusdChart.candleW}
+                                    height={barH}
+                                    className={barClass}
+                                    opacity="0.4"
+                                  />
+                                )
+                              })}
+                              
+                              {/* MACD line */}
+                              <polyline
+                                points={btcusdChart.macd.macd
+                                  .map((val, i) => (val !== null ? `${btcusdChart.toX(i)},${toMacdY(val)}` : null))
+                                  .filter((p): p is string => p !== null)
+                                  .join(' ')}
+                                fill="none"
+                                stroke="#3b82f6"
+                                strokeWidth="1"
+                                opacity="0.8"
+                              />
+                              
+                              {/* Signal line */}
+                              <polyline
+                                points={btcusdChart.macd.signal
+                                  .map((val, i) => (val !== null ? `${btcusdChart.toX(i)},${toMacdY(val)}` : null))
+                                  .filter((p): p is string => p !== null)
+                                  .join(' ')}
+                                fill="none"
+                                stroke="#f59e0b"
+                                strokeWidth="1"
+                                opacity="0.8"
+                              />
+                              
+                              {/* MACD label */}
+                              <text x={5} y={macdY0 + 10} className="fill-gray-600 dark:fill-gray-400" fontSize="9">MACD(12,26,9)</text>
+                            </g>
+                          )
+                        })()}
                       </svg>
                     ) : (
                       <div className="text-xs text-gray-600 dark:text-gray-400">No candle data.</div>
