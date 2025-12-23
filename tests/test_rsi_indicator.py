@@ -15,15 +15,17 @@ from core.types import Candle
 
 def _make_candle(close: float, idx: int = 0) -> Candle:
     """Helper to create a candle with minimal required fields."""
-    # Calculate day and hour from idx to handle sequences > 24 hours
-    day = 1 + (idx // 24)
-    hour = idx % 24
+    # Use timedelta to safely handle any idx value
+    from datetime import timedelta
+    base_time = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    open_time = base_time + timedelta(hours=idx)
+    close_time = base_time + timedelta(hours=idx, minutes=59)
     return Candle(
         symbol="BTCUSD",
         exchange="bitfinex",
         timeframe="1h",
-        open_time=datetime(2024, 1, day, hour, 0, tzinfo=timezone.utc),
-        close_time=datetime(2024, 1, day, hour, 59, tzinfo=timezone.utc),
+        open_time=open_time,
+        close_time=close_time,
         open=Decimal(str(close)),
         high=Decimal(str(close)),
         low=Decimal(str(close)),
@@ -144,8 +146,8 @@ def test_generate_rsi_signal_sell_when_overbought() -> None:
 
 def test_generate_rsi_signal_hold_when_neutral() -> None:
     """HOLD signal when RSI is in neutral range."""
-    # Create mostly flat prices with slight variations
-    prices = [100, 101, 100, 101, 100, 101, 100, 101, 100, 101, 100, 101, 100, 101, 100, 101, 100, 101, 100, 101]
+    # Create mostly flat prices with slight variations (alternating 100/101)
+    prices = [100 + (i % 2) for i in range(20)]
     candles = [_make_candle(p, i) for i, p in enumerate(prices)]
 
     signal = generate_rsi_signal(candles, period=14, oversold=30, overbought=70)
@@ -204,6 +206,22 @@ def test_generate_rsi_signal_rejects_invalid_thresholds() -> None:
 
     with pytest.raises(ValueError, match="oversold .* must be < overbought"):
         generate_rsi_signal(candles, period=14, oversold=70, overbought=30)
+
+
+def test_generate_rsi_signal_rejects_oversold_zero() -> None:
+    """Raises error if oversold <= 0 (would cause division by zero)."""
+    candles = [_make_candle(100, i) for i in range(20)]
+
+    with pytest.raises(ValueError, match="oversold must be > 0"):
+        generate_rsi_signal(candles, period=14, oversold=0, overbought=70)
+
+
+def test_generate_rsi_signal_rejects_overbought_100() -> None:
+    """Raises error if overbought >= 100 (would cause division by zero)."""
+    candles = [_make_candle(100, i) for i in range(20)]
+
+    with pytest.raises(ValueError, match="overbought must be < 100"):
+        generate_rsi_signal(candles, period=14, oversold=30, overbought=100)
 
 
 def test_generate_rsi_signal_custom_thresholds() -> None:

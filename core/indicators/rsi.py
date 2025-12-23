@@ -114,6 +114,10 @@ def generate_rsi_signal(
     """
     if oversold >= overbought:
         raise ValueError(f"oversold ({oversold}) must be < overbought ({overbought})")
+    if oversold <= 0:
+        raise ValueError(f"oversold must be > 0, got {oversold}")
+    if overbought >= 100:
+        raise ValueError(f"overbought must be < 100, got {overbought}")
 
     rsi = compute_rsi(candles, period=period)
 
