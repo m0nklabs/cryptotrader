@@ -73,6 +73,13 @@ function formatTimestamp(ms: number | null | undefined): string {
   return date.toISOString().slice(0, 16).replace('T', ' ')
 }
 
+function getLatestIngestionTimestamp(
+  jobs: Array<{ job_type: string; last_run: number | null; successful_runs: number; failed_runs: number }> | undefined
+): number {
+  if (!jobs || jobs.length === 0) return 0
+  return jobs.reduce((max, j) => Math.max(max, j.last_run || 0), 0)
+}
+
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme())
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -560,12 +567,7 @@ export default function App() {
                       <div className="mt-2">
                         <Kvp
                           k="Latest run"
-                          v={formatTimestamp(
-                            systemStatus.ingestion.jobs.reduce(
-                              (max, j) => Math.max(max, j.last_run || 0),
-                              0
-                            )
-                          )}
+                          v={formatTimestamp(getLatestIngestionTimestamp(systemStatus.ingestion.jobs))}
                         />
                       </div>
                     ) : (
@@ -760,12 +762,7 @@ export default function App() {
                       <div className="mt-2">
                         <div className="text-xs text-gray-600 dark:text-gray-400">Last ingestion:</div>
                         <div className="text-xs">
-                          {formatTimestamp(
-                            systemStatus.ingestion.jobs.reduce(
-                              (max, j) => Math.max(max, j.last_run || 0),
-                              0
-                            )
-                          )}
+                          {formatTimestamp(getLatestIngestionTimestamp(systemStatus.ingestion.jobs))}
                         </div>
                       </div>
                     ) : null}
