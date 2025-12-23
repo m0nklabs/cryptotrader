@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Ensure imports work when invoked as a script (e.g., from systemd).

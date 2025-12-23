@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from core.indicators.rsi import compute_rsi, generate_rsi_signal
+from core.indicators.rsi import generate_rsi_signal
 from core.types import Candle, IndicatorSignal, Opportunity, SignalSide
 
 
