@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,6 +42,108 @@ def _json_response(handler: BaseHTTPRequestHandler, *, status: int, payload: Any
     handler.wfile.write(raw)
 
 
+def _check_db_health(stores: PostgresStores) -> dict[str, Any]:
+    """Check database connectivity and query latency."""
+    engine = stores._get_engine()  # noqa: SLF001
+    _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+    try:
+        start = datetime.now(timezone.utc)
+        with engine.begin() as conn:
+            conn.execute(text("SELECT 1"))
+        end = datetime.now(timezone.utc)
+        latency_ms = (end - start).total_seconds() * 1000
+
+        return {
+            "status": "ok",
+            "latency_ms": round(latency_ms, 2),
+            "timestamp": int(end.timestamp() * 1000),
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": type(exc).__name__,
+            "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
+        }
+
+
+def _get_ingestion_stats(stores: PostgresStores) -> dict[str, Any]:
+    """Get ingestion timer stats from market_data_job_runs table."""
+    engine = stores._get_engine()  # noqa: SLF001
+    _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+    try:
+        stmt = text(
+            """
+            SELECT
+                job_type,
+                MAX(started_at) AS last_run,
+                SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END) AS successful_runs,
+                SUM(CASE WHEN error_message IS NOT NULL THEN 1 ELSE 0 END) AS failed_runs
+            FROM market_data_job_runs
+            GROUP BY job_type
+            ORDER BY job_type
+            """
+        )
+        with engine.begin() as conn:
+            rows = conn.execute(stmt).fetchall()
+
+        jobs = []
+        for job_type, last_run, successful, failed in rows:
+            last_run_ms: int | None = None
+            if last_run:
+                dt = _as_utc(last_run)
+                last_run_ms = int(dt.timestamp() * 1000)
+
+            jobs.append(
+                {
+                    "job_type": str(job_type),
+                    "last_run": last_run_ms,
+                    "successful_runs": int(successful or 0),
+                    "failed_runs": int(failed or 0),
+                }
+            )
+
+        return {"status": "ok", "jobs": jobs}
+    except Exception as exc:
+        return {"status": "error", "error": type(exc).__name__}
+
+
+def _check_systemd_timers() -> dict[str, Any]:
+    """Check if systemd timers are active (user-level)."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "list-timers", "--no-pager", "--output=json"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return {"status": "unavailable", "reason": "systemctl_failed"}
+
+        timers_data = json.loads(result.stdout)
+        # Filter for cryptotrader timers
+        cryptotrader_timers = [
+            t for t in timers_data
+            if isinstance(t, dict) and "unit" in t and "cryptotrader" in str(t.get("unit", "")).lower()
+        ]
+
+        return {
+            "status": "ok",
+            "active_timers": len(cryptotrader_timers),
+            "timers": [
+                {
+                    "unit": t.get("unit", ""),
+                    "next": t.get("next", ""),
+                }
+                for t in cryptotrader_timers[:5]  # Limit to 5 timers
+            ],
+        }
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, Exception):
+        # systemd might not be available in all environments (e.g., Docker, CI)
+        return {"status": "unavailable", "reason": "systemd_not_available"}
+
+
 class _Server(ThreadingHTTPServer):
     def __init__(self, server_address: tuple[str, int], stores: PostgresStores):
         super().__init__(server_address, _Handler)
@@ -58,6 +161,38 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/healthz":
             return _json_response(self, status=200, payload={"ok": True})
+
+        if parsed.path == "/api/system/status":
+            try:
+                db_health = _check_db_health(stores=self.server.stores)
+                ingestion_stats = _get_ingestion_stats(stores=self.server.stores)
+                systemd_timers = _check_systemd_timers()
+
+                # Overall backend status is OK if DB is OK
+                backend_status = "ok" if db_health["status"] == "ok" else "error"
+
+                return _json_response(
+                    self,
+                    status=200,
+                    payload={
+                        "backend": {
+                            "status": backend_status,
+                            "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
+                        },
+                        "database": db_health,
+                        "ingestion": ingestion_stats,
+                        "systemd_timers": systemd_timers,
+                    },
+                )
+            except Exception as exc:  # pragma: no cover
+                return _json_response(
+                    self,
+                    status=500,
+                    payload={
+                        "error": "system_status_check_failed",
+                        "detail": type(exc).__name__,
+                    },
+                )
 
         if parsed.path == "/api/candles/available":
             qs = parse_qs(parsed.query)

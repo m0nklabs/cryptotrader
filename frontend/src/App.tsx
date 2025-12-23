@@ -49,6 +49,30 @@ function Kvp({ k, v }: { k: string; v: ReactNode }) {
   )
 }
 
+function StatusIndicator({ status }: { status: string }) {
+  let color = 'text-gray-400'
+  let symbol = '○'
+
+  if (status === 'ok') {
+    color = 'text-green-600 dark:text-green-500'
+    symbol = '●'
+  } else if (status === 'error') {
+    color = 'text-red-600 dark:text-red-500'
+    symbol = '●'
+  } else if (status === 'unavailable') {
+    color = 'text-yellow-600 dark:text-yellow-500'
+    symbol = '◐'
+  }
+
+  return <span className={color}>{symbol}</span>
+}
+
+function formatTimestamp(ms: number | null | undefined): string {
+  if (!ms) return '—'
+  const date = new Date(ms)
+  return date.toISOString().slice(0, 16).replace('T', ' ')
+}
+
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme())
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -66,6 +90,18 @@ export default function App() {
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([])
   const [availableTimeframesBySymbol, setAvailableTimeframesBySymbol] = useState<Record<string, string[]>>({})
   const [availableError, setAvailableError] = useState<string | null>(null)
+
+  const [systemStatus, setSystemStatus] = useState<{
+    backend: { status: string; timestamp?: number }
+    database: { status: string; latency_ms?: number; error?: string; timestamp?: number }
+    ingestion: {
+      status: string
+      jobs?: Array<{ job_type: string; last_run: number | null; successful_runs: number; failed_runs: number }>
+      error?: string
+    }
+    systemd_timers: { status: string; active_timers?: number; reason?: string }
+  } | null>(null)
+  const [systemStatusError, setSystemStatusError] = useState<string | null>(null)
 
   const marketCapRank: Record<string, number> = {
     BTC: 1,
@@ -173,6 +209,75 @@ export default function App() {
       })
 
     return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    let inFlight: AbortController | null = null
+
+    const loadSystemStatus = () => {
+      if (!mounted) return
+      if (inFlight) inFlight.abort()
+      const controller = new AbortController()
+      inFlight = controller
+
+      setSystemStatusError(null)
+
+      fetch('/api/system/status', { signal: controller.signal })
+        .then(async (resp) => {
+          const bodyText = await resp.text()
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 120)}`)
+
+          let payload: unknown
+          try {
+            payload = JSON.parse(bodyText) as unknown
+          } catch {
+            throw new Error(`Non-JSON response: ${bodyText.slice(0, 120)}`)
+          }
+
+          if (!payload || typeof payload !== 'object') {
+            throw new Error('Unexpected response format')
+          }
+
+          const data = payload as {
+            backend?: { status: string; timestamp?: number }
+            database?: { status: string; latency_ms?: number; error?: string; timestamp?: number }
+            ingestion?: {
+              status: string
+              jobs?: Array<{
+                job_type: string
+                last_run: number | null
+                successful_runs: number
+                failed_runs: number
+              }>
+              error?: string
+            }
+            systemd_timers?: { status: string; active_timers?: number; reason?: string }
+          }
+
+          setSystemStatus({
+            backend: data.backend || { status: 'unknown' },
+            database: data.database || { status: 'unknown' },
+            ingestion: data.ingestion || { status: 'unknown' },
+            systemd_timers: data.systemd_timers || { status: 'unknown' },
+          })
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          setSystemStatusError(`Unable to load system status (${message})`)
+          setSystemStatus(null)
+        })
+    }
+
+    loadSystemStatus()
+    const id = window.setInterval(loadSystemStatus, 15_000)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+      if (inFlight) inFlight.abort()
+    }
   }, [])
 
   const timeframesForChartSymbol = useMemo(() => {
@@ -434,10 +539,44 @@ export default function App() {
               </Panel>
 
               <Panel title="Market Data" subtitle="Bitfinex candles (OHLCV)">
-                <Kvp k="Status" v="Not connected" />
-                <div className="mt-2">
-                  <Kvp k="Latest run" v="—" />
-                </div>
+                {systemStatus?.systemd_timers ? (
+                  <>
+                    <Kvp
+                      k="Timers"
+                      v={
+                        <span className="flex items-center gap-1">
+                          <StatusIndicator status={systemStatus.systemd_timers.status} />
+                          <span>
+                            {systemStatus.systemd_timers.status === 'ok'
+                              ? `${systemStatus.systemd_timers.active_timers || 0} active`
+                              : systemStatus.systemd_timers.status === 'unavailable'
+                              ? 'N/A'
+                              : 'error'}
+                          </span>
+                        </span>
+                      }
+                    />
+                    {systemStatus.ingestion?.status === 'ok' && systemStatus.ingestion.jobs && systemStatus.ingestion.jobs.length > 0 ? (
+                      <div className="mt-2">
+                        <Kvp
+                          k="Latest run"
+                          v={formatTimestamp(Math.max(...systemStatus.ingestion.jobs.map((j) => j.last_run || 0)))}
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <Kvp k="Latest run" v="—" />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Kvp k="Status" v="Not connected" />
+                    <div className="mt-2">
+                      <Kvp k="Latest run" v="—" />
+                    </div>
+                  </>
+                )}
               </Panel>
             </div>
 
@@ -584,10 +723,53 @@ export default function App() {
               </Panel>
 
               <Panel title="System" subtitle="Health">
-                <Kvp k="Backend" v="—" />
-                <div className="mt-2">
-                  <Kvp k="Database" v="—" />
-                </div>
+                {systemStatusError ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">{systemStatusError}</div>
+                ) : systemStatus ? (
+                  <>
+                    <Kvp
+                      k="Backend"
+                      v={
+                        <span className="flex items-center gap-1">
+                          <StatusIndicator status={systemStatus.backend.status} />
+                          <span>{systemStatus.backend.status}</span>
+                        </span>
+                      }
+                    />
+                    <div className="mt-2">
+                      <Kvp
+                        k="Database"
+                        v={
+                          <span className="flex items-center gap-1">
+                            <StatusIndicator status={systemStatus.database.status} />
+                            <span>
+                              {systemStatus.database.status === 'ok'
+                                ? `${systemStatus.database.latency_ms}ms`
+                                : systemStatus.database.status}
+                            </span>
+                          </span>
+                        }
+                      />
+                    </div>
+                    {systemStatus.ingestion.status === 'ok' && systemStatus.ingestion.jobs && systemStatus.ingestion.jobs.length > 0 ? (
+                      <div className="mt-2">
+                        <div className="text-xs text-gray-600 dark:text-gray-400">Last ingestion:</div>
+                        <div className="text-xs">
+                          {formatTimestamp(
+                            Math.max(...systemStatus.ingestion.jobs.map((j) => j.last_run || 0))
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <Kvp k="Backend" v="—" />
+                    <div className="mt-2">
+                      <Kvp k="Database" v="—" />
+                    </div>
+                  </>
+                )}
               </Panel>
             </div>
           </div>
