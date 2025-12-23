@@ -94,6 +94,12 @@ Resume (continue from latest candle in DB):
 
 - `python -m core.market_data.bitfinex_backfill --symbol BTCUSD --timeframe 1h --resume`
 
+### Bootstrap multiple symbols for charts
+
+To populate the DB with a curated list of symbols (so they appear in the dashboard Market Watch), use:
+
+- `python scripts/bootstrap_symbols.py --timeframe 1m --lookback-days 3 --enable-gap-repair`
+
 ### Candle gap detect + repair (Postgres + Bitfinex)
 
 This job detects missing `open_time` rows in `candles` for a given range using PostgreSQL `generate_series`, logs them into `candle_gaps`, and optionally repairs them by fetching the missing candles from Bitfinex and upserting.

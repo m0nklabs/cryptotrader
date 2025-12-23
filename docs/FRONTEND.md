@@ -38,6 +38,17 @@ Theme state is stored in `localStorage` under the key `theme` and applied by tog
 - `npm run build`
 - `npm run preview`
 
+Note: the dashboard’s `/api/*` endpoints are expected to be served by the local dashboard API (DB-backed).
+
+## Chart zoom (mouse wheel)
+
+The candlestick chart supports mouse-wheel zoom:
+
+- Scroll up: zoom in (fewer candles)
+- Scroll down: zoom out (more candles)
+
+This adjusts the candle window size fetched from `/api/candles`.
+
 ## Run as a service (systemd --user)
 
 This repo includes a user-level systemd unit:
@@ -56,4 +67,19 @@ Status / logs:
 - `journalctl --user -u cryptotrader-frontend.service -f`
 
 The service serves the built UI via `npm run preview` on port 5176.
+
+### Dashboard API (DB-backed candles)
+
+To render charts from our Postgres `candles` table, run the local API:
+
+- Script: `python scripts/api_server.py` (binds to `127.0.0.1:8787`)
+- Systemd unit: `systemd/cryptotrader-dashboard-api.service`
+
+Install + start:
+
+- `systemctl --user link /home/flip/cryptotrader/systemd/cryptotrader-dashboard-api.service`
+- `systemctl --user daemon-reload`
+- `systemctl --user enable --now cryptotrader-dashboard-api.service`
+
+The unit loads `DATABASE_URL` from `/home/flip/cryptotrader/.env` (see `.env.example`).
 

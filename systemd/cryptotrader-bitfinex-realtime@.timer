@@ -1,0 +1,16 @@
+[Unit]
+Description=cryptotrader Bitfinex realtime candle ingest (resume) timer [%i]
+
+[Timer]
+# For 1m timeframes: keep DB up to date by resuming frequently.
+OnBootSec=2min
+OnUnitActiveSec=1min
+RandomizedDelaySec=10s
+Persistent=true
+AccuracySec=10s
+
+# Reuse the existing resume backfill service.
+Unit=cryptotrader-bitfinex-backfill@%i.service
+
+[Install]
+WantedBy=timers.target

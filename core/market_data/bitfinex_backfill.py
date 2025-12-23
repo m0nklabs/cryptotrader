@@ -271,6 +271,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if latest is None:
             raise SystemExit("No existing candles found to resume from; provide --start for the initial backfill")
+        # Postgres stores `TIMESTAMP` without timezone; normalize to UTC-aware to avoid
+        # naive/aware comparison errors.
+        if latest.tzinfo is None:
+            latest = latest.replace(tzinfo=timezone.utc)
         start = latest + _TIMEFRAMES[str(args.timeframe)].delta
     else:
         if not args.start:
@@ -278,6 +282,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         start = _parse_dt(args.start)
 
     if end <= start:
+        # In --resume mode this can happen near the boundary of the next candle
+        # (e.g. latest candle open_time is the current minute). Treat as a no-op
+        # so systemd timers do not record a failure.
+        if args.resume:
+            print("backfill-skip start_after_end")
+            return 0
         raise SystemExit("end must be after start")
 
     result = run_backfill(

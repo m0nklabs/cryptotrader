@@ -7,5 +7,15 @@ export default defineConfig({
     host: true,
     port: 5176,
     strictPort: true,
+    proxy: {
+      '/api': 'http://127.0.0.1:8787',
+      '/healthz': 'http://127.0.0.1:8787',
+    },
+  },
+  preview: {
+    proxy: {
+      '/api': 'http://127.0.0.1:8787',
+      '/healthz': 'http://127.0.0.1:8787',
+    },
   },
 })

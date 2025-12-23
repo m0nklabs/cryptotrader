@@ -1,0 +1,15 @@
+[Unit]
+Description=cryptotrader Bitfinex backfill timer [%i]
+
+[Timer]
+# Start shortly after login/boot and keep running.
+OnBootSec=2min
+OnUnitActiveSec=15min
+RandomizedDelaySec=5min
+Persistent=true
+AccuracySec=1min
+
+Unit=cryptotrader-bitfinex-backfill@%i.service
+
+[Install]
+WantedBy=timers.target

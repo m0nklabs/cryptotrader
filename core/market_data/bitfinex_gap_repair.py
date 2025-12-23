@@ -74,7 +74,7 @@ def _fetch_bitfinex_candles_page(
     limit: int = 10_000,
     sort: int = 1,
     timeout_s: int = 20,
-    max_retries: int = 6,
+    max_retries: int = 10,
 ) -> list[list[object]]:
     url = f"https://api-pub.bitfinex.com/v2/candles/trade:{timeframe_api}:{symbol}/hist"
     params = {
@@ -119,17 +119,23 @@ def _fetch_single_candle(
         raise ValueError(f"Unsupported timeframe: {timeframe}")
 
     spec = _TIMEFRAMES[tf_key]
+    if open_time.tzinfo is None:
+        open_time = open_time.replace(tzinfo=timezone.utc)
     start_ms = _to_ms(open_time)
     end_ms = _to_ms(open_time + spec.delta)
 
-    page = _fetch_bitfinex_candles_page(
-        symbol=_normalize_bitfinex_symbol(symbol),
-        timeframe_api=spec.api,
-        start_ms=start_ms,
-        end_ms=end_ms,
-        limit=1,
-        sort=1,
-    )
+    try:
+        page = _fetch_bitfinex_candles_page(
+            symbol=_normalize_bitfinex_symbol(symbol),
+            timeframe_api=spec.api,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            limit=1,
+            sort=1,
+        )
+    except Exception:
+        # Treat transient upstream failures as a skip; the timer will retry later.
+        return None
     if not page:
         return None
 

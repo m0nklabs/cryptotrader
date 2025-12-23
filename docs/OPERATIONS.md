@@ -83,3 +83,72 @@ Restart / stop:
   `systemctl --user start cryptotrader-bitfinex-backfill@BTCUSD-1m.service`\
   `systemctl --user start cryptotrader-bitfinex-gap-repair@BTCUSD-1m.service`\
   `systemctl --user start cryptotrader-frontend.service`
+
+## Realtime candles into DB + periodic gap repair
+
+Goal:
+
+- Keep the `candles` table continuously updated (near-realtime) using `--resume`.
+- Periodically scan and repair missing candles in recent history (gap repair).
+
+### 1) Create instance env files
+
+These templates expect per-instance config under `%h/.config/cryptotrader/`.
+
+Create backfill instance config (example: BTCUSD 1m):
+
+- File: `/home/flip/.config/cryptotrader/bitfinex-backfill-BTCUSD-1m.env`
+- Contents:
+  - `CT_SYMBOL=BTCUSD`
+  - `CT_TIMEFRAME=1m`
+
+Create gap-repair instance config:
+
+- File: `/home/flip/.config/cryptotrader/bitfinex-gap-repair-BTCUSD-1m.env`
+- Contents:
+  - `CT_SYMBOL=BTCUSD`
+  - `CT_TIMEFRAME=1m`
+  - Optional: `CT_LOOKBACK_DAYS=30`
+
+Ensure `DATABASE_URL` is set (recommended in `/home/flip/cryptotrader/.env`, see `.env.example`).
+
+### Bootstrap multiple symbols (top pairs)
+
+If you want more symbols to show up in Market Watch (and be chartable), you must first ingest candles for them.
+
+This repo includes a helper script that:
+
+- Runs an initial backfill for a curated list of symbols
+- Writes the per-instance env files under `%h/.config/cryptotrader/`
+- Enables the `realtime@...` timers (and optionally `gap-repair@...`)
+
+Run (example: 1m candles, last 3 days, enable gap repair timers too):
+
+- `python scripts/bootstrap_symbols.py --timeframe 1m --lookback-days 3 --enable-gap-repair`
+
+Notes:
+
+- The default symbol list is a curated set of common USD pairs; override via `--symbols "BTCUSD,ETHUSD,..."`.
+- Some symbols may not exist on Bitfinex; use `--ignore-errors` if you want best-effort.
+
+### 2) Enable timers
+
+Realtime ingest (every 1 minute):
+
+- `systemctl --user link /home/flip/cryptotrader/systemd/cryptotrader-bitfinex-realtime@.timer`
+- `systemctl --user link /home/flip/cryptotrader/systemd/cryptotrader-bitfinex-backfill@.service`
+- `systemctl --user daemon-reload`
+- `systemctl --user enable --now cryptotrader-bitfinex-realtime@BTCUSD-1m.timer`
+
+Periodic gap repair (every ~6 hours by default):
+
+- `systemctl --user link /home/flip/cryptotrader/systemd/cryptotrader-bitfinex-gap-repair@.timer`
+- `systemctl --user link /home/flip/cryptotrader/systemd/cryptotrader-bitfinex-gap-repair@.service`
+- `systemctl --user daemon-reload`
+- `systemctl --user enable --now cryptotrader-bitfinex-gap-repair@BTCUSD-1m.timer`
+
+### 3) Monitor
+
+- Timers: `systemctl --user list-timers --all | grep cryptotrader-bitfinex`
+- Recent logs (realtime): `journalctl --user -u cryptotrader-bitfinex-backfill@BTCUSD-1m.service --since "30 minutes ago"`
+- Recent logs (gap repair): `journalctl --user -u cryptotrader-bitfinex-gap-repair@BTCUSD-1m.service --since "6 hours ago"`

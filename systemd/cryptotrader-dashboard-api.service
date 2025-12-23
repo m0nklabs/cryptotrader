@@ -1,0 +1,27 @@
+[Unit]
+Description=cryptotrader dashboard API (DB-backed candles)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/cryptotrader
+
+# Default for local docker-compose Postgres (override via %h/cryptotrader/.env).
+Environment=DATABASE_URL=postgresql+psycopg2://cryptotrader:cryptotrader@127.0.0.1:5432/cryptotrader
+Environment=PYTHONPATH=%h/cryptotrader
+
+# Provide DATABASE_URL via %h/cryptotrader/.env (see .env.example). If present, it overrides defaults.
+EnvironmentFile=-%h/cryptotrader/.env
+
+ExecStart=%h/cryptotrader/.venv/bin/python %h/cryptotrader/scripts/api_server.py --host 127.0.0.1 --port 8787
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=%h/cryptotrader
+
+[Install]
+WantedBy=default.target

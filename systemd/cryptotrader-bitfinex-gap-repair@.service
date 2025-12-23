@@ -1,0 +1,43 @@
+[Unit]
+Description=cryptotrader Bitfinex candle gap detect/repair (resume) [%i]
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/cryptotrader
+
+# Optional repo-local env (do NOT commit secrets).
+EnvironmentFile=-%h/cryptotrader/.env
+
+# Optional secrets (recommended location; gitignored).
+EnvironmentFile=-%h/cryptotrader/.secrets/.env
+
+# Instance-specific config (create this file locally).
+# Example: %h/.config/cryptotrader/bitfinex-gap-repair-BTCUSD-1m.env
+EnvironmentFile=%h/.config/cryptotrader/bitfinex-gap-repair-%i.env
+
+# Safe defaults (override in the env file if needed).
+Environment=CT_EXCHANGE=bitfinex
+Environment=CT_LOOKBACK_DAYS=30
+Environment=CT_MAX=10000
+
+ExecStart=%h/cryptotrader/.venv/bin/python -m core.market_data.bitfinex_gap_repair \
+  --symbol ${CT_SYMBOL} \
+  --timeframe ${CT_TIMEFRAME} \
+  --exchange ${CT_EXCHANGE} \
+  --lookback-days ${CT_LOOKBACK_DAYS} \
+  --max ${CT_MAX} \
+  --resume
+
+TimeoutStartSec=2h
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=%h/cryptotrader
+ReadWritePaths=%h/.config/cryptotrader
+
+[Install]
+WantedBy=default.target

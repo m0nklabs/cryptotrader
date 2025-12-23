@@ -20,6 +20,11 @@ frontend/tsconfig.tsbuildinfo
 # Research (local scratch + imported specs)
 research/
 
+# Local DB files (Docker bind mount)
+data/postgres/
+data/postgres*/
+data/postgres.*
+
 # OS/Editor
 .DS_Store
 .vscode/
