@@ -33,6 +33,60 @@ To verify you can download candles from Bitfinex public endpoints without config
 
 ## Optional database
 
+### Quick start with docker-compose
+
+For local development, you can spin up a Postgres instance using docker-compose:
+
+**Start Postgres:**
+
+```bash
+docker compose up -d postgres
+```
+
+**Check status:**
+
+```bash
+docker compose ps
+```
+
+**Stop Postgres:**
+
+```bash
+docker compose down
+```
+
+**Connectivity check:**
+
+```bash
+docker compose exec postgres psql -U cryptotrader -d cryptotrader -c "SELECT version();"
+```
+
+**Configure your environment:**
+
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Uncomment and use the local docker-compose DATABASE_URL in your `.env`:
+   ```
+   DATABASE_URL=postgresql://cryptotrader:dev_password_change_me@localhost:5432/cryptotrader
+   ```
+
+3. Apply the schema:
+   ```bash
+   pip install SQLAlchemy psycopg2-binary
+   python -m db.init_db
+   ```
+
+**Notes:**
+
+- Default credentials are for **local development only** (no production use).
+- The `dev_password_change_me` password is safe to commit in `docker-compose.yml` for local dev.
+- Frontend dev server runs on port **5176** (see `docs/FRONTEND.md`).
+
+### Schema details
+
 The v2 skeleton includes a minimal PostgreSQL-style schema for:
 
 - OHLCV candles (`candles`)
@@ -46,12 +100,6 @@ The v2 skeleton includes a minimal PostgreSQL-style schema for:
 - Portfolio snapshots (`wallet_snapshots`, `positions`)
 - Orders and fills (`orders`, `trade_fills`)
 - Fee schedules (`fee_schedules`)
-
-To apply the schema:
-
-- Set `DATABASE_URL` (see `.env.example`)
-- Install optional deps: `pip install SQLAlchemy psycopg2-binary`
-- Run: `python -m db.init_db`
 
 ### Database healthcheck
 
