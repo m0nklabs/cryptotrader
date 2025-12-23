@@ -9,6 +9,12 @@ __pycache__/
 *.py[cod]
 .venv/
 
+# Testing / Coverage
+.coverage
+coverage.json
+coverage.xml
+.pytest_cache/
+
 # Node
 node_modules/
 
