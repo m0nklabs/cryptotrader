@@ -55,6 +55,7 @@ export default function App() {
   const settingsRef = useRef<HTMLDivElement | null>(null)
 
   const [chartSymbol, setChartSymbol] = useState<string>('BTCUSD')
+  const [chartTimeframe, setChartTimeframe] = useState<string>('1m')
   const [chartLimit, setChartLimit] = useState<number>(480)
   const [chartCandles, setChartCandles] = useState<
     Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>
@@ -63,7 +64,18 @@ export default function App() {
   const [chartLoading, setChartLoading] = useState(false)
 
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([])
+  const [availableTimeframesBySymbol, setAvailableTimeframesBySymbol] = useState<Record<string, string[]>>({})
   const [availableError, setAvailableError] = useState<string | null>(null)
+
+  const pickDefaultTimeframe = (timeframes: string[]) => {
+    if (timeframes.includes('1m')) return '1m'
+    if (timeframes.includes('5m')) return '5m'
+    if (timeframes.includes('15m')) return '15m'
+    if (timeframes.includes('1h')) return '1h'
+    if (timeframes.includes('4h')) return '4h'
+    if (timeframes.includes('1d')) return '1d'
+    return timeframes[0] || '1m'
+  }
 
   useEffect(() => {
     applyTheme(theme)
@@ -92,16 +104,34 @@ export default function App() {
             : null
         if (!Array.isArray(pairs)) throw new Error('Unexpected response format')
 
-        const symbols = pairs
-          .filter((p) => p && typeof p === 'object' && (p as { timeframe?: unknown }).timeframe === '1m')
-          .map((p) => String((p as { symbol?: unknown }).symbol || ''))
-          .filter((s) => s.length > 0)
-          .sort()
+        const tfBySym: Record<string, Set<string>> = {}
+        for (const p of pairs) {
+          if (!p || typeof p !== 'object') continue
+          const sym = String((p as { symbol?: unknown }).symbol || '').toUpperCase()
+          const tf = String((p as { timeframe?: unknown }).timeframe || '')
+          if (!sym || !tf) continue
+          if (!tfBySym[sym]) tfBySym[sym] = new Set<string>()
+          tfBySym[sym].add(tf)
+        }
 
+        const normalized: Record<string, string[]> = {}
+        for (const [sym, tfs] of Object.entries(tfBySym)) {
+          normalized[sym] = Array.from(tfs).sort()
+        }
+
+        const symbols = Object.keys(normalized).sort()
+
+        setAvailableTimeframesBySymbol(normalized)
         setAvailableSymbols(symbols)
 
-        if (symbols.length && !symbols.includes(chartSymbol)) {
-          setChartSymbol(symbols[0])
+        if (!symbols.length) return
+
+        const selectedSymbol = symbols.includes(chartSymbol) ? chartSymbol : symbols[0]
+        if (selectedSymbol !== chartSymbol) setChartSymbol(selectedSymbol)
+
+        const timeframes = normalized[selectedSymbol] || []
+        if (timeframes.length && !timeframes.includes(chartTimeframe)) {
+          setChartTimeframe(pickDefaultTimeframe(timeframes))
         }
       })
       .catch((err: unknown) => {
@@ -109,17 +139,24 @@ export default function App() {
         const message = err instanceof Error ? err.message : 'Unknown error'
         setAvailableError(`Unable to load available symbols (${message})`)
         setAvailableSymbols([])
+        setAvailableTimeframesBySymbol({})
       })
 
     return () => controller.abort()
   }, [])
+
+  const timeframesForChartSymbol = useMemo(() => {
+    const tfs = availableTimeframesBySymbol[chartSymbol]
+    if (tfs && tfs.length) return tfs
+    return ['1m']
+  }, [availableTimeframesBySymbol, chartSymbol])
 
   useEffect(() => {
     let mounted = true
     let inFlight: AbortController | null = null
 
     const exchange = 'bitfinex'
-    const timeframe = '1m'
+    const timeframe = chartTimeframe
 
     const load = () => {
       if (!mounted) return
@@ -175,7 +212,7 @@ export default function App() {
         .catch((err: unknown) => {
           if (err instanceof DOMException && err.name === 'AbortError') return
           const message = err instanceof Error ? err.message : 'Unknown error'
-          setChartError(`Unable to load ${chartSymbol} candles from DB (${message})`)
+          setChartError(`Unable to load ${chartSymbol} ${timeframe} candles from DB (${message})`)
           setChartCandles([])
         })
         .finally(() => {
@@ -191,7 +228,7 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [chartSymbol, chartLimit])
+  }, [chartSymbol, chartTimeframe, chartLimit])
 
   const onChartWheel = (ev: React.WheelEvent<HTMLDivElement>) => {
     // Wheel zoom: scroll up -> zoom in (fewer candles), scroll down -> zoom out (more candles).
@@ -346,7 +383,13 @@ export default function App() {
                         key={s}
                         type="button"
                         className="flex w-full items-center justify-between rounded px-1 py-0.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800"
-                        onClick={() => setChartSymbol(s)}
+                        onClick={() => {
+                          setChartSymbol(s)
+                          const tfs = availableTimeframesBySymbol[s]
+                          if (tfs && tfs.length && !tfs.includes(chartTimeframe)) {
+                            setChartTimeframe(pickDefaultTimeframe(tfs))
+                          }
+                        }}
                       >
                         <span className="text-gray-600 dark:text-gray-400">{s}</span>
                         <span className={s === chartSymbol ? 'text-gray-900 dark:text-gray-100' : ''}>
@@ -372,9 +415,21 @@ export default function App() {
               <Panel title="Chart" subtitle="Price + volume">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-                    <span>
-                      {chartSymbol} (DB candles, 1m, window: {chartLimit})
-                    </span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate">{chartSymbol}</span>
+                      <select
+                        className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                        value={chartTimeframe}
+                        onChange={(ev) => setChartTimeframe(ev.target.value)}
+                      >
+                        {timeframesForChartSymbol.map((tf) => (
+                          <option key={tf} value={tf}>
+                            {tf}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="whitespace-nowrap">(DB candles, window: {chartLimit})</span>
+                    </div>
                     {btcusdChart ? (
                       <span>
                         last: <span className="text-gray-900 dark:text-gray-100">{btcusdChart.lastClose.toFixed(2)}</span> @ {btcusdChart.lastTs}

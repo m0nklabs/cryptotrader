@@ -49,6 +49,12 @@ The candlestick chart supports mouse-wheel zoom:
 
 This adjusts the candle window size fetched from `/api/candles`.
 
+## Chart timeframe
+
+The chart supports selecting the candle timeframe (e.g. `1m`, `5m`, `1h`) via the timeframe dropdown in the Chart panel header.
+
+Note: for “deep history” backfills, `1m` can be limited depending on the exchange/symbol. In that case, ingest a higher timeframe (e.g. `1h`, `4h`, `1d`) and select it in the UI.
+
 ## Run as a service (systemd --user)
 
 This repo includes a user-level systemd unit:

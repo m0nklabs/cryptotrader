@@ -131,6 +131,11 @@ Notes:
 - The default symbol list is a curated set of common USD pairs; override via `--symbols "BTCUSD,ETHUSD,..."`.
 - Some symbols may not exist on Bitfinex; use `--ignore-errors` if you want best-effort.
 
+Timeframes & deep history:
+
+- The dashboard can switch timeframes in the Chart panel.
+- For large lookback windows, `1m` history may be limited depending on the exchange/symbol. Prefer higher TFs for deep history (e.g. `1h`, `4h`, `1d`), and bootstrap those timeframes instead.
+
 ### 2) Enable timers
 
 Realtime ingest (every 1 minute):
