@@ -58,6 +58,8 @@ class CostEstimate:
     estimated_spread_cost: Decimal
     estimated_slippage_cost: Decimal
     estimated_total_cost: Decimal
+    minimum_edge_rate: Decimal
+    minimum_edge_bps: Decimal
 
 
 @dataclass(frozen=True)
