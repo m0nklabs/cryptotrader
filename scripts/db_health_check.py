@@ -59,7 +59,7 @@ def main() -> int:
         from sqlalchemy import create_engine, text  # type: ignore
     except ImportError as exc:
         print(
-            f"❌ db-fail: SQLAlchemy is required. Install: pip install SQLAlchemy psycopg2-binary",
+            "❌ db-fail: SQLAlchemy is required. Install: pip install SQLAlchemy psycopg2-binary",
             file=sys.stderr,
         )
         print(f"   Error: {exc}", file=sys.stderr)
@@ -71,7 +71,7 @@ def main() -> int:
         engine = create_engine(database_url, echo=False, pool_pre_ping=True)
         conn = engine.connect()
     except Exception as exc:
-        print(f"❌ db-fail: Unable to connect to database", file=sys.stderr)
+        print("❌ db-fail: Unable to connect to database", file=sys.stderr)
         print(f"   Error: {exc}", file=sys.stderr)
         return 1
 
@@ -91,7 +91,7 @@ def main() -> int:
         row = conn.execute(stmt).fetchone()
         schema_ok = bool(row and row[0])
     except Exception as exc:
-        print(f"❌ schema-fail: Unable to verify schema", file=sys.stderr)
+        print("❌ schema-fail: Unable to verify schema", file=sys.stderr)
         print(f"   Error: {exc}", file=sys.stderr)
         conn.close()
         return 1
@@ -110,7 +110,7 @@ def main() -> int:
         candles_count = int(row[0]) if row else 0
         print(f"📊 candles_count: {candles_count}")
     except Exception as exc:
-        print(f"⚠️  candles_count: Unable to count candles", file=sys.stderr)
+        print("⚠️  candles_count: Unable to count candles", file=sys.stderr)
         print(f"   Error: {exc}", file=sys.stderr)
 
     # 6. Get latest candle open_time for the provided exchange/symbol/timeframe
@@ -148,7 +148,7 @@ def main() -> int:
             )
     except Exception as exc:
         print(
-            f"⚠️  latest_candle_open_time: Unable to query latest candle",
+            "⚠️  latest_candle_open_time: Unable to query latest candle",
             file=sys.stderr,
         )
         print(f"   Error: {exc}", file=sys.stderr)
