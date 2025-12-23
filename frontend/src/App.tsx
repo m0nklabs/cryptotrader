@@ -777,7 +777,6 @@ export default function App() {
                     </div>
                   </>
                 )}
-                </div>
               </Panel>
 
               <Panel title="Data Quality" subtitle="Candle gaps">
