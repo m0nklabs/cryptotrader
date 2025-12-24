@@ -118,12 +118,26 @@ A command-line script is available at `scripts/run_backtest.py`:
 # Set database connection
 export DATABASE_URL="postgresql://user:pass@host:port/dbname"
 
-# Run backtest
+# Run backtest with default parameters
 python scripts/run_backtest.py
+
+# Customize parameters
+python scripts/run_backtest.py --capital 50000 --symbol ETHUSD --days 60
+
+# See all options
+python scripts/run_backtest.py --help
 ```
 
+### Available CLI Options
+
+- `--capital CAPITAL`: Initial capital (default: 10000.0)
+- `--symbol SYMBOL`: Trading symbol (default: BTCUSD)
+- `--exchange EXCHANGE`: Exchange (default: bitfinex)
+- `--timeframe TIMEFRAME`: Timeframe (default: 1h)
+- `--days DAYS`: Number of days to backtest (default: 30)
+
 The script will:
-- Load 30 days of BTCUSD 1h candles
+- Load historical candles for the specified date range
 - Run the built-in RSI strategy
 - Display performance metrics
 - Export results to `backtest_results.json`
@@ -132,7 +146,7 @@ The script will:
 
 ### Sharpe Ratio
 Measures risk-adjusted returns. Higher is better.
-- Formula: `(Mean Return - Risk Free Rate) / Std Dev * sqrt(252)`
+- Formula: `(Mean Return - Risk Free Rate) / Std Dev * sqrt(365)` (365 for crypto 24/7 trading)
 - > 1.0: Good
 - > 2.0: Very good
 - > 3.0: Excellent

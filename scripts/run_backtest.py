@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """CLI runner for backtesting strategies."""
 
+import argparse
 import json
 import os
 import sys
@@ -46,6 +47,15 @@ def export_results_json(result, filename: str) -> None:
 
 def main() -> None:
     """Run backtest on BTCUSD 1h for 30 days."""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Run backtesting on historical data")
+    parser.add_argument("--capital", type=float, default=10000.0, help="Initial capital (default: 10000.0)")
+    parser.add_argument("--symbol", type=str, default="BTCUSD", help="Trading symbol (default: BTCUSD)")
+    parser.add_argument("--exchange", type=str, default="bitfinex", help="Exchange (default: bitfinex)")
+    parser.add_argument("--timeframe", type=str, default="1h", help="Timeframe (default: 1h)")
+    parser.add_argument("--days", type=int, default=30, help="Number of days to backtest (default: 30)")
+    args = parser.parse_args()
+
     # Setup database connection
     database_url = os.getenv("DATABASE_URL")
 
@@ -59,11 +69,11 @@ def main() -> None:
     print("Using PostgreSQL store")
 
     # Configure backtest
-    exchange = "bitfinex"
-    symbol = "BTCUSD"
-    timeframe = "1h"
+    exchange = args.exchange
+    symbol = args.symbol
+    timeframe = args.timeframe
     end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(days=30)
+    start_time = end_time - timedelta(days=args.days)
 
     print("\nBacktest Configuration:")
     print(f"  Symbol: {symbol}")
@@ -71,10 +81,11 @@ def main() -> None:
     print(f"  Timeframe: {timeframe}")
     print(f"  Start: {start_time.isoformat()}")
     print(f"  End: {end_time.isoformat()}")
+    print(f"  Initial Capital: ${args.capital:,.2f}")
 
     # Load candles
     print("\nLoading candles...")
-    engine = BacktestEngine(candle_store=store, initial_capital=10000.0)
+    engine = BacktestEngine(candle_store=store, initial_capital=args.capital)
     candles = engine.load_candles(
         exchange=exchange,
         symbol=symbol,
@@ -106,8 +117,8 @@ def main() -> None:
 
     if result.equity_curve:
         final_equity = result.equity_curve[-1]
-        total_return = ((final_equity - 10000.0) / 10000.0) * 100
-        print("Initial Capital: $10,000.00")
+        total_return = ((final_equity - args.capital) / args.capital) * 100
+        print(f"Initial Capital: ${args.capital:,.2f}")
         print(f"Final Equity: ${final_equity:,.2f}")
         print(f"Total Return: {total_return:.2f}%")
 

@@ -31,7 +31,7 @@ class Trade:
             return (self.entry_price - self.exit_price) * self.size
 
 
-def calculate_sharpe_ratio(returns: Sequence[float], risk_free_rate: float = 0.0) -> float:
+def calculate_sharpe_ratio(returns: Sequence[float], risk_free_rate: float = 0.0, trading_days: int = 365) -> float:
     """Calculate Sharpe ratio from returns.
     
     Sharpe Ratio = (Mean Return - Risk Free Rate) / Std Dev of Returns
@@ -39,6 +39,7 @@ def calculate_sharpe_ratio(returns: Sequence[float], risk_free_rate: float = 0.0
     Args:
         returns: Sequence of returns (e.g., daily returns)
         risk_free_rate: Annual risk-free rate (default 0.0)
+        trading_days: Number of trading days per year for annualization (default 365 for crypto)
         
     Returns:
         Sharpe ratio (annualized assuming daily returns)
@@ -53,8 +54,8 @@ def calculate_sharpe_ratio(returns: Sequence[float], risk_free_rate: float = 0.0
     if std_dev == 0:
         return 0.0
 
-    # Annualize assuming daily returns (252 trading days)
-    sharpe = ((mean_return - risk_free_rate) / std_dev) * math.sqrt(252)
+    # Annualize (default 365 for crypto 24/7 trading)
+    sharpe = ((mean_return - risk_free_rate) / std_dev) * math.sqrt(trading_days)
     return sharpe
 
 
