@@ -1,6 +1,7 @@
 # cryptotrader
 
 [![CI](https://github.com/m0nk111/cryptotrader/actions/workflows/ci.yml/badge.svg)](https://github.com/m0nk111/cryptotrader/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/m0nk111/cryptotrader/branch/master/graph/badge.svg)](https://codecov.io/gh/m0nk111/cryptotrader)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
