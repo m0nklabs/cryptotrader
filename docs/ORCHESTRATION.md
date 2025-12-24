@@ -10,6 +10,57 @@ This document defines how work is delegated to agents and tracked via GitHub Iss
 - `research/` is local-only and should not be required by delegated agents.
 - Default to paper-trading / dry-run.
 
+## Issue Hierarchy: Epics & Sub-issues
+
+We use GitHub's native sub-issue feature for hierarchical planning:
+
+```
+🎯 EPIC (parent issue)
+├── Sub-issue #1
+├── Sub-issue #2
+└── Sub-issue #3
+```
+
+### Epic Structure
+
+| Epic | Focus | Issues |
+|------|-------|--------|
+| [#71 Trading System](https://github.com/m0nk111/cryptotrader/issues/71) | Paper trading, order execution, portfolio | #29, #48, #46 |
+| [#69 Technical Analysis](https://github.com/m0nk111/cryptotrader/issues/69) | Chart indicators, signal detection | #45, #25 |
+| [#70 Market Data](https://github.com/m0nk111/cryptotrader/issues/70) | Real-time feeds, multi-exchange | #26, #28, #30, #17 |
+| [#68 Infrastructure](https://github.com/m0nk111/cryptotrader/issues/68) | CI/CD, testing, health monitoring | #31, #33, #21 |
+
+### Epic Template
+
+```markdown
+## Vision
+One-sentence goal.
+
+## Sub-issues
+- [ ] #XX Description
+- [ ] #YY Description
+
+## Scope
+### Category 1
+- Item
+- Item
+
+## Architecture
+(ASCII diagram)
+
+## Ideas / Backlog
+- [ ] Future item
+```
+
+### Creating Sub-issues
+
+1. Create the sub-issue first (normal issue)
+2. Link to epic via GitHub UI or API:
+   ```bash
+   # Via GitHub CLI (when supported) or web UI
+   # Issues > Epic > "Add sub-issue"
+   ```
+
 ## Workflow (recommended)
 
 1. **Define scope in docs**
@@ -22,6 +73,7 @@ This document defines how work is delegated to agents and tracked via GitHub Iss
      - File targets
      - Acceptance criteria
      - Explicit non-goals (e.g., no DEX/bridges)
+   - Link to parent Epic if applicable
 
 3. **Assign to an agent / developer**
    - Agent implements on a branch and opens a PR.
@@ -156,6 +208,12 @@ When multiple agents work in parallel, merge conflicts occur. Mitigate by:
 | Cost-sensitive | Agent-Forge |
 
 ## Orchestration log (newest-first)
+
+## 2025-12-24 (PM)
+- Reorganized issues into Epic/Sub-issue hierarchy
+- Created 4 Epic issues: #71 (Trading), #69 (TA), #70 (Market Data), #68 (Infrastructure)
+- Linked 12 existing issues as sub-issues to their parent epics
+- Documented Epic workflow in ORCHESTRATION.md
 
 ## 2025-12-24
 - Merged PR #61 (/ingestion/status FastAPI endpoint)
