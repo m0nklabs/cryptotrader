@@ -52,6 +52,7 @@ function Kvp({ k, v }: { k: string; v: ReactNode }) {
 const GAP_STATS_REFRESH_INTERVAL_MS = 60_000
 const SIGNALS_REFRESH_INTERVAL_MS = 30_000
 const INGESTION_STATUS_REFRESH_INTERVAL_MS = 15_000
+const WALLET_REFRESH_INTERVAL_MS = 30_000
 
 type Signal = {
   symbol: string
@@ -66,6 +67,13 @@ type Signal = {
     reason: string
   }>
   created_at: number
+}
+
+type Wallet = {
+  type: string
+  currency: string
+  balance: number
+  available: number
 }
 
 export default function App() {
@@ -95,6 +103,10 @@ export default function App() {
 
   const [signals, setSignals] = useState<Signal[]>([])
   const [signalsError, setSignalsError] = useState<string | null>(null)
+
+  const [wallets, setWallets] = useState<Wallet[]>([])
+  const [walletsError, setWalletsError] = useState<string | null>(null)
+  const [walletsLoading, setWalletsLoading] = useState(false)
 
   const [ingestionStatus, setIngestionStatus] = useState<{
     apiReachable: boolean
@@ -149,6 +161,11 @@ export default function App() {
     if (timeframes.includes('4h')) return '4h'
     if (timeframes.includes('1d')) return '1d'
     return timeframes[0] || '1m'
+  }
+
+  const formatCurrency = (amount: number, currency: string): string => {
+    const decimals = currency === 'USD' || currency === 'USDT' ? 2 : 8
+    return amount.toFixed(decimals)
   }
 
   useEffect(() => {
@@ -430,6 +447,79 @@ export default function App() {
 
     load()
     const id = window.setInterval(load, SIGNALS_REFRESH_INTERVAL_MS)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+      if (inFlight) inFlight.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    let inFlight: AbortController | null = null
+
+    const load = () => {
+      if (!mounted) return
+      if (inFlight) inFlight.abort()
+      const controller = new AbortController()
+      inFlight = controller
+
+      setWalletsLoading(true)
+      setWalletsError(null)
+
+      fetch('/api/wallet/balances', { signal: controller.signal })
+        .then(async (resp) => {
+          const bodyText = await resp.text()
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 120)}`)
+          }
+
+          let payload: unknown
+          try {
+            payload = JSON.parse(bodyText) as unknown
+          } catch {
+            throw new Error(`Non-JSON response: ${bodyText.slice(0, 120)}`)
+          }
+
+          if (!payload || typeof payload !== 'object') {
+            throw new Error('Unexpected response format')
+          }
+
+          const walletsData =
+            payload && typeof payload === 'object' && 'wallets' in payload
+              ? (payload as { wallets?: unknown }).wallets
+              : null
+          if (!Array.isArray(walletsData)) throw new Error('Unexpected response format')
+
+          const parsed: Wallet[] = walletsData
+            .map((w) => {
+              if (!w || typeof w !== 'object') return null
+              const wallet = w as Record<string, unknown>
+              return {
+                type: String(wallet.type || ''),
+                currency: String(wallet.currency || ''),
+                balance: Number(wallet.balance || 0),
+                available: Number(wallet.available || 0),
+              }
+            })
+            .filter((w): w is Wallet => w !== null)
+
+          setWallets(parsed)
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          setWalletsError(`Unable to load wallet balances (${message})`)
+          setWallets([])
+        })
+        .finally(() => {
+          setWalletsLoading(false)
+        })
+    }
+
+    load()
+    const id = window.setInterval(load, WALLET_REFRESH_INTERVAL_MS)
 
     return () => {
       mounted = false
@@ -753,6 +843,56 @@ export default function App() {
                       </div>
                     )}
                   </>
+                )}
+              </Panel>
+
+              <Panel title="Wallet" subtitle="Bitfinex balances">
+                {walletsLoading && wallets.length === 0 ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">Loading balances...</div>
+                ) : walletsError ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">{walletsError}</div>
+                ) : wallets.length > 0 ? (
+                  <>
+                    {['exchange', 'margin', 'funding'].map((walletType) => {
+                      const typeWallets = wallets.filter((w) => w.type === walletType)
+                      if (typeWallets.length === 0) return null
+
+                      return (
+                        <div key={walletType} className="mb-2">
+                          <div className="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                            {walletType}
+                          </div>
+                          <div className="space-y-1">
+                            {typeWallets.map((w, idx) => {
+                              // Only show non-zero balances
+                              if (w.balance === 0) return null
+
+                              return (
+                                <div
+                                  key={`${walletType}-${w.currency}-${idx}`}
+                                  className="flex items-center justify-between text-xs"
+                                >
+                                  <span className="text-gray-600 dark:text-gray-400">{w.currency}</span>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-gray-900 dark:text-gray-100">
+                                      {formatCurrency(w.balance, w.currency)}
+                                    </span>
+                                    {w.available !== w.balance && (
+                                      <span className="text-[10px] text-gray-500 dark:text-gray-500">
+                                        avail: {formatCurrency(w.available, w.currency)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </>
+                ) : (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">No balances available</div>
                 )}
               </Panel>
             </div>
