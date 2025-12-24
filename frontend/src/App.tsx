@@ -163,6 +163,11 @@ export default function App() {
     return timeframes[0] || '1m'
   }
 
+  const formatCurrency = (amount: number, currency: string): string => {
+    const decimals = currency === 'USD' || currency === 'USDT' ? 2 : 8
+    return amount.toFixed(decimals)
+  }
+
   useEffect(() => {
     applyTheme(theme)
     window.localStorage.setItem('theme', theme)
@@ -870,11 +875,11 @@ export default function App() {
                                   <span className="text-gray-600 dark:text-gray-400">{w.currency}</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-gray-900 dark:text-gray-100">
-                                      {w.balance.toFixed(w.currency === 'USD' || w.currency === 'USDT' ? 2 : 8)}
+                                      {formatCurrency(w.balance, w.currency)}
                                     </span>
                                     {w.available !== w.balance && (
                                       <span className="text-[10px] text-gray-500 dark:text-gray-500">
-                                        avail: {w.available.toFixed(w.currency === 'USD' || w.currency === 'USDT' ? 2 : 8)}
+                                        avail: {formatCurrency(w.available, w.currency)}
                                       </span>
                                     )}
                                   </div>

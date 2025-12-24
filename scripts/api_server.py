@@ -472,7 +472,7 @@ def _fetch_wallet_balances() -> list[dict[str, Any]]:
             },
         ]
     
-    # Use the BitfinexClient to fetch real balances
+    # Use the BitfinexClient to fetch real balances (imported here to avoid dependency in paper mode)
     from cex.bitfinex.api.bitfinex_client_v2 import BitfinexClient  # noqa: E402
     
     client = BitfinexClient(api_key=api_key, api_secret=api_secret)
