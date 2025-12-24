@@ -1,6 +1,11 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* App toggles `document.documentElement.classList.toggle('dark', ...)`, so we want class-based dark mode. */
+@custom-variant dark (.dark &);
+
+/* Ensure Tailwind picks up classes used in the React TSX sources. */
+@source "../index.html";
+@source "./**/*.{ts,tsx}";
 
 :root {
   color-scheme: light;
