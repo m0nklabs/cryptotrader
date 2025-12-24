@@ -211,7 +211,7 @@ async def get_latest_candles(
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(_request, exc):
     """Global exception handler to ensure consistent error responses."""
     return JSONResponse(
         status_code=500,
