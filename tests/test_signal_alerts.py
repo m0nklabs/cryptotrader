@@ -176,13 +176,13 @@ def test_desktop_notification_fallback_to_notify_send(sample_opportunity, temp_l
     """Test fallback to notify-send when plyer fails."""
     manager = AlertManager(enabled=True, log_dir=temp_log_dir)
     
-    # Mock plyer to raise exception
-    with patch("plyer.notification") as mock_plyer:
-        mock_plyer.notify.side_effect = Exception("plyer not available")
-        
+    # Patch the optional dependency hook inside the module under test
+    with patch("core.signals.detector.notification") as mock_notify:
+        mock_notify.notify.side_effect = Exception("plyer not available")
+
         with patch("subprocess.run") as mock_subprocess:
             manager._send_desktop_notification(sample_opportunity, exchange="bitfinex")
-            
+
             # Should call notify-send
             mock_subprocess.assert_called_once()
             args = mock_subprocess.call_args[0][0]
@@ -195,9 +195,9 @@ def test_desktop_notification_graceful_failure(sample_opportunity, temp_log_dir)
     manager = AlertManager(enabled=True, log_dir=temp_log_dir)
     
     # Mock both plyer and subprocess to fail
-    with patch("plyer.notification") as mock_plyer:
-        mock_plyer.notify.side_effect = Exception("plyer not available")
-        
+    with patch("core.signals.detector.notification") as mock_notify:
+        mock_notify.notify.side_effect = Exception("plyer not available")
+
         with patch("subprocess.run", side_effect=Exception("notify-send not available")):
             # Should not raise exception
             manager._send_desktop_notification(sample_opportunity, exchange="bitfinex")
