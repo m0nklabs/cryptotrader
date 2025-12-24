@@ -15,6 +15,27 @@ jobs:
     name: Backend (ruff + pytest)
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cryptotrader_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/cryptotrader_test
+      BITFINEX_API_KEY: ${{ secrets.BITFINEX_API_KEY }}
+      BITFINEX_API_SECRET: ${{ secrets.BITFINEX_API_SECRET }}
+      PAPER_TRADING: "true"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,9 +54,15 @@ jobs:
         run: |
           ruff check .
 
-      - name: Tests
+      - name: Unit Tests
         run: |
-          pytest -q --cov=core --cov=api --cov-report=xml
+          pytest -q --cov=core --cov=api --cov-report=xml -m "not integration"
+
+      - name: Integration Tests
+        if: ${{ env.BITFINEX_API_KEY != '' }}
+        run: |
+          pytest -q -m "integration" --tb=short
+        continue-on-error: true
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
