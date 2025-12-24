@@ -6,7 +6,6 @@ from typing import List, Tuple
 
 from sqlalchemy import create_engine, text
 
-from shared.types import ExchangeName, Symbol, Timeframe
 
 
 DB_URL = os.environ.get("DATABASE_URL")
