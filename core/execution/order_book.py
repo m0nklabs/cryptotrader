@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Optional
 
 
 @dataclass
@@ -26,7 +26,7 @@ class OrderBook:
         self._orders: dict[int, LimitOrder] = {}
         self._next_order_id = 1
 
-    def add_order(self, symbol: str, side: Literal["BUY", "SELL"], qty: Decimal, limit_price: Decimal, order_id: int | None = None) -> int:
+    def add_order(self, symbol: str, side: Literal["BUY", "SELL"], qty: Decimal, limit_price: Decimal, order_id: Optional[int] = None) -> int:
         """Add a limit order to the book.
         
         Args:
@@ -105,7 +105,7 @@ class OrderBook:
         
         return filled_orders
 
-    def get_pending_orders(self, symbol: str | None = None) -> list[LimitOrder]:
+    def get_pending_orders(self, symbol: Optional[str] = None) -> list[LimitOrder]:
         """Get all pending orders, optionally filtered by symbol.
         
         Args:
@@ -118,7 +118,7 @@ class OrderBook:
             return list(self._orders.values())
         return [order for order in self._orders.values() if order.symbol == symbol]
 
-    def get_order(self, order_id: int) -> LimitOrder | None:
+    def get_order(self, order_id: int) -> Optional[LimitOrder]:
         """Get a specific order by ID.
         
         Args:

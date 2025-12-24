@@ -345,7 +345,7 @@ class PaperExecutor:
         """
         try:
             from sqlalchemy import create_engine, text  # type: ignore[import-not-found]
-        except Exception:
+        except (ImportError, ModuleNotFoundError):
             return  # Silently skip if SQLAlchemy not available
 
         engine = create_engine(self._database_url, echo=False)
@@ -393,7 +393,7 @@ class PaperExecutor:
         """
         try:
             from sqlalchemy import create_engine, text  # type: ignore[import-not-found]
-        except Exception:
+        except (ImportError, ModuleNotFoundError):
             return  # Silently skip if SQLAlchemy not available
 
         engine = create_engine(self._database_url, echo=False)
