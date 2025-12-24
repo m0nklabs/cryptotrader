@@ -117,6 +117,34 @@ Resume (continue from latest candle in DB):
 
 - `python -m core.market_data.bitfinex_backfill --symbol BTCUSD --timeframe 1h --resume`
 
+### Seed backfill (batched with rate-limit friendly jitter)
+
+For initial DB bootstrapping without manual date management, use the seed backfill helper that splits large lookback periods into small batches with sleep/jitter between requests to respect Bitfinex rate limits.
+
+Prereqs:
+
+- `DATABASE_URL` set
+- Schema applied (`python -m db.init_db`)
+
+Run (e.g. seed 7 days of 1h candles in 3-hour chunks with 2s sleep):
+
+- `python -m core.market_data.seed_backfill --symbol BTCUSD --timeframe 1h --days 7 --chunk-minutes 180 --sleep-seconds 2.0`
+
+Run (e.g. seed 30 days of 5m candles in 6-hour chunks with 3s sleep):
+
+- `python -m core.market_data.seed_backfill --symbol ETHUSD --timeframe 5m --days 30 --chunk-minutes 360 --sleep-seconds 3.0`
+
+Resume (backfill only the missing gap to reach target lookback):
+
+- `python -m core.market_data.seed_backfill --symbol BTCUSD --timeframe 1h --days 7 --resume`
+
+Notes:
+
+- Uses existing `run_backfill()` logic; avoids duplicate inserts via upsert.
+- Sleep includes ±20% jitter to reduce rate-limit collisions.
+- Emits compact progress lines (no secrets).
+- Resumable: if you already have 3 days of data and request 7 days, it only backfills the missing 4 days.
+
 ### Bootstrap multiple symbols for charts
 
 To populate the DB with a curated list of symbols (so they appear in the dashboard Market Watch), use:
