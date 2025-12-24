@@ -1,0 +1,63 @@
+{
+  "name": "cryptotrader",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylint",
+        "charliermarsh.ruff",
+        "ms-python.vscode-pylance",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.typeCheckingMode": "basic",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        },
+        "terminal.integrated.gpuAcceleration": "off"
+      }
+    }
+  },
+
+  "forwardPorts": [5176, 8000, 5432],
+  "portsAttributes": {
+    "5176": { "label": "Frontend (Vite)", "onAutoForward": "notify" },
+    "8000": { "label": "Backend API", "onAutoForward": "notify" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" }
+  },
+
+  "postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt -r requirements-dev.txt && cd frontend && npm install",
+  
+  "remoteEnv": {
+    "PYTHONPATH": "${containerWorkspaceFolder}",
+    "DATABASE_URL": "postgresql://postgres:postgres@db:5432/cryptotrader",
+    "PAPER_TRADING": "true"
+  },
+
+  "mounts": [
+    "source=${localWorkspaceFolder}/.env,target=${containerWorkspaceFolder}/.env,type=bind,consistency=cached"
+  ],
+
+  "runServices": ["db"],
+  
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace"
+}
