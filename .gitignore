@@ -20,6 +20,10 @@ frontend/tsconfig.tsbuildinfo
 # Research (local scratch + imported specs)
 research/
 
+# Logs (keep directory but ignore log files)
+logs/*.log
+logs/*.log.*
+
 # Local DB files (Docker bind mount)
 data/postgres/
 data/postgres*/
