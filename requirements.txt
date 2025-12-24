@@ -1,6 +1,7 @@
 # Core
 python-dotenv>=1.0.0
 requests>=2.31.0
+websocket-client>=1.6.0
 
 # Technical analysis
 pandas>=2.1.0

@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
+import queue
 import re
 import sys
+import threading
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,8 +20,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from core.market_data.bitfinex_websocket import BitfinexWebSocketManager, CandleUpdate  # noqa: E402
 from core.storage.postgres.config import PostgresConfig  # noqa: E402
 from core.storage.postgres.stores import PostgresStores  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 _MAX_LIMIT = 5000
