@@ -60,3 +60,9 @@ These instructions apply to GitHub Copilot in the context of this repository.
 ## Git workflow
 
 - If the user explicitly asks to commit and push changes to GitHub, push directly to the default branch in this repository (no PR/feature branch) unless the user asks otherwise.
+
+## GitHub Copilot Coding Agent
+
+- To activate the Copilot Coding Agent on an issue or PR, you **must** mention `@copilot` in a comment.
+- Using MCP tools like `assign_copilot_to_issue` alone is insufficient — the agent only starts work when explicitly mentioned.
+- Example: "@copilot please implement the missing tests for this PR."
