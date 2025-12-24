@@ -139,6 +139,37 @@ Detect-only:
 
 - `python -m core.market_data.bitfinex_gap_repair --symbol BTCUSD --timeframe 1h --start 2025-01-01 --end 2025-02-01 --detect-only`
 
+## Read-only API (FastAPI)
+
+This repo includes a minimal read-only API for candles and health checks.
+
+Prereqs:
+
+- `DATABASE_URL` set (see `.env.example`)
+- Install dependencies: `pip install -r requirements.txt`
+
+Run the API server:
+
+- `python scripts/run_api.py`
+- Default: binds to `127.0.0.1:8000`
+- Custom host/port: `python scripts/run_api.py --host 0.0.0.0 --port 8000`
+- Dev mode (auto-reload): `python scripts/run_api.py --reload`
+
+Endpoints:
+
+- GET `/health` - Database connectivity and schema check
+- GET `/candles/latest?exchange=bitfinex&symbol=BTCUSD&timeframe=1m` - Latest candles
+
+API docs (interactive):
+
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- ReDoc: `http://127.0.0.1:8000/redoc`
+
+Examples:
+
+- `curl http://127.0.0.1:8000/health`
+- `curl "http://127.0.0.1:8000/candles/latest?symbol=BTCUSD&timeframe=1h&limit=50"`
+
 ## VS Code terminal stability
 
 If the integrated terminal is unstable/crashing:

@@ -329,14 +329,6 @@ def _fetch_signals(
         )
 
     return out
-        dt = _as_utc(oldest_gap)
-        oldest_gap_ms = int(dt.timestamp() * 1000)
-
-    return {
-        "open_gaps": int(open_gaps),
-        "repaired_24h": int(repaired_24h),
-        "oldest_open_gap": oldest_gap_ms,
-    }
 
 
 def main() -> int:
