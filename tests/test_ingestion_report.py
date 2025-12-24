@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[1]
