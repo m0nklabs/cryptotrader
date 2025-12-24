@@ -3,6 +3,7 @@
 This module provides a minimal HTTP API service for:
 - GET /health - Database connectivity and schema check
 - GET /candles/latest - Latest candles with query parameters
+- GET /ingestion/status - Ingestion freshness for UI/ops tools
 
 Requirements:
 - DATABASE_URL must be set in environment
@@ -23,7 +24,7 @@ from core.storage.postgres.stores import PostgresStores
 
 app = FastAPI(
     title="CryptoTrader Read-Only API",
-    description="Minimal API for candles and health checks",
+    description="Minimal API for candles, health checks, and ingestion status",
     version="1.0.0",
 )
 
@@ -104,6 +105,95 @@ async def health() -> dict[str, Any]:
                 },
             },
         ) from e
+
+
+@app.get("/ingestion/status")
+async def get_ingestion_status(
+    exchange: str = Query("bitfinex", description="Exchange name"),
+    symbol: str = Query(..., description="Trading symbol (e.g., BTCUSD)"),
+    timeframe: str = Query(..., description="Timeframe (e.g., 1m, 1h)"),
+) -> dict[str, Any]:
+    """Get ingestion status for a specific exchange/symbol/timeframe.
+
+    Returns:
+        - latest_candle_open_time: Unix timestamp in milliseconds of the latest candle
+        - candles_count: Total number of candles in the database
+        - schema_ok: Boolean indicating if the candles table exists
+        - db_ok: Boolean indicating if database connection is working
+    """
+    # Check DB connectivity and schema
+    db_ok = False
+    schema_ok = False
+    latest_candle_open_time: int | None = None
+    candles_count: int | None = None
+
+    try:
+        stores = _get_stores()
+        engine = stores._get_engine()  # noqa: SLF001
+        _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+        # Test DB connection and check if candles table exists
+        with engine.begin() as conn:
+            # Check if candles table exists
+            schema_check = text(
+                """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'candles'
+                )
+                """
+            )
+            schema_result = conn.execute(schema_check).scalar()
+            schema_ok = bool(schema_result)
+
+            if schema_ok:
+                # Get latest candle and count
+                stats_query = text(
+                    """
+                    SELECT
+                        MAX(open_time) as latest_open_time,
+                        COUNT(*) as total_count
+                    FROM candles
+                    WHERE exchange = :exchange
+                      AND symbol = :symbol
+                      AND timeframe = :timeframe
+                    """
+                )
+                result = conn.execute(
+                    stats_query,
+                    {"exchange": exchange, "symbol": symbol, "timeframe": timeframe},
+                ).fetchone()
+
+                if result:
+                    latest_open_time, total_count = result
+                    candles_count = int(total_count) if total_count is not None else 0
+
+                    if latest_open_time is not None:
+                        dt = _as_utc(latest_open_time)
+                        latest_candle_open_time = int(dt.timestamp() * 1000)
+
+        db_ok = True
+
+    except Exception as exc:
+        # Return error response with db_ok=False
+        return JSONResponse(
+            status_code=200,  # Still return 200 with error flags
+            content={
+                "latest_candle_open_time": None,
+                "candles_count": None,
+                "schema_ok": False,
+                "db_ok": False,
+                "error": type(exc).__name__,
+            },
+        )
+
+    return {
+        "latest_candle_open_time": latest_candle_open_time,
+        "candles_count": candles_count,
+        "schema_ok": schema_ok,
+        "db_ok": db_ok,
+    }
 
 
 @app.get("/candles/latest")

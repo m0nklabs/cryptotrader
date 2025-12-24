@@ -1,1 +1,1 @@
-"""Minimal read-only API for candles and health endpoints."""
+"""Minimal read-only API for candles, health, and ingestion status."""

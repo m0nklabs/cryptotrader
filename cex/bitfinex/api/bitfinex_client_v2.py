@@ -23,6 +23,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from .auth import build_auth_headers
+
 
 class BitfinexClient:
     """
@@ -324,21 +326,42 @@ class BitfinexClient:
         
         Returns:
             List of wallet dicts with balance info
+            
+        Example:
+            >>> client = BitfinexClient(api_key="...", api_secret="...")
+            >>> wallets = client.get_wallets()
+            >>> for w in wallets:
+            ...     print(f"{w['currency']}: {w['balance']}")
         """
         if not self.api_key or not self.api_secret:
             raise ValueError("API key and secret required for authenticated endpoints")
         
-        wallets = self.client.rest.auth.get_wallets()
-        return [
-            {
-                'type': w.wallet_type,
-                'currency': w.currency,
-                'balance': w.balance,
-                'unsettled_interest': w.unsettled_interest,
-                'available_balance': w.available_balance
-            }
-            for w in wallets
-        ]
+        path = "/v2/auth/r/wallets"
+        url = f"{self.BASE_URL}{path}"
+        
+        # Build authentication headers
+        headers = build_auth_headers(self.api_key, self.api_secret, path)
+        
+        # Make authenticated request
+        response = requests.post(url, headers=headers, json={}, timeout=10)
+        response.raise_for_status()
+        
+        # Parse response
+        # Response format: [[wallet_type, currency, balance, unsettled_interest, available_balance, ...], ...]
+        data = response.json()
+        
+        wallets = []
+        for wallet_data in data:
+            if len(wallet_data) >= 5:
+                wallets.append({
+                    'type': wallet_data[0],
+                    'currency': wallet_data[1],
+                    'balance': float(wallet_data[2]),
+                    'unsettled_interest': float(wallet_data[3]),
+                    'available_balance': float(wallet_data[4]) if wallet_data[4] is not None else None
+                })
+        
+        return wallets
     
     def get_active_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
