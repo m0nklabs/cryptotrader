@@ -7,7 +7,11 @@ These instructions apply to GitHub Copilot in the context of this repository.
 - Make the smallest correct change that satisfies the request.
 - Keep the repo buildable/testable; don’t break CI.
 - Prefer clarity and correctness over cleverness.
+## Agent behavior
 
+- **Execute, don't ask**: If you can run a command, create a file, or perform an action — do it immediately. Never ask the user to run something you can execute yourself.
+- **Minimize back-and-forth**: Complete tasks in one pass when possible. Don't stop to ask for confirmation on routine operations.
+- **Fix errors yourself**: If a command fails, debug and retry before asking the user for help.
 ## User preferences (skeleton)
 
 - When the user asks for a "skelet" (scaffolding), prefer a **as complete as practical** skeleton (types + interfaces + DB schema) over a minimal one, as long as it stays within the v2 scope and does not introduce live trading by default.
@@ -115,7 +119,7 @@ from abc import ABC, abstractmethod
 class ExchangeAdapter(ABC):
     @abstractmethod
     async def fetch_ohlcv(self, symbol: str, timeframe: str) -> pd.DataFrame: ...
-    
+
     @abstractmethod
     async def create_order(self, symbol: str, side: str, amount: float, price: float | None = None) -> Order: ...
 ```
@@ -124,12 +128,12 @@ class ExchangeAdapter(ABC):
 ```python
 def calculate_rsi(df: pd.DataFrame, period: int = 14, column: str = "close") -> pd.Series:
     """Calculate RSI indicator.
-    
+
     Args:
         df: DataFrame with OHLCV data
         period: RSI period (default 14)
         column: Column to use for calculation
-        
+
     Returns:
         Series with RSI values (0-100)
     """

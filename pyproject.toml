@@ -37,3 +37,7 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration tests (require API keys)",
+    "slow: marks tests as slow",
+]
