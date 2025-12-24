@@ -1,3 +1,26 @@
+[project]
+name = "cryptotrader"
+version = "2.0.0-alpha"
+description = "Trading platform for opportunities, technical analysis, and API-based execution"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "m0nk111"}
+]
+keywords = ["trading", "crypto", "technical-analysis", "bot"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+[project.urls]
+Repository = "https://github.com/m0nk111/cryptotrader"
+Documentation = "https://github.com/m0nk111/cryptotrader/tree/master/docs"
+
 [tool.ruff]
 line-length = 120
 target-version = "py312"
