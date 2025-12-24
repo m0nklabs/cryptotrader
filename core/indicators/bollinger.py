@@ -110,36 +110,38 @@ def generate_bollinger_signal(
     # Calculate bandwidth for strength normalization
     bandwidth = upper_band - lower_band
 
+    # Handle special case: zero bandwidth (flat prices)
+    if bandwidth == 0:
+        # All bands collapse to same value, no meaningful signal
+        return IndicatorSignal(
+            code="BOLLINGER",
+            side="HOLD",
+            strength=0,
+            value=f"${current_price:.2f}",
+            reason=f"Bollinger({period},{std_dev}) no volatility (flat prices at ${current_price:.2f})",
+        )
+
     # Determine signal side and strength
     if current_price <= lower_band:
         # Price at or below lower band: BUY signal
         # Strength increases as price moves further below lower band
-        if bandwidth > 0:
-            distance_below = lower_band - current_price
-            strength = min(100, int((distance_below / bandwidth) * 200))
-        else:
-            strength = 50
+        distance_below = lower_band - current_price
+        strength = min(100, int((distance_below / bandwidth) * 200))
         side = "BUY"
         reason = f"Bollinger({period},{std_dev}) price at/below lower band (${current_price:.2f} <= ${lower_band:.2f})"
     elif current_price >= upper_band:
         # Price at or above upper band: SELL signal
         # Strength increases as price moves further above upper band
-        if bandwidth > 0:
-            distance_above = current_price - upper_band
-            strength = min(100, int((distance_above / bandwidth) * 200))
-        else:
-            strength = 50
+        distance_above = current_price - upper_band
+        strength = min(100, int((distance_above / bandwidth) * 200))
         side = "SELL"
         reason = f"Bollinger({period},{std_dev}) price at/above upper band (${current_price:.2f} >= ${upper_band:.2f})"
     else:
         # Price within bands: HOLD
         # Give some strength if price is closer to bands than middle
-        if bandwidth > 0:
-            distance_from_middle = abs(current_price - middle_band)
-            relative_distance = distance_from_middle / (bandwidth / 2)
-            strength = min(50, int(relative_distance * 50))
-        else:
-            strength = 0
+        distance_from_middle = abs(current_price - middle_band)
+        relative_distance = distance_from_middle / (bandwidth / 2)
+        strength = min(50, int(relative_distance * 50))
         side = "HOLD"
 
         # More descriptive reason based on position
