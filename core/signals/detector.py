@@ -1,7 +1,11 @@
 """Signal detection engine for trading opportunities.
 
-Detects simple patterns:
+Detects patterns:
 - RSI overbought/oversold
+- MACD crossover
+- Stochastic overbought/oversold
+- Bollinger Bands breakout
+- ATR volatility
 - Golden/death cross (MA crossover)
 - Volume spike
 
@@ -22,7 +26,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
+from core.indicators.atr import generate_atr_signal
+from core.indicators.bollinger import generate_bollinger_signal
+from core.indicators.macd import generate_macd_signal
 from core.indicators.rsi import generate_rsi_signal
+from core.indicators.stochastic import generate_stochastic_signal
 from core.types import Candle, IndicatorSignal, Opportunity, SignalSide
 
 # Optional dependencies (for alerts)
@@ -321,6 +329,127 @@ def detect_volume_spike(candles: Sequence[Candle], *, period: int = 20, threshol
     return None
 
 
+def detect_macd_signal(
+    candles: Sequence[Candle], *, fast: int = 12, slow: int = 26, signal_period: int = 9
+) -> IndicatorSignal | None:
+    """Detect MACD crossover signal.
+
+    Args:
+        candles: Sequence of OHLCV candles
+        fast: Fast EMA period (default: 12)
+        slow: Slow EMA period (default: 26)
+        signal_period: Signal line period (default: 9)
+
+    Returns:
+        IndicatorSignal if crossover detected, None if neutral
+    """
+    if len(candles) < slow + signal_period + 1:
+        return None
+
+    try:
+        signal = generate_macd_signal(candles, fast=fast, slow=slow, signal_period=signal_period)
+        # Only return signals for BUY/SELL (not HOLD)
+        if signal.side in ("BUY", "SELL"):
+            return signal
+    except Exception:
+        return None
+
+    return None
+
+
+def detect_stochastic_signal(
+    candles: Sequence[Candle], *, k_period: int = 14, d_period: int = 3, oversold: float = 20.0, overbought: float = 80.0
+) -> IndicatorSignal | None:
+    """Detect Stochastic overbought/oversold signal.
+
+    Args:
+        candles: Sequence of OHLCV candles
+        k_period: %K period (default: 14)
+        d_period: %D smoothing period (default: 3)
+        oversold: Oversold threshold (default: 20)
+        overbought: Overbought threshold (default: 80)
+
+    Returns:
+        IndicatorSignal if oversold or overbought, None if neutral
+    """
+    if len(candles) < k_period + d_period:
+        return None
+
+    try:
+        signal = generate_stochastic_signal(
+            candles, k_period=k_period, d_period=d_period, oversold=oversold, overbought=overbought
+        )
+        # Only return signals for BUY/SELL (not HOLD)
+        if signal.side in ("BUY", "SELL"):
+            return signal
+    except Exception:
+        return None
+
+    return None
+
+
+def detect_bollinger_signal(candles: Sequence[Candle], *, period: int = 20, std_dev: float = 2.0) -> IndicatorSignal | None:
+    """Detect Bollinger Bands breakout signal.
+
+    Args:
+        candles: Sequence of OHLCV candles
+        period: SMA period (default: 20)
+        std_dev: Standard deviations (default: 2.0)
+
+    Returns:
+        IndicatorSignal if price at/beyond bands, None if within bands
+    """
+    if len(candles) < period:
+        return None
+
+    try:
+        signal = generate_bollinger_signal(candles, period=period, std_dev=std_dev)
+        # Only return signals for BUY/SELL (not HOLD)
+        if signal.side in ("BUY", "SELL"):
+            return signal
+    except Exception:
+        return None
+
+    return None
+
+
+def detect_atr_signal(
+    candles: Sequence[Candle],
+    *,
+    period: int = 14,
+    high_volatility_threshold: float = 1.5,
+    low_volatility_threshold: float = 0.5,
+) -> IndicatorSignal | None:
+    """Detect ATR volatility signal.
+
+    Args:
+        candles: Sequence of OHLCV candles
+        period: ATR period (default: 14)
+        high_volatility_threshold: High volatility threshold (default: 1.5)
+        low_volatility_threshold: Low volatility threshold (default: 0.5)
+
+    Returns:
+        IndicatorSignal if extreme volatility detected, None if normal
+    """
+    if len(candles) < period + 1:
+        return None
+
+    try:
+        signal = generate_atr_signal(
+            candles,
+            period=period,
+            high_volatility_threshold=high_volatility_threshold,
+            low_volatility_threshold=low_volatility_threshold,
+        )
+        # ATR signals are informational (volatility), return if strength > 0
+        if signal.strength > 0:
+            return signal
+    except Exception:
+        return None
+
+    return None
+
+
 def detect_signals(*, candles: Sequence[Candle], symbol: str, timeframe: str, exchange: str = "bitfinex") -> Opportunity | None:
     """Detect all signals for a symbol/timeframe and create an Opportunity.
     
@@ -343,6 +472,26 @@ def detect_signals(*, candles: Sequence[Candle], symbol: str, timeframe: str, ex
     if rsi_signal:
         signals.append(rsi_signal)
     
+    # Detect MACD
+    macd_signal = detect_macd_signal(candles)
+    if macd_signal:
+        signals.append(macd_signal)
+    
+    # Detect Stochastic
+    stoch_signal = detect_stochastic_signal(candles)
+    if stoch_signal:
+        signals.append(stoch_signal)
+    
+    # Detect Bollinger Bands
+    bb_signal = detect_bollinger_signal(candles)
+    if bb_signal:
+        signals.append(bb_signal)
+    
+    # Detect ATR (volatility)
+    atr_signal = detect_atr_signal(candles)
+    if atr_signal:
+        signals.append(atr_signal)
+    
     # Detect MA crossover
     ma_signal = detect_ma_crossover(candles)
     if ma_signal:
@@ -356,7 +505,7 @@ def detect_signals(*, candles: Sequence[Candle], symbol: str, timeframe: str, ex
     if not signals:
         return None
     
-    # Determine overall side (majority vote, excluding CONFIRM)
+    # Determine overall side (majority vote, excluding HOLD)
     buy_signals = [s for s in signals if s.side == "BUY"]
     sell_signals = [s for s in signals if s.side == "SELL"]
     
@@ -369,9 +518,13 @@ def detect_signals(*, candles: Sequence[Candle], symbol: str, timeframe: str, ex
     
     # Calculate weighted score
     weights = {
-        "RSI": 0.35,
-        "MA_CROSS": 0.40,
-        "VOLUME_SPIKE": 0.25,
+        "RSI": 0.20,
+        "MACD": 0.25,
+        "STOCHASTIC": 0.15,
+        "BOLLINGER": 0.15,
+        "ATR": 0.05,
+        "MA_CROSS": 0.15,
+        "VOLUME_SPIKE": 0.05,
     }
     
     total_weight = 0.0
