@@ -10,10 +10,10 @@ Prerequisites:
 
 Example usage:
     # Historical backfill (last 30 days)
-    python scripts/example_multi_timeframe_ingestion.py --mode backfill
+    python -m scripts.example_multi_timeframe_ingestion --mode backfill
 
     # Resume/update (fetch latest candles)
-    python scripts/example_multi_timeframe_ingestion.py --mode resume
+    python -m scripts.example_multi_timeframe_ingestion --mode resume
 
 Note:
     This is an EXAMPLE script. For production, use systemd timers or cron jobs
