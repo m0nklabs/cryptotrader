@@ -229,3 +229,27 @@ class OpportunitySnapshot:
     exchange: Optional[str] = None
     signals: Sequence[IndicatorSignal] = ()
     created_at: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
+class AutomationRule:
+    rule_type: str
+    value: Mapping[str, object]
+    symbol: Optional[str] = None
+    is_active: bool = True
+    id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+
+DecisionType = Literal["EXECUTE", "REJECT", "SKIP"]
+
+
+@dataclass(frozen=True)
+class AuditLogEntry:
+    event_type: str
+    decision: Optional[DecisionType] = None
+    symbol: Optional[str] = None
+    reason: Optional[str] = None
+    context: Optional[Mapping[str, object]] = None
+    created_at: Optional[datetime] = None
+    id: Optional[int] = None
