@@ -68,3 +68,111 @@ These instructions apply to GitHub Copilot in the context of this repository.
 - **If a PR already exists** (linked to the issue), post the `@copilot` comment **in the PR**, not the issue. This is especially important when the PR stalled due to rate limits or other interruptions.
 - **If no PR exists yet**, post the `@copilot` comment in the issue to start fresh.
 - Example: "@copilot please continue implementing the missing tests."
+
+## Technical Stack Reference
+
+When implementing features, use these technologies:
+
+### Backend (Python)
+- **Python**: 3.12+
+- **Package manager**: pip with `requirements.txt` / `requirements-dev.txt`
+- **Linting/Formatting**: ruff
+- **Type checking**: pylance (basic mode)
+- **Testing**: pytest, pytest-asyncio, pytest-cov
+- **Database**: PostgreSQL 16 via asyncpg / SQLAlchemy 2.0
+- **Exchange APIs**: ccxt (preferred for multi-exchange), python-binance, kucoin-python
+- **Technical Analysis**: pandas, numpy, ta-lib (via pandas-ta)
+
+### Frontend
+- **Framework**: React 18+ with TypeScript
+- **Build**: Vite (dev server on port 5176)
+- **Styling**: Tailwind CSS, dark mode default
+- **State**: React Query for server state, Zustand for client state
+- **Charts**: lightweight-charts (TradingView) or recharts
+
+### Infrastructure
+- **Container**: Docker, docker-compose
+- **DevContainer**: Python 3.12 + Node 20 + PostgreSQL 16
+- **CI**: GitHub Actions (when added)
+
+## Code Patterns
+
+### Async Database Access
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+async def get_positions(db: AsyncSession, user_id: str) -> list[Position]:
+    result = await db.execute(
+        select(Position).where(Position.user_id == user_id)
+    )
+    return result.scalars().all()
+```
+
+### Exchange Adapter Pattern
+```python
+from abc import ABC, abstractmethod
+
+class ExchangeAdapter(ABC):
+    @abstractmethod
+    async def fetch_ohlcv(self, symbol: str, timeframe: str) -> pd.DataFrame: ...
+    
+    @abstractmethod
+    async def create_order(self, symbol: str, side: str, amount: float, price: float | None = None) -> Order: ...
+```
+
+### Indicator Function Pattern
+```python
+def calculate_rsi(df: pd.DataFrame, period: int = 14, column: str = "close") -> pd.Series:
+    """Calculate RSI indicator.
+    
+    Args:
+        df: DataFrame with OHLCV data
+        period: RSI period (default 14)
+        column: Column to use for calculation
+        
+    Returns:
+        Series with RSI values (0-100)
+    """
+    delta = df[column].diff()
+    gain = delta.where(delta > 0, 0).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+```
+
+## Directory Structure
+
+```
+cryptotrader/
+├── api/              # REST API endpoints, exchange adapters
+│   ├── exchanges/    # Exchange-specific implementations
+│   └── websocket/    # WebSocket handlers
+├── core/             # Business logic
+│   ├── analysis/     # Technical analysis
+│   ├── execution/    # Order execution
+│   ├── indicators/   # TA indicators
+│   └── portfolio/    # Position management
+├── db/               # Database models, migrations
+├── frontend/         # React/Vite frontend
+├── tests/            # pytest tests
+├── docs/             # Documentation
+└── scripts/          # Utility scripts
+```
+
+## Testing Requirements
+
+For any new feature:
+1. Add unit tests in `tests/` matching the module path
+2. Use `pytest-asyncio` for async code
+3. Mock external APIs (exchanges, databases) in unit tests
+4. Integration tests can use real services via docker-compose
+5. Minimum coverage: 80% for new code
+
+## Trading-Specific Rules
+
+1. **Paper trading by default**: All execution code must have a `dry_run=True` or `paper_mode=True` default
+2. **Position limits**: Enforce max position size per symbol and portfolio-wide
+3. **Rate limiting**: Respect exchange rate limits; use exponential backoff
+4. **Audit logging**: Log all order attempts with full details (symbol, side, size, price, timestamp)
+5. **Error recovery**: Handle network errors, API errors, and partial fills gracefully
+6. **Never expose credentials**: Use environment variables exclusively
