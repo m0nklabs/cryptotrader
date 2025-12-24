@@ -14,10 +14,191 @@ Usage:
 
 from __future__ import annotations
 
+import json
+import logging
+import os
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Sequence
 
 from core.indicators.rsi import generate_rsi_signal
 from core.types import Candle, IndicatorSignal, Opportunity, SignalSide
+
+# Optional dependencies (for alerts)
+try:
+    import requests
+except ImportError:
+    requests = None  # type: ignore
+
+try:
+    from plyer import notification
+except ImportError:
+    notification = None  # type: ignore
+
+logger = logging.getLogger(__name__)
+
+
+class AlertManager:
+    """Manages alerts for detected trading signals.
+    
+    Supports:
+    - Desktop notifications (via plyer or notify-send)
+    - File logging to logs/signals.log
+    - Webhook notifications (Discord/Slack)
+    
+    Configuration via environment variables:
+    - SIGNAL_ALERTS_ENABLED: Enable/disable alerts (default: false)
+    - SIGNAL_WEBHOOK_URL: Optional webhook URL for POST notifications
+    """
+    
+    def __init__(self, *, enabled: bool | None = None, webhook_url: str | None = None, log_dir: Path | None = None):
+        """Initialize AlertManager.
+        
+        Args:
+            enabled: Enable alerts (reads SIGNAL_ALERTS_ENABLED env var if None)
+            webhook_url: Webhook URL (reads SIGNAL_WEBHOOK_URL env var if None)
+            log_dir: Directory for signal logs (defaults to ./logs)
+        """
+        # Read from env vars if not explicitly provided
+        if enabled is None:
+            enabled = os.environ.get("SIGNAL_ALERTS_ENABLED", "false").lower() in ("true", "1", "yes")
+        if webhook_url is None:
+            webhook_url = os.environ.get("SIGNAL_WEBHOOK_URL", "")
+        
+        self.enabled = enabled
+        self.webhook_url = webhook_url.strip() if webhook_url else ""
+        self.log_dir = log_dir or Path(__file__).resolve().parents[2] / "logs"
+        self.log_file = self.log_dir / "signals.log"
+        
+        # Ensure log directory exists
+        if self.enabled:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+    
+    def alert(self, opportunity: Opportunity, exchange: str = "bitfinex") -> None:
+        """Send alert for detected trading opportunity.
+        
+        Args:
+            opportunity: Detected trading opportunity
+            exchange: Exchange name (default: bitfinex)
+        """
+        if not self.enabled:
+            return
+        
+        try:
+            # Log to file (always)
+            self._log_to_file(opportunity, exchange)
+            
+            # Desktop notification
+            self._send_desktop_notification(opportunity, exchange)
+            
+            # Webhook notification (if configured)
+            if self.webhook_url:
+                self._send_webhook(opportunity, exchange)
+        except Exception as exc:
+            logger.warning(f"Failed to send alert for {opportunity.symbol}: {exc}")
+    
+    def _log_to_file(self, opportunity: Opportunity, exchange: str) -> None:
+        """Append signal to log file with structured format."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        # Build signal details (avoid logging sensitive data)
+        signal_details = [
+            f"{sig.code}:{sig.side}:{sig.strength}" for sig in opportunity.signals
+        ]
+        
+        log_entry = {
+            "timestamp": timestamp,
+            "exchange": exchange,
+            "symbol": opportunity.symbol,
+            "timeframe": opportunity.timeframe,
+            "side": opportunity.side,
+            "score": opportunity.score,
+            "signals": signal_details,
+        }
+        
+        # Append as JSON line
+        with open(self.log_file, "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    
+    def _send_desktop_notification(self, opportunity: Opportunity, exchange: str) -> None:
+        """Send desktop notification using plyer or notify-send fallback."""
+        title = f"🔔 Signal: {opportunity.symbol}"
+        message = (
+            f"{opportunity.side} signal detected\n"
+            f"Score: {opportunity.score}/100\n"
+            f"Timeframe: {opportunity.timeframe}\n"
+            f"Signals: {len(opportunity.signals)}"
+        )
+        
+        # Try plyer first
+        if notification is not None:
+            try:
+                notification.notify(
+                    title=title,
+                    message=message,
+                    app_name="CryptoTrader",
+                    timeout=10,
+                )
+                return
+            except Exception:
+                pass
+        
+        # Fallback to notify-send (Linux)
+        try:
+            subprocess.run(
+                ["notify-send", title, message],
+                check=False,
+                timeout=5,
+                capture_output=True,
+            )
+        except Exception:
+            # Silent fail if no notification system available
+            pass
+    
+    def _send_webhook(self, opportunity: Opportunity, exchange: str) -> None:
+        """Send webhook notification (Discord/Slack compatible)."""
+        if requests is None:
+            logger.warning("requests library not available, skipping webhook")
+            return
+        
+        # Build signal summary
+        signal_summary = ", ".join([
+            f"{sig.code} ({sig.side}, {sig.strength}%)" for sig in opportunity.signals
+        ])
+        
+        # Discord/Slack webhook payload
+        payload = {
+            "content": (
+                f"🔔 **{opportunity.side} Signal Detected**\n"
+                f"**Symbol:** {opportunity.symbol} ({exchange})\n"
+                f"**Timeframe:** {opportunity.timeframe}\n"
+                f"**Score:** {opportunity.score}/100\n"
+                f"**Signals:** {signal_summary}"
+            )
+        }
+        
+        try:
+            response = requests.post(
+                self.webhook_url,
+                json=payload,
+                timeout=10,
+            )
+            response.raise_for_status()
+        except Exception as exc:
+            logger.warning(f"Webhook notification failed: {exc}")
+
+
+# Global alert manager instance (lazy initialization)
+_alert_manager: AlertManager | None = None
+
+
+def get_alert_manager() -> AlertManager:
+    """Get or create global AlertManager instance."""
+    global _alert_manager
+    if _alert_manager is None:
+        _alert_manager = AlertManager()
+    return _alert_manager
 
 
 def detect_rsi_signal(candles: Sequence[Candle], *, period: int = 14, oversold: float = 30.0, overbought: float = 70.0) -> IndicatorSignal | None:
@@ -207,10 +388,19 @@ def detect_signals(*, candles: Sequence[Candle], symbol: str, timeframe: str, ex
     else:
         score = 0
     
-    return Opportunity(
+    opportunity = Opportunity(
         symbol=symbol,
         timeframe=timeframe,
         score=score,
         side=side,
         signals=tuple(signals),
     )
+    
+    # Send alert if enabled
+    try:
+        alert_manager = get_alert_manager()
+        alert_manager.alert(opportunity, exchange=exchange)
+    except Exception as exc:
+        logger.warning(f"Failed to send alert: {exc}")
+    
+    return opportunity
