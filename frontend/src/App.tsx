@@ -72,6 +72,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settingsRef = useRef<HTMLDivElement | null>(null)
 
+  const [selectedExchange, setSelectedExchange] = useState<string>('bitfinex')
   const [chartSymbol, setChartSymbol] = useState<string>('BTCUSD')
   const [chartTimeframe, setChartTimeframe] = useState<string>('1m')
   const [chartLimit, setChartLimit] = useState<number>(480)
@@ -144,7 +145,7 @@ export default function App() {
     const controller = new AbortController()
     setAvailableError(null)
 
-    fetch(`/api/candles/available?exchange=${encodeURIComponent('bitfinex')}`, { signal: controller.signal })
+    fetch(`/api/candles/available?exchange=${encodeURIComponent(selectedExchange)}`, { signal: controller.signal })
       .then(async (resp) => {
         const bodyText = await resp.text()
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 120)}`)
@@ -201,7 +202,7 @@ export default function App() {
       })
 
     return () => controller.abort()
-  }, [])
+  }, [selectedExchange])
 
   const timeframesForChartSymbol = useMemo(() => {
     const tfs = availableTimeframesBySymbol[chartSymbol]
@@ -213,7 +214,7 @@ export default function App() {
     let mounted = true
     let inFlight: AbortController | null = null
 
-    const exchange = 'bitfinex'
+    const exchange = selectedExchange
     const timeframe = chartTimeframe
 
     const load = () => {
@@ -286,7 +287,7 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [chartSymbol, chartTimeframe, chartLimit])
+  }, [chartSymbol, chartTimeframe, chartLimit, selectedExchange])
 
   useEffect(() => {
     let mounted = true
@@ -363,7 +364,7 @@ export default function App() {
 
       setSignalsError(null)
 
-      fetch('/api/signals?exchange=bitfinex&limit=10', { signal: controller.signal })
+      fetch('/api/signals?exchange=' + encodeURIComponent(selectedExchange) + '&limit=10', { signal: controller.signal })
         .then(async (resp) => {
           const bodyText = await resp.text()
           if (!resp.ok) {
@@ -565,6 +566,18 @@ export default function App() {
           <div className="ct-dock-grid gap-3">
             <div className="ct-dock-left flex flex-col gap-3">
               <Panel title="Market Watch" subtitle="Symbols / tickers">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs text-gray-600 dark:text-gray-400">Exchange</span>
+                  <select
+                    className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                    value={selectedExchange}
+                    onChange={(ev) => setSelectedExchange(ev.target.value)}
+                  >
+                    <option value="bitfinex">Bitfinex</option>
+                    <option value="binance">Binance</option>
+                    <option value="kraken">Kraken</option>
+                  </select>
+                </div>
                 <Kvp k="Primary" v="BTCUSD" />
                 <div className="mt-2 space-y-1">
                   {availableError ? (
@@ -595,7 +608,7 @@ export default function App() {
                 </div>
               </Panel>
 
-              <Panel title="Market Data" subtitle="Bitfinex candles (OHLCV)">
+              <Panel title="Market Data" subtitle={`${selectedExchange.charAt(0).toUpperCase() + selectedExchange.slice(1)} candles (OHLCV)`}>
                 <Kvp k="Status" v="Not connected" />
                 <div className="mt-2">
                   <Kvp k="Latest run" v="—" />

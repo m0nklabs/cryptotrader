@@ -10,6 +10,7 @@ from typing import Iterable, Sequence
 
 import requests
 
+from core.market_data import get_provider
 from core.storage import PostgresConfig, PostgresStores
 from core.types import Candle, MarketDataJob, Timeframe
 
@@ -204,7 +205,9 @@ def run_backfill(
     candles_upserted = 0
 
     try:
-        candle_iter = _iter_bitfinex_candles(exchange=exchange, symbol=symbol, timeframe=timeframe, start=start, end=end)
+        # Use the provider pattern to support multiple exchanges
+        provider = get_provider(exchange)
+        candle_iter = provider.iter_candles(symbol=symbol, timeframe=timeframe, start=start, end=end)
         for batch in _batched(candle_iter, batch_size=batch_size):
             candles_fetched += len(batch)
             candles_upserted += stores.upsert_candles(candles=batch)
@@ -237,7 +240,7 @@ def run_backfill(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Backfill OHLCV candles from Bitfinex into Postgres.")
+    parser = argparse.ArgumentParser(description="Backfill OHLCV candles from exchanges into Postgres.")
     parser.add_argument("--symbol", required=True, help="Symbol without prefix, e.g. BTCUSD or BTC:USD")
     parser.add_argument("--timeframe", required=True, choices=sorted(_TIMEFRAMES.keys()), help="Candle timeframe")
     parser.add_argument("--start", help="ISO datetime/date (UTC assumed if no tz)")
@@ -247,7 +250,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Resume from the latest candle in DB (start = latest_open_time + timeframe).",
     )
-    parser.add_argument("--exchange", default="bitfinex", help="Exchange code stored in DB")
+    parser.add_argument("--exchange", default="bitfinex", choices=["bitfinex", "binance", "kraken"], help="Exchange to fetch data from")
     parser.add_argument("--batch-size", type=int, default=1000, help="DB upsert batch size")
     return parser
 
