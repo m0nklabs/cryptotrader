@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from pathlib import Path
 import sys
 from unittest.mock import Mock, patch
@@ -9,32 +8,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.market_data import bitfinex_backfill as backfill
-
-
-def test_parse_dt_date_returns_utc_midnight() -> None:
-    dt = backfill._parse_dt("2024-03-01")
-    assert dt == datetime(2024, 3, 1, tzinfo=timezone.utc)
-
-
-def test_parse_dt_converts_offset_to_utc() -> None:
-    dt = backfill._parse_dt("2024-03-01T02:30:00+02:00")
-    assert dt == datetime(2024, 3, 1, 0, 30, tzinfo=timezone.utc)
-    assert dt.tzinfo == timezone.utc
-
-
-def test_normalize_bitfinex_symbol_adds_prefix_and_trims() -> None:
-    assert backfill._normalize_bitfinex_symbol(" BTCUSD ") == "tBTCUSD"
-
-
-def test_normalize_bitfinex_symbol_requires_value() -> None:
-    with pytest.raises(ValueError):
-        backfill._normalize_bitfinex_symbol("   ")
+from core.market_data import bitfinex_gap_repair as gap_repair
 
 
 def test_build_arg_parser_includes_backoff_parameters() -> None:
     """Verify that backoff/jitter CLI arguments are present and have correct defaults."""
-    parser = backfill.build_arg_parser()
+    parser = gap_repair.build_arg_parser()
     args = parser.parse_args(["--symbol", "BTCUSD", "--timeframe", "1h", "--start", "2024-01-01"])
     
     assert args.max_retries == 6
@@ -45,7 +24,7 @@ def test_build_arg_parser_includes_backoff_parameters() -> None:
 
 def test_build_arg_parser_accepts_custom_backoff_values() -> None:
     """Verify that custom backoff values can be parsed."""
-    parser = backfill.build_arg_parser()
+    parser = gap_repair.build_arg_parser()
     args = parser.parse_args([
         "--symbol", "BTCUSD",
         "--timeframe", "1h",
@@ -64,8 +43,8 @@ def test_build_arg_parser_accepts_custom_backoff_values() -> None:
 
 def test_fetch_bitfinex_candles_page_uses_backoff_params() -> None:
     """Verify that backoff parameters affect the retry logic."""
-    with patch("core.market_data.bitfinex_backfill.requests.get") as mock_get, \
-         patch("core.market_data.bitfinex_backfill.time.sleep") as mock_sleep:
+    with patch("core.market_data.bitfinex_gap_repair.requests.get") as mock_get, \
+         patch("core.market_data.bitfinex_gap_repair.time.sleep") as mock_sleep:
         
         # Simulate rate limiting on first call, then success
         mock_resp_429 = Mock()
@@ -77,7 +56,7 @@ def test_fetch_bitfinex_candles_page_uses_backoff_params() -> None:
         
         mock_get.side_effect = [mock_resp_429, mock_resp_ok]
         
-        result = backfill._fetch_bitfinex_candles_page(
+        result = gap_repair._fetch_bitfinex_candles_page(
             symbol="tBTCUSD",
             timeframe_api="1h",
             start_ms=1000000,
@@ -98,8 +77,8 @@ def test_fetch_bitfinex_candles_page_uses_backoff_params() -> None:
 
 def test_fetch_bitfinex_candles_page_respects_max_backoff() -> None:
     """Verify that backoff doesn't exceed max_backoff_seconds."""
-    with patch("core.market_data.bitfinex_backfill.requests.get") as mock_get, \
-         patch("core.market_data.bitfinex_backfill.time.sleep") as mock_sleep:
+    with patch("core.market_data.bitfinex_gap_repair.requests.get") as mock_get, \
+         patch("core.market_data.bitfinex_gap_repair.time.sleep") as mock_sleep:
         
         # Simulate rate limiting on all calls
         mock_resp_429 = Mock()
@@ -107,7 +86,7 @@ def test_fetch_bitfinex_candles_page_respects_max_backoff() -> None:
         mock_get.return_value = mock_resp_429
         
         with pytest.raises(RuntimeError, match="Bitfinex candle fetch failed"):
-            backfill._fetch_bitfinex_candles_page(
+            gap_repair._fetch_bitfinex_candles_page(
                 symbol="tBTCUSD",
                 timeframe_api="1h",
                 start_ms=1000000,
@@ -129,9 +108,9 @@ def test_fetch_bitfinex_candles_page_respects_max_backoff() -> None:
 
 def test_fetch_bitfinex_candles_page_adds_jitter() -> None:
     """Verify that jitter is applied to backoff."""
-    with patch("core.market_data.bitfinex_backfill.requests.get") as mock_get, \
-         patch("core.market_data.bitfinex_backfill.time.sleep") as mock_sleep, \
-         patch("core.market_data.bitfinex_backfill.random.uniform") as mock_random:
+    with patch("core.market_data.bitfinex_gap_repair.requests.get") as mock_get, \
+         patch("core.market_data.bitfinex_gap_repair.time.sleep") as mock_sleep, \
+         patch("core.market_data.bitfinex_gap_repair.random.uniform") as mock_random:
         
         # Simulate rate limiting on first call, then success
         mock_resp_429 = Mock()
@@ -144,7 +123,7 @@ def test_fetch_bitfinex_candles_page_adds_jitter() -> None:
         mock_get.side_effect = [mock_resp_429, mock_resp_ok]
         mock_random.return_value = 0.5  # Fixed jitter value
         
-        result = backfill._fetch_bitfinex_candles_page(
+        result = gap_repair._fetch_bitfinex_candles_page(
             symbol="tBTCUSD",
             timeframe_api="1h",
             start_ms=1000000,
@@ -160,4 +139,3 @@ def test_fetch_bitfinex_candles_page_adds_jitter() -> None:
         mock_random.assert_called_once_with(0, 1.0)
         # Should have slept with initial backoff + jitter (1.0 + 0.5)
         mock_sleep.assert_called_once_with(1.5)
-

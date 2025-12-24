@@ -158,6 +158,12 @@ When multiple agents work in parallel, merge conflicts occur. Mitigate by:
 ## Orchestration log (newest-first)
 
 ## 2025-12-24
+- Merged PR #61 (/ingestion/status FastAPI endpoint)
+- Merged PR #63 (Bitfinex signing helper)
+- Updated PR #59 to use FastAPI endpoints (/health, /ingestion/status) with legacy fallbacks
+- Created PR #66 (minimal CI workflow + test/dev-deps fixes)
+- Created PR #67 (resurrected Bitfinex backoff/jitter knobs onto current master)
+- Reviewed PR #60; identified resume correctness issue and prepared local fix branch
 - Merged PR #37 (Golden RSI indicator)
 - Merged PR #38 (Gap stats panel)
 - Merged PR #39 (Trading signals engine)

@@ -16,3 +16,7 @@ plyer>=2.1.0
 # Optional (only needed if you configure DATABASE_URL for indicator weights/signals)
 SQLAlchemy>=2.0.0
 psycopg2-binary>=2.9.0
+
+# FastAPI (for read-only API)
+fastapi>=0.104.0
+uvicorn>=0.24.0
