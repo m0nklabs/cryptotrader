@@ -7,7 +7,6 @@ from typing import List, Tuple
 from sqlalchemy import create_engine, text
 
 
-
 DB_URL = os.environ.get("DATABASE_URL")
 
 
@@ -63,9 +62,9 @@ def validate_schema() -> bool:
 
 
 def get_ingestion_summary(
-    exchange: ExchangeName,
-    symbol: Symbol,
-    timeframe: Timeframe
+    exchange: str,
+    symbol: str,
+    timeframe: str
 ) -> dict:
     try:
         engine = create_engine(DB_URL)
@@ -108,24 +107,17 @@ def main() -> int:
         print("Error: Must provide --exchange, --symbol, and --timeframe")
         return 1
 
-    # Build list of tuples
-    tuples = []
-    for exchange in exchanges:
-        for symbol in symbols:
-            for timeframe in timeframes:
-                tuples.append((exchange, symbol, timeframe))
-
     if not validate_db_connection():
         return 1
 
     if not validate_schema():
         return 1
 
-    for exchange, symbol, timeframe in tuples:
+    for exchange, symbol, timeframe in zip(exchanges, symbols, timeframes):
         summary = get_ingestion_summary(exchange, symbol, timeframe)
         if not summary:
             return 1
-        print(f"{exchange}/{symbol}/{timeframe} schema_ok={summary['schema_ok']} candles_count={summary['candles_count']} latest_candle_open_time={summary['latest_candle_open_time']}")
+        print(f"exchange={exchange} symbol={symbol} timeframe={timeframe} schema_ok={summary['schema_ok']} candles_count={summary['candles_count']} latest_candle_open_time={summary['latest_candle_open_time']}")
 
     return 0
 
