@@ -6,6 +6,7 @@ This folder contains the minimal project documentation for `cryptotrader`.
 - [Development](DEVELOPMENT.md): Local setup and basic commands.
 - [Frontend](FRONTEND.md): Minimal dashboard UI skeleton.
 - [Operations](OPERATIONS.md): Runbook (ports, services).
+- [WebSocket](WEBSOCKET.md): Real-time market data via WebSocket streaming.
 - [TODO](TODO.md): Feature list and implementation work packages.
 - [Orchestration](ORCHESTRATION.md): How we delegate work via Issues/PRs.
 
