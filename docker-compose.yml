@@ -10,8 +10,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-cryptotrader}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cryptotrader}
     ports:
-      # Bind to localhost only; systemd jobs run on the same host.
-      - "127.0.0.1:5432:5432"
+      # Bind to all interfaces so external clients (e.g. Copilot agent) can connect.
+      # IMPORTANT: Ensure strong password + firewall/router ACL to trusted IPs only.
+      - "0.0.0.0:5432:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:

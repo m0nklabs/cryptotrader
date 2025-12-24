@@ -22,6 +22,31 @@ Out of scope for v2:
 
 ## Quickstart
 
+```bash
+# Clone and setup
+git clone https://github.com/m0nk111/cryptotrader.git
+cd cryptotrader
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your settings (API keys, database URL, etc.)
+
+# Run tests
+pytest
+
+# Start backend
+python -m api.main
+
+# Frontend (separate terminal)
+cd frontend && npm install && npm run dev
+```
+
+Or use **DevContainer** in VS Code for a pre-configured environment.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions.
 
 ## Frontend
 
