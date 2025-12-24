@@ -55,6 +55,29 @@ Or use **DevContainer** in VS Code for a pre-configured environment.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions.
 
+## Market Data Ingestion
+
+cryptotrader supports ingesting candles for multiple timeframes:
+
+**Standard Timeframes**: 1m, 5m, 15m, 1h, 4h, 1d
+
+```bash
+# Set up environment
+export DATABASE_URL="postgresql://user:pass@localhost:5432/cryptotrader"
+
+# Backfill all timeframes for a symbol
+python -m scripts.ingest_multi_timeframe --symbol BTCUSD --start 2024-01-01
+
+# Resume ingestion (fetch from last candle to now)
+python -m scripts.ingest_multi_timeframe --symbol BTCUSD --resume
+
+# Multiple symbols
+python -m scripts.ingest_multi_timeframe \
+  --symbol BTCUSD --symbol ETHUSD --symbol SOLUSD --resume
+```
+
+See `scripts/README.md` for detailed ingestion documentation.
+
 ## Frontend
 
 A minimal dashboard UI skeleton lives in `frontend/`.
