@@ -505,7 +505,7 @@ def detect_signals(*, candles: Sequence[Candle], symbol: str, timeframe: str, ex
     if not signals:
         return None
     
-    # Determine overall side (majority vote, excluding CONFIRM and HOLD)
+    # Determine overall side (majority vote, excluding HOLD)
     buy_signals = [s for s in signals if s.side == "BUY"]
     sell_signals = [s for s in signals if s.side == "SELL"]
     

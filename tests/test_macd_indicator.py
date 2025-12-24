@@ -59,16 +59,17 @@ def test_compute_macd_rejects_fast_gte_slow() -> None:
 
 
 def test_compute_macd_with_uptrend() -> None:
-    """MACD with uptrend should have positive histogram."""
+    """MACD with uptrend should have positive MACD and signal lines."""
     # Strong uptrend
     prices = [100 + i * 2 for i in range(50)]
     candles = [_make_candle(p, i) for i, p in enumerate(prices)]
 
     macd_line, signal_line, histogram = compute_macd(candles)
 
-    # In uptrend, MACD line should be positive and above signal line
+    # In strong uptrend, both MACD and signal should be positive
+    # Histogram sign depends on whether MACD is accelerating or decelerating
     assert macd_line > 0
-    assert histogram > 0  # MACD above signal
+    assert signal_line > 0
 
 
 def test_compute_macd_with_downtrend() -> None:

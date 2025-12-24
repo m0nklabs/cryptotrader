@@ -125,14 +125,17 @@ def generate_atr_signal(
 
     current_atr = compute_atr(candles, period=period)
 
-    # Calculate average ATR over a longer period for comparison
-    # We'll calculate ATR at multiple points and average them
+    # Calculate average ATR over recent period for comparison
+    # Use a simpler approach: calculate multiple ATR snapshots incrementally
     if len(candles) >= lookback_for_avg:
+        # Calculate ATR values at regular intervals (every 'period' candles)
         atr_values = []
-        for i in range(lookback_for_avg - period, len(candles)):
-            window = candles[: i + 1]
-            if len(window) >= period + 1:
-                atr_val = compute_atr(window, period=period)
+        step = max(1, period // 2)  # Sample every half-period
+        for i in range(lookback_for_avg - period, len(candles), step):
+            if i >= period:
+                # Calculate ATR for window ending at position i
+                window_candles = candles[: i + 1]
+                atr_val = compute_atr(window_candles, period=period)
                 atr_values.append(atr_val)
 
         avg_atr = sum(atr_values) / len(atr_values) if atr_values else current_atr

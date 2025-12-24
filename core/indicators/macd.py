@@ -8,7 +8,7 @@ Usage:
     from core.types import Candle
 
     # Compute MACD values
-    macd_line, signal_line, histogram = compute_macd(candles, fast=12, slow=26, signal=9)
+    macd_line, signal_line, histogram = compute_macd(candles, fast=12, slow=26, signal_period=9)
 
     # Generate trading signal
     signal = generate_macd_signal(candles, fast=12, slow=26, signal_period=9)
@@ -88,25 +88,23 @@ def _calculate_ema(values: list[float], period: int) -> list[float]:
         period: EMA period
 
     Returns:
-        List of EMA values (same length as input)
+        List of EMA values starting from index period-1 (aligned with input)
     """
     if len(values) < period:
         raise ValueError(f"need at least {period} values for EMA({period}), got {len(values)}")
 
     multiplier = 2.0 / (period + 1)
-    ema_values = []
+    ema_values = [0.0] * len(values)  # Preallocate full length
 
-    # Start with SMA for the first period
+    # Start with SMA for the first valid EMA at index period-1
     sma = sum(values[:period]) / period
-    ema_values.append(sma)
+    ema_values[period - 1] = sma
 
     # Calculate EMA for remaining values
     for i in range(period, len(values)):
-        ema = (values[i] - ema_values[-1]) * multiplier + ema_values[-1]
-        ema_values.append(ema)
+        ema_values[i] = (values[i] - ema_values[i - 1]) * multiplier + ema_values[i - 1]
 
-    # Pad the beginning with the first EMA value to match input length
-    return [ema_values[0]] * (period - 1) + ema_values
+    return ema_values
 
 
 def generate_macd_signal(
