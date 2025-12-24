@@ -60,6 +60,22 @@ class _Handler(BaseHTTPRequestHandler):
         if parsed.path == "/healthz":
             return _json_response(self, status=200, payload={"ok": True})
 
+        if parsed.path == "/api/market-cap":
+            try:
+                ranks = _fetch_market_cap_ranks(stores=self.server.stores)
+                age = _fetch_market_cap_data_age(stores=self.server.stores)
+            except Exception as exc:  # pragma: no cover
+                return _json_response(self, status=500, payload={"error": "db_error", "detail": type(exc).__name__})
+            
+            return _json_response(
+                self,
+                status=200,
+                payload={
+                    "ranks": ranks,
+                    "age_seconds": age,
+                },
+            )
+
         if parsed.path == "/api/candles/available":
             qs = parse_qs(parsed.query)
             exchange = (qs.get("exchange") or ["bitfinex"])[0].strip()

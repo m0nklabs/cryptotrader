@@ -345,4 +345,26 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS idx_audit_events_time
     ON audit_events(event_time DESC);
 
+
+-- =======================
+-- Market cap rankings cache
+-- =======================
+
+CREATE TABLE IF NOT EXISTS market_cap_ranks (
+    id SERIAL PRIMARY KEY,
+    coin_id VARCHAR(50) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    name VARCHAR(100),
+    market_cap_rank INTEGER NOT NULL,
+    market_cap DECIMAL(30, 2),
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_market_cap_ranks_coin_id UNIQUE (coin_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_cap_ranks_symbol
+    ON market_cap_ranks(symbol);
+
+CREATE INDEX IF NOT EXISTS idx_market_cap_ranks_rank
+    ON market_cap_ranks(market_cap_rank);
+
 COMMIT;

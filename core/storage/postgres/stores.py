@@ -788,3 +788,100 @@ class PostgresStores(
 
     def get_latest(self, *, exchange: str, symbol: str | None = None) -> Optional[FeeSchedule]:
         raise NotImplementedError("PostgresStores.get_latest_fee_schedule")
+    
+    # ---- Market Cap Rankings
+    
+    def upsert_market_cap_ranks(self, *, ranks: Sequence[dict[str, Any]]) -> int:
+        """Insert or update market cap rankings.
+        
+        Args:
+            ranks: List of dicts with keys: id, symbol, name, market_cap_rank, market_cap
+        
+        Returns:
+            Number of rows affected
+        """
+        if not ranks:
+            return 0
+        
+        engine = self._get_engine()
+        _, text = self._require_sqlalchemy()
+        
+        stmt = text(
+            """
+            INSERT INTO market_cap_ranks (
+                coin_id, symbol, name, market_cap_rank, market_cap, last_updated
+            )
+            VALUES (
+                :coin_id, :symbol, :name, :market_cap_rank, :market_cap, CURRENT_TIMESTAMP
+            )
+            ON CONFLICT (coin_id)
+            DO UPDATE SET
+                symbol = EXCLUDED.symbol,
+                name = EXCLUDED.name,
+                market_cap_rank = EXCLUDED.market_cap_rank,
+                market_cap = EXCLUDED.market_cap,
+                last_updated = CURRENT_TIMESTAMP
+            """
+        )
+        
+        payload = [
+            {
+                "coin_id": str(rank.get("id", "")),
+                "symbol": str(rank.get("symbol", "")).upper(),
+                "name": str(rank.get("name", "")),
+                "market_cap_rank": int(rank.get("market_cap_rank", 0)),
+                "market_cap": float(rank.get("market_cap", 0)),
+            }
+            for rank in ranks
+        ]
+        
+        with engine.begin() as conn:
+            result = conn.execute(stmt, payload)
+        
+        return int(getattr(result, "rowcount", 0) or len(payload))
+    
+    def get_market_cap_ranks(self) -> dict[str, int]:
+        """Get current market cap rankings as a symbol -> rank mapping.
+        
+        Returns:
+            Dictionary mapping coin symbol (uppercase) to market cap rank
+        """
+        engine = self._get_engine()
+        _, text = self._require_sqlalchemy()
+        
+        stmt = text(
+            """
+            SELECT symbol, market_cap_rank
+            FROM market_cap_ranks
+            ORDER BY market_cap_rank ASC
+            """
+        )
+        
+        with engine.begin() as conn:
+            rows = conn.execute(stmt).fetchall()
+        
+        return {str(row[0]).upper(): int(row[1]) for row in rows}
+    
+    def get_market_cap_data_age(self) -> int | None:
+        """Get age of market cap data in seconds.
+        
+        Returns:
+            Age in seconds since last update, or None if no data exists
+        """
+        engine = self._get_engine()
+        _, text = self._require_sqlalchemy()
+        
+        stmt = text(
+            """
+            SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX(last_updated)))::INTEGER
+            FROM market_cap_ranks
+            """
+        )
+        
+        with engine.begin() as conn:
+            row = conn.execute(stmt).fetchone()
+        
+        if row is None or row[0] is None:
+            return None
+        
+        return int(row[0])
