@@ -76,6 +76,29 @@ Notes:
 - Does not print DATABASE_URL or any secret values
 - Works with local docker-compose Postgres setup
 
+### Ingestion report
+
+To print a compact ingestion summary for exchange/symbol/timeframe tuples:
+
+- `python scripts/ingestion_report.py --exchange bitfinex --symbol BTCUSD --timeframe 1h`
+
+This script checks:
+
+- DB connectivity
+- Schema status (candles table exists)
+- Total candles count
+- Latest candle open_time for a given exchange/symbol/timeframe
+
+Exit codes:
+
+- 0 = success
+- 1 = failure (DB connectivity, schema, or other error)
+
+Notes:
+
+- Does not print DATABASE_URL or any secret values
+- Works with local docker-compose Postgres setup
+
 ### Historical candles backfill (Bitfinex → Postgres)
 
 This job fetches historical OHLCV candles from Bitfinex public endpoints and upserts them into the `candles` table.
@@ -120,7 +143,7 @@ Detect-only:
 
 If the integrated terminal is unstable/crashing:
 
-- Workspace setting: `terminal.integrated.gpuAcceleration`: `"off"`
+- Workspace setting: `terminal.integrated.gpuAcceleration`: "off"
 - This repo already includes: `.vscode/settings.json`
 
 ## Frontend (dashboard skeleton)
