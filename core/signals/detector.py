@@ -25,6 +25,17 @@ from typing import Sequence
 from core.indicators.rsi import generate_rsi_signal
 from core.types import Candle, IndicatorSignal, Opportunity, SignalSide
 
+# Optional dependencies (for alerts)
+try:
+    import requests
+except ImportError:
+    requests = None  # type: ignore
+
+try:
+    from plyer import notification
+except ImportError:
+    notification = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,17 +132,17 @@ class AlertManager:
         )
         
         # Try plyer first
-        try:
-            from plyer import notification
-            notification.notify(
-                title=title,
-                message=message,
-                app_name="CryptoTrader",
-                timeout=10,
-            )
-            return
-        except Exception:
-            pass
+        if notification is not None:
+            try:
+                notification.notify(
+                    title=title,
+                    message=message,
+                    app_name="CryptoTrader",
+                    timeout=10,
+                )
+                return
+            except Exception:
+                pass
         
         # Fallback to notify-send (Linux)
         try:
@@ -147,7 +158,9 @@ class AlertManager:
     
     def _send_webhook(self, opportunity: Opportunity, exchange: str) -> None:
         """Send webhook notification (Discord/Slack compatible)."""
-        import requests
+        if requests is None:
+            logger.warning("requests library not available, skipping webhook")
+            return
         
         # Build signal summary
         signal_summary = ", ".join([

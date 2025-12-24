@@ -161,7 +161,7 @@ def test_desktop_notification_with_plyer(sample_opportunity, temp_log_dir):
     """Test desktop notification using plyer."""
     manager = AlertManager(enabled=True, log_dir=temp_log_dir)
     
-    with patch("plyer.notification") as mock_notify:
+    with patch("core.signals.detector.notification") as mock_notify:
         manager._send_desktop_notification(sample_opportunity, exchange="bitfinex")
         
         mock_notify.notify.assert_called_once()
@@ -241,11 +241,11 @@ def test_alert_integration(sample_opportunity, temp_log_dir):
     webhook_url = "https://discord.com/api/webhooks/test"
     manager = AlertManager(enabled=True, webhook_url=webhook_url, log_dir=temp_log_dir)
     
-    with patch("plyer.notification") as mock_notify:
-        with patch("requests.post") as mock_webhook:
+    with patch("core.signals.detector.notification") as mock_notify:
+        with patch("core.signals.detector.requests") as mock_requests_module:
             mock_response = MagicMock()
             mock_response.raise_for_status = MagicMock()
-            mock_webhook.return_value = mock_response
+            mock_requests_module.post.return_value = mock_response
             
             manager.alert(sample_opportunity, exchange="bitfinex")
             
@@ -257,7 +257,7 @@ def test_alert_integration(sample_opportunity, temp_log_dir):
             mock_notify.notify.assert_called_once()
             
             # Verify webhook
-            mock_webhook.assert_called_once()
+            mock_requests_module.post.assert_called_once()
 
 
 def test_no_secrets_in_logs(sample_opportunity, temp_log_dir):
