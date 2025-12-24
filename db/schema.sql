@@ -346,6 +346,23 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_time
     ON audit_events(event_time DESC);
 
 
+-- ================
+-- Automation rules
+-- ================
+
+CREATE TABLE IF NOT EXISTS automation_rules (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(50),  -- NULL = global
+    rule_type VARCHAR(50) NOT NULL,
+    value JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_automation_rules_symbol
+    ON automation_rules(symbol, rule_type, is_active);
+
+
 -- ============================
 -- Paper trading (simulation)
 -- ============================
