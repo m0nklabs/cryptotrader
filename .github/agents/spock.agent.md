@@ -77,5 +77,7 @@ Recognize explicit interrupts:
 To activate the Copilot Coding Agent on a GitHub issue or PR:
 - **Mention `@copilot` in a comment** — this is required.
 - MCP tools alone (e.g., `assign_copilot_to_issue`) do not trigger the agent.
-- Format: "@copilot [instruction]" in the issue/PR comment thread.
+- **If a PR already exists** (linked to the issue): post `@copilot` in the **PR**, not the issue. This applies when the PR stalled due to rate limits or interruptions.
+- **If no PR exists**: post `@copilot` in the **issue** to start fresh.
+- Format: "@copilot [instruction]" in the appropriate thread.
 ```

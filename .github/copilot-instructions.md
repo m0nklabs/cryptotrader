@@ -65,4 +65,6 @@ These instructions apply to GitHub Copilot in the context of this repository.
 
 - To activate the Copilot Coding Agent on an issue or PR, you **must** mention `@copilot` in a comment.
 - Using MCP tools like `assign_copilot_to_issue` alone is insufficient — the agent only starts work when explicitly mentioned.
-- Example: "@copilot please implement the missing tests for this PR."
+- **If a PR already exists** (linked to the issue), post the `@copilot` comment **in the PR**, not the issue. This is especially important when the PR stalled due to rate limits or other interruptions.
+- **If no PR exists yet**, post the `@copilot` comment in the issue to start fresh.
+- Example: "@copilot please continue implementing the missing tests."
