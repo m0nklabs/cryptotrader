@@ -25,6 +25,40 @@ Run an import smoke test:
 - Lint: `ruff check .`
 - Tests: `pytest`
 
+## Bitfinex API credentials
+
+The Bitfinex client supports both public and authenticated (read-only) endpoints.
+
+**Environment variables** (set in `.env` or shell, never commit secrets):
+
+- `BITFINEX_API_KEY` - Your Bitfinex API key
+- `BITFINEX_API_SECRET` - Your Bitfinex API secret
+- Alternative env var names also supported: `BITFINEX_API_KEY_MAIN`, `BITFINEX_API_KEY_SUB`, `BITFINEX_API_KEY_TEST`, etc.
+
+**Usage example** (authenticated read-only endpoint):
+
+```python
+from cex.bitfinex.api.bitfinex_client_v2 import BitfinexClient
+
+# Client reads credentials from environment variables
+client = BitfinexClient()
+
+# Or pass credentials explicitly (not recommended, prefer env vars)
+# client = BitfinexClient(api_key="...", api_secret="...")
+
+# Get wallet balances (read-only, safe)
+wallets = client.get_wallets()
+for wallet in wallets:
+    print(f"{wallet['type']:10} {wallet['currency']:6} {wallet['balance']:>12.8f}")
+```
+
+**Security notes**:
+
+- Never log or print API keys/secrets
+- Only read-only endpoints are implemented (wallets, account info)
+- Trading/execution endpoints are intentionally excluded to prevent accidental live trading
+- Use separate API keys with read-only permissions when possible
+
 ## Bitfinex candle download smoke test (no DB)
 
 To verify you can download candles from Bitfinex public endpoints without configuring Postgres:
@@ -167,15 +201,90 @@ Detect-only:
 
 - `python -m core.market_data.bitfinex_gap_repair --symbol BTCUSD --timeframe 1h --start 2025-01-01 --end 2025-02-01 --detect-only`
 
-## VS Code terminal stability
+## Read-only API (FastAPI)
 
-If the integrated terminal is unstable/crashing:
+This repo includes a minimal read-only API for candles, health checks, and ingestion status.
 
-- Workspace setting: `terminal.integrated.gpuAcceleration`: "off"
-- This repo already includes: `.vscode/settings.json`
+Prereqs:
 
-## Frontend (dashboard skeleton)
+- `DATABASE_URL` set (see `.env.example`)
+- Install dependencies: `pip install -r requirements.txt`
 
-There is a minimal dashboard UI skeleton under `frontend/`.
+Run the API server:
 
-- See: `docs/FRONTEND.md`
+- `python scripts/run_api.py`
+- Default: binds to `127.0.0.1:8000`
+- Custom host/port: `python scripts/run_api.py --host 0.0.0.0 --port 8000`
+- Dev mode (auto-reload): `python scripts/run_api.py --reload`
+
+Or directly with uvicorn:
+
+- `uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload`
+
+### Endpoints
+
+#### GET /health
+
+Database connectivity and schema check.
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+#### GET /candles/latest
+
+Latest candles for a specific exchange/symbol/timeframe.
+
+Parameters:
+
+- `exchange` (optional, default: "bitfinex"): Exchange name
+- `symbol` (required): Trading symbol (e.g., BTCUSD)
+- `timeframe` (required): Timeframe (e.g., 1m, 5m, 1h)
+- `limit` (optional, default: 100, max: 5000): Number of candles
+
+```bash
+curl "http://127.0.0.1:8000/candles/latest?symbol=BTCUSD&timeframe=1h&limit=50"
+```
+
+#### GET /ingestion/status
+
+Query ingestion freshness for a specific exchange/symbol/timeframe.
+
+Parameters:
+
+- `exchange` (optional, default: "bitfinex"): Exchange name
+- `symbol` (required): Trading symbol (e.g., BTCUSD)
+- `timeframe` (required): Timeframe (e.g., 1m, 1h)
+
+```bash
+curl "http://127.0.0.1:8000/ingestion/status?symbol=BTCUSD&timeframe=1m"
+```
+
+Response:
+
+```json
+{
+  "latest_candle_open_time": 1704110400000,
+  "candles_count": 1440,
+  "schema_ok": true,
+  "db_ok": true
+}
+```
+
+Fields:
+
+- `latest_candle_open_time`: Unix timestamp in milliseconds of the latest candle (null if no data)
+- `candles_count`: Total number of candles for this exchange/symbol/timeframe
+- `schema_ok`: Boolean indicating if the candles table exists
+- `db_ok`: Boolean indicating if database connection is working
+
+### API docs (interactive)
+
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- ReDoc: `http://127.0.0.1:8000/redoc`
+
+### Security notes
+
+- Does not expose DATABASE_URL or other secrets
+- Read-only endpoints only (no trading/execution)
+- Intended for local network use (no authentication)
