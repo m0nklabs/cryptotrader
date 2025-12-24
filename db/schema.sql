@@ -363,24 +363,37 @@ CREATE INDEX IF NOT EXISTS idx_automation_rules_symbol
     ON automation_rules(symbol, rule_type, is_active);
 
 
--- =====================================
--- Audit log (automation decision trail)
--- =====================================
+-- ============================
+-- Paper trading (simulation)
+-- ============================
 
-CREATE TABLE IF NOT EXISTS audit_log (
+CREATE TABLE IF NOT EXISTS paper_orders (
     id BIGSERIAL PRIMARY KEY,
-    event_type VARCHAR(50) NOT NULL,
-    symbol VARCHAR(50),
-    decision VARCHAR(20),  -- EXECUTE/REJECT/SKIP
-    reason TEXT,
-    context JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    symbol VARCHAR(50) NOT NULL,
+    side VARCHAR(10) NOT NULL,  -- BUY/SELL
+    order_type VARCHAR(20) NOT NULL,  -- MARKET/LIMIT
+    qty DECIMAL(20,8) NOT NULL,
+    limit_price DECIMAL(20,8),
+    status VARCHAR(20) NOT NULL,  -- PENDING/FILLED/CANCELLED
+    fill_price DECIMAL(20,8),
+    slippage_bps DECIMAL(10,4),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    filled_at TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_log_time
-    ON audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_paper_orders_symbol_status
+    ON paper_orders(symbol, status, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_audit_log_symbol_time
-    ON audit_log(symbol, created_at DESC);
+CREATE TABLE IF NOT EXISTS paper_positions (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(50) UNIQUE NOT NULL,
+    qty DECIMAL(20,8) NOT NULL,
+    avg_entry DECIMAL(20,8) NOT NULL,
+    realized_pnl DECIMAL(20,8) DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_positions_symbol
+    ON paper_positions(symbol);
 
 COMMIT;

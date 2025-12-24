@@ -239,17 +239,3 @@ class AutomationRule:
     is_active: bool = True
     id: Optional[int] = None
     created_at: Optional[datetime] = None
-
-
-DecisionType = Literal["EXECUTE", "REJECT", "SKIP"]
-
-
-@dataclass(frozen=True)
-class AuditLogEntry:
-    event_type: str
-    decision: Optional[DecisionType] = None
-    symbol: Optional[str] = None
-    reason: Optional[str] = None
-    context: Optional[Mapping[str, object]] = None
-    created_at: Optional[datetime] = None
-    id: Optional[int] = None

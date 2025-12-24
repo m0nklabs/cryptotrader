@@ -69,6 +69,15 @@ Restart / stop:
 
 ### systemd --user timers/services
 
+Quickstart (examples use instance format `@SYMBOL-TIMEFRAME`, e.g. `@BTCUSD-1m`):
+
+- Reload unit files after changes: `systemctl --user daemon-reload`
+- Enable + start realtime ingest: `systemctl --user enable --now cryptotrader-bitfinex-realtime@BTCUSD-1m.timer`
+- Disable + stop realtime ingest: `systemctl --user disable --now cryptotrader-bitfinex-realtime@BTCUSD-1m.timer`
+- Enable + start gap repair: `systemctl --user enable --now cryptotrader-bitfinex-gap-repair@BTCUSD-1m.timer`
+- Disable + stop gap repair: `systemctl --user disable --now cryptotrader-bitfinex-gap-repair@BTCUSD-1m.timer`
+- Follow logs (service): `journalctl --user -u cryptotrader-bitfinex-backfill@BTCUSD-1m.service -f`
+
 - List timers (next run + last run, includes inactive):\
   `systemctl --user list-timers --all | grep -E 'cryptotrader-(bitfinex|frontend)'`
 - Service/timer status (examples):\

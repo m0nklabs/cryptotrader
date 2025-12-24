@@ -85,6 +85,23 @@ class _Handler(BaseHTTPRequestHandler):
 
             return _json_response(self, status=200, payload=summary)
 
+        if parsed.path == "/api/ingestion/status":
+            qs = parse_qs(parsed.query)
+            exchange = (qs.get("exchange") or ["bitfinex"])[0].strip()
+            symbol = (qs.get("symbol") or ["BTCUSD"])[0].strip().upper()
+            timeframe = (qs.get("timeframe") or ["1m"])[0].strip()
+            try:
+                status = _fetch_ingestion_status(
+                    stores=self.server.stores,
+                    exchange=exchange,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                )
+            except Exception as exc:  # pragma: no cover
+                return _json_response(self, status=500, payload={"error": "db_error", "detail": type(exc).__name__})
+
+            return _json_response(self, status=200, payload=status)
+
         if parsed.path == "/api/signals":
             qs = parse_qs(parsed.query)
             exchange = (qs.get("exchange") or ["bitfinex"])[0].strip()
@@ -283,6 +300,81 @@ def _fetch_gap_summary(*, stores: PostgresStores) -> dict[str, Any]:
     }
 
 
+def _fetch_ingestion_status(
+    *,
+    stores: PostgresStores,
+    exchange: str,
+    symbol: str,
+    timeframe: str,
+) -> dict[str, Any]:
+    """Fetch combined ingestion status: API reachable + latest candle time + gap stats."""
+    engine = stores._get_engine()  # noqa: SLF001
+    _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+    candle_stmt = text(
+        """
+        SELECT MAX(open_time) AS latest_open_time
+        FROM candles
+        WHERE exchange = :exchange
+          AND symbol = :symbol
+          AND timeframe = :timeframe
+        """
+    )
+
+    # Gap stats scoped to the requested stream
+    gap_stmt = text(
+        f"""
+        SELECT
+            COUNT(*) FILTER (WHERE repaired_at IS NULL) AS open_gaps,
+            COUNT(*) FILTER (WHERE repaired_at >= NOW() - INTERVAL '{_GAP_STATS_WINDOW_HOURS} hours') AS repaired_24h,
+            MIN(expected_open_time) FILTER (WHERE repaired_at IS NULL) AS oldest_open_gap
+        FROM candle_gaps
+        WHERE exchange = :exchange
+          AND symbol = :symbol
+          AND timeframe = :timeframe
+        """
+    )
+
+    params = {"exchange": exchange, "symbol": symbol, "timeframe": timeframe}
+
+    with engine.begin() as conn:
+        candle_row = conn.execute(candle_stmt, params).fetchone()
+        gap_row = conn.execute(gap_stmt, params).fetchone()
+
+    latest_candle_ms: int | None = None
+    if candle_row is not None and candle_row[0] is not None:
+        dt = _as_utc(candle_row[0])
+        latest_candle_ms = int(dt.timestamp() * 1000)
+
+    if gap_row is None:
+        gap_stats = {
+            "open_gaps": 0,
+            "repaired_24h": 0,
+            "oldest_open_gap": None,
+        }
+    else:
+        open_gaps, repaired_24h, oldest_gap = gap_row
+        oldest_gap_ms: int | None = None
+        if oldest_gap is not None:
+            dt = _as_utc(oldest_gap)
+            oldest_gap_ms = int(dt.timestamp() * 1000)
+
+        gap_stats = {
+            "open_gaps": int(open_gaps),
+            "repaired_24h": int(repaired_24h),
+            "oldest_open_gap": oldest_gap_ms,
+        }
+
+    return {
+        "api_reachable": True,  # If we got here, API is working
+        "exchange": exchange,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "latest_candle_time": latest_candle_ms,
+        "gap_stats": gap_stats,
+    }
+
+
 def _fetch_signals(
     *,
     stores: PostgresStores,
@@ -329,14 +421,6 @@ def _fetch_signals(
         )
 
     return out
-        dt = _as_utc(oldest_gap)
-        oldest_gap_ms = int(dt.timestamp() * 1000)
-
-    return {
-        "open_gaps": int(open_gaps),
-        "repaired_24h": int(repaired_24h),
-        "oldest_open_gap": oldest_gap_ms,
-    }
 
 
 def main() -> int:
