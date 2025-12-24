@@ -14,13 +14,17 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
+from core.fees.model import FeeModel
 from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
+from core.types import FeeBreakdown
 
 app = FastAPI(
     title="CryptoTrader Read-Only API",
@@ -48,6 +52,25 @@ def _as_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+class FeesEstimateRequest(BaseModel):
+    taker: bool = True
+    gross_notional: Decimal = Field(..., gt=0)
+
+    currency: str = Field("USD", min_length=1)
+    maker_fee_rate: Decimal = Field(Decimal("0"), ge=0)
+    taker_fee_rate: Decimal = Field(Decimal("0"), ge=0)
+    assumed_spread_bps: int = Field(0, ge=0)
+    assumed_slippage_bps: int = Field(0, ge=0)
+
+
+class FeesEstimateResponse(BaseModel):
+    fee_total: Decimal
+    spread_cost: Decimal
+    slippage_cost: Decimal
+    minimum_edge_rate: Decimal
+    minimum_edge_bps: Decimal
 
 
 @app.get("/health")
@@ -194,6 +217,36 @@ async def get_ingestion_status(
         "schema_ok": schema_ok,
         "db_ok": db_ok,
     }
+
+
+@app.post("/fees/estimate", response_model=FeesEstimateResponse)
+async def estimate_fees(payload: FeesEstimateRequest) -> FeesEstimateResponse:
+    """Estimate trading costs for a gross notional amount.
+
+    This is a read-only helper endpoint intended for local tools and UI.
+    """
+    model = FeeModel(
+        FeeBreakdown(
+            currency=payload.currency,
+            maker_fee_rate=payload.maker_fee_rate,
+            taker_fee_rate=payload.taker_fee_rate,
+            assumed_spread_bps=payload.assumed_spread_bps,
+            assumed_slippage_bps=payload.assumed_slippage_bps,
+        )
+    )
+
+    try:
+        estimate = model.estimate_cost(gross_notional=payload.gross_notional, taker=payload.taker)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return FeesEstimateResponse(
+        fee_total=estimate.estimated_fees,
+        spread_cost=estimate.estimated_spread_cost,
+        slippage_cost=estimate.estimated_slippage_cost,
+        minimum_edge_rate=estimate.minimum_edge_rate,
+        minimum_edge_bps=estimate.minimum_edge_bps,
+    )
 
 
 @app.get("/candles/latest")

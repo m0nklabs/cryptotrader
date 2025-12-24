@@ -278,6 +278,38 @@ Fields:
 - `schema_ok`: Boolean indicating if the candles table exists
 - `db_ok`: Boolean indicating if database connection is working
 
+#### POST /fees/estimate
+
+Estimate trading costs for a given gross notional amount.
+
+Example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/fees/estimate \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "taker": true,
+    "gross_notional": "1000",
+    "currency": "USD",
+    "maker_fee_rate": "0.001",
+    "taker_fee_rate": "0.002",
+    "assumed_spread_bps": 5,
+    "assumed_slippage_bps": 10
+  }'
+```
+
+Response:
+
+```json
+{
+  "fee_total": "2.00000000",
+  "spread_cost": "0.50000000",
+  "slippage_cost": "1.00000000",
+  "minimum_edge_rate": "0.00350000",
+  "minimum_edge_bps": "35.00"
+}
+```
+
 ### API docs (interactive)
 
 - Swagger UI: `http://127.0.0.1:8000/docs`

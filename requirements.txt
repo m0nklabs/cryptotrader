@@ -2,10 +2,6 @@
 python-dotenv>=1.0.0
 requests>=2.31.0
 
-# API (FastAPI)
-fastapi>=0.115.0
-uvicorn>=0.32.0
-
 # Technical analysis
 pandas>=2.1.0
 numpy>=1.26.0
