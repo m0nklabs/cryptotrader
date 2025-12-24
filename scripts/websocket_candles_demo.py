@@ -16,9 +16,12 @@ import signal
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, '/home/runner/work/cryptotrader/cryptotrader')
+# Add parent directory to path for imports when running as script
+if __name__ == '__main__':
+    repo_root = Path(__file__).parent.parent
+    sys.path.insert(0, str(repo_root))
 
 from core.market_data.websocket_provider import BitfinexWebSocketCandleProvider
 from core.types import Candle
