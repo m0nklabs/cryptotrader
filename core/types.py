@@ -229,3 +229,13 @@ class OpportunitySnapshot:
     exchange: Optional[str] = None
     signals: Sequence[IndicatorSignal] = ()
     created_at: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
+class AutomationRule:
+    rule_type: str
+    value: Mapping[str, object]
+    symbol: Optional[str] = None
+    is_active: bool = True
+    id: Optional[int] = None
+    created_at: Optional[datetime] = None

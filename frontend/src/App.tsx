@@ -51,6 +51,7 @@ function Kvp({ k, v }: { k: string; v: ReactNode }) {
 
 const GAP_STATS_REFRESH_INTERVAL_MS = 60_000
 const SIGNALS_REFRESH_INTERVAL_MS = 30_000
+const INGESTION_STATUS_REFRESH_INTERVAL_MS = 15_000
 
 type Signal = {
   symbol: string
@@ -94,6 +95,21 @@ export default function App() {
 
   const [signals, setSignals] = useState<Signal[]>([])
   const [signalsError, setSignalsError] = useState<string | null>(null)
+
+  const [ingestionStatus, setIngestionStatus] = useState<{
+    apiReachable: boolean
+    btcusd1mLatestTime: number | null
+    gapStats: {
+      open_gaps: number
+      repaired_24h: number
+      oldest_open_gap: number | null
+    } | null
+  }>({
+    apiReachable: false,
+    btcusd1mLatestTime: null,
+    gapStats: null,
+  })
+  const [ingestionStatusError, setIngestionStatusError] = useState<string | null>(null)
 
   const marketCapRank: Record<string, number> = {
     BTC: 1,
@@ -422,6 +438,112 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    let mounted = true
+    let inFlight: AbortController | null = null
+
+    const load = () => {
+      if (!mounted) return
+      if (inFlight) inFlight.abort()
+      const controller = new AbortController()
+      inFlight = controller
+
+      setIngestionStatusError(null)
+
+      const fallbackToLegacy = async (): Promise<{ apiReachable: boolean; latestTime: number | null }> => {
+        const resp = await fetch('/api/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', {
+          signal: controller.signal,
+        })
+        const bodyText = await resp.text()
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+
+        let payload: unknown
+        try {
+          payload = JSON.parse(bodyText) as unknown
+        } catch {
+          throw new Error('Non-JSON response')
+        }
+
+        if (!payload || typeof payload !== 'object') throw new Error('Unexpected response format')
+
+        const data = payload as { api_reachable?: unknown; latest_candle_time?: unknown }
+        return {
+          apiReachable: data.api_reachable === true,
+          latestTime: typeof data.latest_candle_time === 'number' ? data.latest_candle_time : null,
+        }
+      }
+
+      const healthCheck = async (): Promise<boolean> => {
+        try {
+          const resp = await fetch('/health', { signal: controller.signal })
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          return true
+        } catch {
+          const resp = await fetch('/healthz', { signal: controller.signal })
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          return true
+        }
+      }
+
+      const fastApiIngestion = async (): Promise<number | null> => {
+        const resp = await fetch('/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', {
+          signal: controller.signal,
+        })
+        const bodyText = await resp.text()
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+
+        let payload: unknown
+        try {
+          payload = JSON.parse(bodyText) as unknown
+        } catch {
+          throw new Error('Non-JSON response')
+        }
+
+        if (!payload || typeof payload !== 'object') throw new Error('Unexpected response format')
+
+        const data = payload as { latest_candle_open_time?: unknown }
+        return typeof data.latest_candle_open_time === 'number' ? data.latest_candle_open_time : null
+      }
+
+      Promise.all([healthCheck(), fastApiIngestion()])
+        .then(([apiReachable, latestTime]) => {
+          setIngestionStatus({
+            apiReachable,
+            btcusd1mLatestTime: latestTime,
+            gapStats: gapStats,
+          })
+        })
+        .catch(() => {
+          return fallbackToLegacy().then(({ apiReachable, latestTime }) => {
+            setIngestionStatus({
+              apiReachable,
+              btcusd1mLatestTime: latestTime,
+              gapStats: gapStats,
+            })
+          })
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          setIngestionStatusError(`API check failed (${message})`)
+          setIngestionStatus({
+            apiReachable: false,
+            btcusd1mLatestTime: null,
+            gapStats: gapStats,
+          })
+        })
+    }
+
+    load()
+    const id = window.setInterval(load, INGESTION_STATUS_REFRESH_INTERVAL_MS)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+      if (inFlight) inFlight.abort()
+    }
+  }, [gapStats])
+
   const onChartWheel = (ev: React.WheelEvent<HTMLDivElement>) => {
     // Wheel zoom: scroll up -> zoom in (fewer candles), scroll down -> zoom out (more candles).
     // Keep it simple: adjust the fetched window size.
@@ -596,10 +718,42 @@ export default function App() {
               </Panel>
 
               <Panel title="Market Data" subtitle="Bitfinex candles (OHLCV)">
-                <Kvp k="Status" v="Not connected" />
-                <div className="mt-2">
-                  <Kvp k="Latest run" v="—" />
-                </div>
+                {ingestionStatusError ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">{ingestionStatusError}</div>
+                ) : (
+                  <>
+                    <Kvp
+                      k="API"
+                      v={
+                        <span className={ingestionStatus.apiReachable ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                          {ingestionStatus.apiReachable ? 'Reachable' : 'Unreachable'}
+                        </span>
+                      }
+                    />
+                    <div className="mt-2">
+                      <Kvp
+                        k="BTCUSD-1m latest"
+                        v={
+                          ingestionStatus.btcusd1mLatestTime !== null
+                            ? new Date(ingestionStatus.btcusd1mLatestTime).toISOString().slice(0, 16).replace('T', ' ')
+                            : '—'
+                        }
+                      />
+                    </div>
+                    {ingestionStatus.gapStats && (
+                      <div className="mt-2">
+                        <Kvp
+                          k="Open gaps"
+                          v={
+                            <span className={ingestionStatus.gapStats.open_gaps > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}>
+                              {ingestionStatus.gapStats.open_gaps}
+                            </span>
+                          }
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
               </Panel>
             </div>
 

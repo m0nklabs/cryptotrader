@@ -2,7 +2,6 @@
 
 import argparse
 import os
-from typing import List, Tuple
 
 from sqlalchemy import create_engine, text
 
