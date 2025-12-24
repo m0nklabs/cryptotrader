@@ -212,11 +212,13 @@ export default function App() {
   useEffect(() => {
     let mounted = true
     let inFlight: AbortController | null = null
+    let eventSource: EventSource | null = null
+    let pollInterval: number | null = null
 
     const exchange = 'bitfinex'
     const timeframe = chartTimeframe
 
-    const load = () => {
+    const loadFromAPI = () => {
       if (!mounted) return
       if (inFlight) inFlight.abort()
       const controller = new AbortController()
@@ -278,12 +280,86 @@ export default function App() {
         })
     }
 
-    load()
-    const id = window.setInterval(load, 15_000)
+    const connectSSE = () => {
+      if (!mounted) return
+
+      const sseUrl = `/api/candles/stream?symbol=${encodeURIComponent(chartSymbol)}&timeframe=${encodeURIComponent(timeframe)}`
+
+      try {
+        eventSource = new EventSource(sseUrl)
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+
+            if (data.type === 'connected') {
+              console.log(`SSE connected for ${data.symbol} ${data.timeframe}`)
+              return
+            }
+
+            if (data.type === 'candle_update' && data.candle) {
+              const newCandle = data.candle
+              setChartCandles((prev) => {
+                // Check if this candle already exists
+                const existingIndex = prev.findIndex((c) => c.t === newCandle.t)
+                if (existingIndex !== -1) {
+                  // Update existing candle
+                  const updated = [...prev]
+                  updated[existingIndex] = newCandle
+                  return updated
+                } else {
+                  // Add new candle and keep limit
+                  const updated = [...prev, newCandle].slice(-chartLimit)
+                  return updated
+                }
+              })
+            }
+          } catch (err) {
+            console.error('Failed to parse SSE message:', err)
+          }
+        }
+
+        eventSource.onerror = () => {
+          console.log('SSE connection error, falling back to polling')
+          if (eventSource) {
+            eventSource.close()
+            eventSource = null
+          }
+          // Fall back to polling
+          if (mounted && !pollInterval) {
+            loadFromAPI()
+            pollInterval = window.setInterval(loadFromAPI, 15_000)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to create EventSource:', err)
+        // Fall back to polling immediately
+        loadFromAPI()
+        pollInterval = window.setInterval(loadFromAPI, 15_000)
+      }
+    }
+
+    // Load initial data
+    loadFromAPI()
+
+    // Try SSE connection after initial load
+    const sseTimeout = setTimeout(() => {
+      if (mounted) {
+        connectSSE()
+      }
+    }, 1000)
 
     return () => {
       mounted = false
-      window.clearInterval(id)
+      if (sseTimeout) clearTimeout(sseTimeout)
+      if (eventSource) {
+        eventSource.close()
+        eventSource = null
+      }
+      if (pollInterval) {
+        window.clearInterval(pollInterval)
+        pollInterval = null
+      }
       if (inFlight) inFlight.abort()
     }
   }, [chartSymbol, chartTimeframe, chartLimit])

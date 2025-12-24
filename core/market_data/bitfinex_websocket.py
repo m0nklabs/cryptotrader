@@ -6,7 +6,6 @@ import json
 import logging
 import threading
 import time
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -14,7 +13,7 @@ from typing import Any, Callable
 
 import websocket
 
-from core.types import Candle, Timeframe
+from core.types import Candle
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +238,7 @@ class BitfinexWebSocketManager:
             return Candle(
                 exchange="bitfinex",
                 symbol=symbol,
-                timeframe=Timeframe(timeframe),
+                timeframe=timeframe,  # type: ignore[arg-type]
                 open_time=open_time,
                 close_time=close_time,
                 open=Decimal(str(data[1])),

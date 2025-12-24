@@ -8,7 +8,6 @@ import queue
 import re
 import sys
 import threading
-import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -53,6 +52,11 @@ class _Server(ThreadingHTTPServer):
     def __init__(self, server_address: tuple[str, int], stores: PostgresStores):
         super().__init__(server_address, _Handler)
         self.stores = stores
+        self.ws_manager: BitfinexWebSocketManager | None = None
+        self.candle_cache: dict[str, dict[str, Any]] = {}  # Key: "symbol:timeframe" -> candle data
+        self.candle_cache_lock = threading.Lock()
+        self.sse_clients: list[queue.Queue[str]] = []
+        self.sse_clients_lock = threading.Lock()
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -125,6 +129,60 @@ class _Handler(BaseHTTPRequestHandler):
                     "signals": signals,
                 },
             )
+
+        if parsed.path == "/api/candles/stream":
+            # SSE endpoint for real-time candle updates
+            qs = parse_qs(parsed.query)
+            symbol = (qs.get("symbol") or [""])[0].strip().upper()
+            timeframe = (qs.get("timeframe") or [""])[0].strip()
+
+            if not symbol or not _SYMBOL_RE.match(symbol):
+                return _json_response(self, status=400, payload={"error": "invalid_symbol"})
+            if not timeframe or not _TIMEFRAME_RE.match(timeframe):
+                return _json_response(self, status=400, payload={"error": "invalid_timeframe"})
+
+            # Set up SSE headers
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+
+            # Create a queue for this client
+            client_queue: queue.Queue[str] = queue.Queue(maxsize=100)
+            with self.server.sse_clients_lock:
+                self.server.sse_clients.append(client_queue)
+
+            # Subscribe to WebSocket updates if manager exists
+            if self.server.ws_manager:
+                self.server.ws_manager.subscribe(symbol, timeframe)
+
+            try:
+                # Send initial connection message
+                self.wfile.write(f"data: {json.dumps({'type': 'connected', 'symbol': symbol, 'timeframe': timeframe})}\n\n".encode())
+                self.wfile.flush()
+
+                # Send heartbeat and updates
+                while True:
+                    try:
+                        # Wait for updates with timeout for heartbeat
+                        msg = client_queue.get(timeout=30)
+                        self.wfile.write(f"data: {msg}\n\n".encode())
+                        self.wfile.flush()
+                    except queue.Empty:
+                        # Send heartbeat to keep connection alive
+                        self.wfile.write(": heartbeat\n\n".encode())
+                        self.wfile.flush()
+                    except Exception:
+                        break
+            except Exception:
+                pass
+            finally:
+                # Clean up
+                with self.server.sse_clients_lock:
+                    if client_queue in self.server.sse_clients:
+                        self.server.sse_clients.remove(client_queue)
+            return
 
         if parsed.path != "/api/candles":
             return _json_response(self, status=404, payload={"error": "not_found"})
@@ -336,20 +394,50 @@ def _fetch_signals(
         )
 
     return out
-        dt = _as_utc(oldest_gap)
-        oldest_gap_ms = int(dt.timestamp() * 1000)
 
-    return {
-        "open_gaps": int(open_gaps),
-        "repaired_24h": int(repaired_24h),
-        "oldest_open_gap": oldest_gap_ms,
+
+def _on_candle_update(server: _Server, update: CandleUpdate) -> None:
+    """Callback when WebSocket receives a candle update."""
+    cache_key = f"{update.symbol}:{update.timeframe}"
+    
+    # Update in-memory cache
+    candle_data = {
+        "t": int(update.candle.open_time.timestamp() * 1000),
+        "o": float(update.candle.open),
+        "h": float(update.candle.high),
+        "l": float(update.candle.low),
+        "c": float(update.candle.close),
+        "v": float(update.candle.volume),
     }
+    
+    with server.candle_cache_lock:
+        server.candle_cache[cache_key] = candle_data
+    
+    # Broadcast to SSE clients
+    msg = json.dumps({
+        "type": "candle_update",
+        "exchange": update.exchange,
+        "symbol": update.symbol,
+        "timeframe": update.timeframe,
+        "candle": candle_data,
+    })
+    
+    with server.sse_clients_lock:
+        for client_queue in server.sse_clients[:]:  # Copy list to avoid modification during iteration
+            try:
+                client_queue.put_nowait(msg)
+            except queue.Full:
+                # Skip if queue is full
+                pass
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    
     p = argparse.ArgumentParser(description="Minimal local API for the dashboard (DB-backed).")
     p.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
     p.add_argument("--port", type=int, default=8787, help="Bind port (default: 8787)")
+    p.add_argument("--enable-websocket", action="store_true", help="Enable real-time WebSocket candle updates")
     args = p.parse_args()
 
     database_url = os.environ.get("DATABASE_URL")
@@ -358,11 +446,24 @@ def main() -> int:
 
     stores = PostgresStores(config=PostgresConfig(database_url=database_url))
     httpd = _Server((args.host, args.port), stores)
+    
+    # Start WebSocket manager if enabled
+    if args.enable_websocket:
+        logger.info("Starting WebSocket manager for real-time candle updates")
+        httpd.ws_manager = BitfinexWebSocketManager(
+            callback=lambda update: _on_candle_update(httpd, update)
+        )
+        httpd.ws_manager.start()
+    
     try:
+        logger.info(f"Server listening on {args.host}:{args.port}")
         httpd.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
         return 0
     finally:
+        if httpd.ws_manager:
+            logger.info("Stopping WebSocket manager")
+            httpd.ws_manager.stop()
         httpd.server_close()
 
     return 0
