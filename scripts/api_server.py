@@ -311,7 +311,6 @@ def _fetch_ingestion_status(
     engine = stores._get_engine()  # noqa: SLF001
     _, text = stores._require_sqlalchemy()  # noqa: SLF001
 
-    # Get latest candle time for the specified symbol/timeframe
     candle_stmt = text(
         """
         SELECT MAX(open_time) AS latest_open_time
@@ -322,7 +321,7 @@ def _fetch_ingestion_status(
         """
     )
 
-    # Get gap summary
+    # Gap stats scoped to the requested stream
     gap_stmt = text(
         f"""
         SELECT
@@ -330,23 +329,23 @@ def _fetch_ingestion_status(
             COUNT(*) FILTER (WHERE repaired_at >= NOW() - INTERVAL '{_GAP_STATS_WINDOW_HOURS} hours') AS repaired_24h,
             MIN(expected_open_time) FILTER (WHERE repaired_at IS NULL) AS oldest_open_gap
         FROM candle_gaps
+        WHERE exchange = :exchange
+          AND symbol = :symbol
+          AND timeframe = :timeframe
         """
     )
 
-    with engine.begin() as conn:
-        candle_row = conn.execute(
-            candle_stmt,
-            {"exchange": exchange, "symbol": symbol, "timeframe": timeframe},
-        ).fetchone()
-        gap_row = conn.execute(gap_stmt).fetchone()
+    params = {"exchange": exchange, "symbol": symbol, "timeframe": timeframe}
 
-    # Process candle time
+    with engine.begin() as conn:
+        candle_row = conn.execute(candle_stmt, params).fetchone()
+        gap_row = conn.execute(gap_stmt, params).fetchone()
+
     latest_candle_ms: int | None = None
     if candle_row is not None and candle_row[0] is not None:
         dt = _as_utc(candle_row[0])
         latest_candle_ms = int(dt.timestamp() * 1000)
 
-    # Process gap stats
     if gap_row is None:
         gap_stats = {
             "open_gaps": 0,
