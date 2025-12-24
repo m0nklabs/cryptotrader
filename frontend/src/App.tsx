@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import CandlestickChart from './components/CandlestickChart'
 
 type Theme = 'light' | 'dark'
 
@@ -648,57 +649,6 @@ export default function App() {
     })
   }
 
-  const btcusdChart = useMemo(() => {
-    if (!chartCandles.length) return null
-
-    const width = 720
-    const height = 320
-    const paddingX = 10
-    const paddingY = 12
-    const volumeHeight = 70
-    const priceHeight = height - volumeHeight
-
-    const lows = chartCandles.map((c) => c.l)
-    const highs = chartCandles.map((c) => c.h)
-    const min = Math.min(...lows)
-    const max = Math.max(...highs)
-    const range = max - min
-    const safeRange = range === 0 ? 1 : range
-
-    const volumes = chartCandles.map((c) => c.v)
-    const volMax = Math.max(1, ...volumes)
-
-    const x0 = paddingX
-    const x1 = width - paddingX
-    const y0 = paddingY
-    const y1 = priceHeight - paddingY
-
-    const toX = (i: number) => x0 + ((i + 0.5) / chartCandles.length) * (x1 - x0)
-    const toY = (value: number) => y1 - ((value - min) / safeRange) * (y1 - y0)
-
-    const candleSpan = (x1 - x0) / Math.max(1, chartCandles.length)
-    const candleW = Math.max(1, candleSpan * 0.7)
-
-    const last = chartCandles[chartCandles.length - 1]
-    const lastTs = new Date(last.t).toISOString().slice(0, 16).replace('T', ' ')
-
-    return {
-      width,
-      height,
-      priceHeight,
-      volumeHeight,
-      x0,
-      x1,
-      candleW,
-      toX,
-      toY,
-      volMax,
-      lastClose: last.c,
-      lastTs,
-      candles: chartCandles,
-    }
-  }, [chartCandles])
-
   useEffect(() => {
     if (!settingsOpen) return
 
@@ -916,88 +866,35 @@ export default function App() {
                       </select>
                       <span className="whitespace-nowrap">(DB candles, window: {chartLimit})</span>
                     </div>
-                    {btcusdChart ? (
-                      <span>
-                        last: <span className="text-gray-900 dark:text-gray-100">{btcusdChart.lastClose.toFixed(2)}</span> @ {btcusdChart.lastTs}
-                      </span>
-                    ) : null}
                   </div>
 
-                  <div
-                    className="rounded border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900"
-                    onWheel={onChartWheel}
-                  >
+                  <div onWheel={onChartWheel}>
                     {chartLoading ? (
-                      <div className="text-xs text-gray-600 dark:text-gray-400">Loading candles…</div>
+                      <div className="rounded border border-gray-200 bg-white p-2 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
+                        Loading candles…
+                      </div>
                     ) : chartError ? (
-                      <div className="text-xs text-gray-600 dark:text-gray-400">{chartError}</div>
-                    ) : btcusdChart ? (
-                      <svg viewBox={`0 0 ${btcusdChart.width} ${btcusdChart.height}`} className="h-72 w-full">
-                        <rect
-                          x={0}
-                          y={0}
-                          width={btcusdChart.width}
-                          height={btcusdChart.height}
-                          className="fill-gray-50 dark:fill-gray-950"
-                        />
-
-                        {/* Price candlesticks */}
-                        {btcusdChart.candles.map((c, i) => {
-                          const x = btcusdChart.toX(i)
-                          const yHigh = btcusdChart.toY(c.h)
-                          const yLow = btcusdChart.toY(c.l)
-                          const yOpen = btcusdChart.toY(c.o)
-                          const yClose = btcusdChart.toY(c.c)
-                          const up = c.c >= c.o
-                          const bodyY = Math.min(yOpen, yClose)
-                          const bodyH = Math.max(1, Math.abs(yClose - yOpen))
-
-                          const wickClass = up
-                            ? 'stroke-gray-900 dark:stroke-gray-100'
-                            : 'stroke-gray-500 dark:stroke-gray-400'
-                          const bodyClass = up
-                            ? 'fill-gray-900 dark:fill-gray-100'
-                            : 'fill-gray-500 dark:fill-gray-400'
-
-                          return (
-                            <g key={c.t}>
-                              <line x1={x} y1={yHigh} x2={x} y2={yLow} className={wickClass} strokeWidth={1} />
-                              <rect
-                                x={x - btcusdChart.candleW / 2}
-                                y={bodyY}
-                                width={btcusdChart.candleW}
-                                height={bodyH}
-                                className={bodyClass}
-                              />
-                            </g>
-                          )
-                        })}
-
-                        {/* Volume bars */}
-                        {btcusdChart.candles.map((c, i) => {
-                          const x = btcusdChart.toX(i)
-                          const up = c.c >= c.o
-                          const barMaxH = btcusdChart.volumeHeight - 10
-                          const barH = Math.max(1, (c.v / btcusdChart.volMax) * barMaxH)
-                          const y = btcusdChart.priceHeight + (btcusdChart.volumeHeight - barH) - 4
-                          const barClass = up
-                            ? 'fill-gray-700 dark:fill-gray-300'
-                            : 'fill-gray-400 dark:fill-gray-600'
-
-                          return (
-                            <rect
-                              key={`v-${c.t}`}
-                              x={x - btcusdChart.candleW / 2}
-                              y={y}
-                              width={btcusdChart.candleW}
-                              height={barH}
-                              className={barClass}
-                            />
-                          )
-                        })}
-                      </svg>
+                      <div className="rounded border border-gray-200 bg-white p-2 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
+                        {chartError}
+                      </div>
+                    ) : chartCandles.length > 0 ? (
+                      <CandlestickChart
+                        candles={chartCandles.map((c) => ({
+                          time: Math.floor(c.t / 1000),
+                          open: c.o,
+                          high: c.h,
+                          low: c.l,
+                          close: c.c,
+                          volume: c.v,
+                        }))}
+                        symbol={chartSymbol}
+                        timeframe={chartTimeframe}
+                        height={320}
+                      />
                     ) : (
-                      <div className="text-xs text-gray-600 dark:text-gray-400">No candle data.</div>
+                      <div className="rounded border border-gray-200 bg-white p-2 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
+                        No candle data.
+                      </div>
                     )}
                   </div>
                 </div>
