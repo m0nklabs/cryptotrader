@@ -175,7 +175,7 @@ Detect-only:
 
 ## Read-only API (FastAPI)
 
-This repo includes a minimal read-only API for candles and health checks.
+This repo includes a minimal read-only API for candles, health checks, and ingestion status.
 
 Prereqs:
 
@@ -189,30 +189,74 @@ Run the API server:
 - Custom host/port: `python scripts/run_api.py --host 0.0.0.0 --port 8000`
 - Dev mode (auto-reload): `python scripts/run_api.py --reload`
 
-Endpoints:
+Or directly with uvicorn:
 
-- GET `/health` - Database connectivity and schema check
-- GET `/candles/latest?exchange=bitfinex&symbol=BTCUSD&timeframe=1m` - Latest candles
+- `uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload`
 
-API docs (interactive):
+### Endpoints
+
+#### GET /health
+
+Database connectivity and schema check.
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+#### GET /candles/latest
+
+Latest candles for a specific exchange/symbol/timeframe.
+
+Parameters:
+
+- `exchange` (optional, default: "bitfinex"): Exchange name
+- `symbol` (required): Trading symbol (e.g., BTCUSD)
+- `timeframe` (required): Timeframe (e.g., 1m, 5m, 1h)
+- `limit` (optional, default: 100, max: 5000): Number of candles
+
+```bash
+curl "http://127.0.0.1:8000/candles/latest?symbol=BTCUSD&timeframe=1h&limit=50"
+```
+
+#### GET /ingestion/status
+
+Query ingestion freshness for a specific exchange/symbol/timeframe.
+
+Parameters:
+
+- `exchange` (optional, default: "bitfinex"): Exchange name
+- `symbol` (required): Trading symbol (e.g., BTCUSD)
+- `timeframe` (required): Timeframe (e.g., 1m, 1h)
+
+```bash
+curl "http://127.0.0.1:8000/ingestion/status?symbol=BTCUSD&timeframe=1m"
+```
+
+Response:
+
+```json
+{
+  "latest_candle_open_time": 1704110400000,
+  "candles_count": 1440,
+  "schema_ok": true,
+  "db_ok": true
+}
+```
+
+Fields:
+
+- `latest_candle_open_time`: Unix timestamp in milliseconds of the latest candle (null if no data)
+- `candles_count`: Total number of candles for this exchange/symbol/timeframe
+- `schema_ok`: Boolean indicating if the candles table exists
+- `db_ok`: Boolean indicating if database connection is working
+
+### API docs (interactive)
 
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - ReDoc: `http://127.0.0.1:8000/redoc`
 
-Examples:
+### Security notes
 
-- `curl http://127.0.0.1:8000/health`
-- `curl "http://127.0.0.1:8000/candles/latest?symbol=BTCUSD&timeframe=1h&limit=50"`
-
-## VS Code terminal stability
-
-If the integrated terminal is unstable/crashing:
-
-- Workspace setting: `terminal.integrated.gpuAcceleration`: "off"
-- This repo already includes: `.vscode/settings.json`
-
-## Frontend (dashboard skeleton)
-
-There is a minimal dashboard UI skeleton under `frontend/`.
-
-- See: `docs/FRONTEND.md`
+- Does not expose DATABASE_URL or other secrets
+- Read-only endpoints only (no trading/execution)
+- Intended for local network use (no authentication)
