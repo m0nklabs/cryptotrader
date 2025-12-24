@@ -99,9 +99,15 @@ export default function App() {
   const [ingestionStatus, setIngestionStatus] = useState<{
     apiReachable: boolean
     btcusd1mLatestTime: number | null
+    gapStats: {
+      open_gaps: number
+      repaired_24h: number
+      oldest_open_gap: number | null
+    } | null
   }>({
     apiReachable: false,
     btcusd1mLatestTime: null,
+    gapStats: null,
   })
   const [ingestionStatusError, setIngestionStatusError] = useState<string | null>(null)
 
@@ -444,8 +450,8 @@ export default function App() {
 
       setIngestionStatusError(null)
 
-      // Check health endpoint first
-      fetch('/healthz', { signal: controller.signal })
+      // Use the new combined ingestion status endpoint
+      fetch('/api/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', { signal: controller.signal })
         .then(async (resp) => {
           const bodyText = await resp.text()
           if (!resp.ok) {
@@ -459,50 +465,38 @@ export default function App() {
             throw new Error(`Non-JSON response`)
           }
 
-          const isOk = payload && typeof payload === 'object' && 'ok' in payload && payload.ok === true
-          if (!isOk) throw new Error('Health check failed')
-
-          // Now fetch available pairs to get BTCUSD-1m latest time
-          return fetch(`/api/candles/available?exchange=${encodeURIComponent('bitfinex')}`, {
-            signal: controller.signal,
-          })
-        })
-        .then(async (resp) => {
-          const bodyText = await resp.text()
-          if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status}`)
+          if (!payload || typeof payload !== 'object') {
+            throw new Error('Unexpected response format')
           }
 
-          let payload: unknown
-          try {
-            payload = JSON.parse(bodyText) as unknown
-          } catch {
-            throw new Error(`Non-JSON response`)
+          const data = payload as {
+            api_reachable?: unknown
+            latest_candle_time?: unknown
+            gap_stats?: unknown
           }
 
-          const pairs =
-            payload && typeof payload === 'object' && 'pairs' in payload
-              ? (payload as { pairs?: unknown }).pairs
-              : null
-          if (!Array.isArray(pairs)) throw new Error('Unexpected response format')
+          const apiReachable = data.api_reachable === true
+          const latestTime = typeof data.latest_candle_time === 'number' ? data.latest_candle_time : null
 
-          // Find BTCUSD-1m
-          let btcusd1mLatest: number | null = null
-          for (const p of pairs) {
-            if (!p || typeof p !== 'object') continue
-            const sym = String((p as { symbol?: unknown }).symbol || '').toUpperCase()
-            const tf = String((p as { timeframe?: unknown }).timeframe || '')
-            const latest = (p as { latest_open_time?: unknown }).latest_open_time
+          let gapStats: {
+            open_gaps: number
+            repaired_24h: number
+            oldest_open_gap: number | null
+          } | null = null
 
-            if (sym === 'BTCUSD' && tf === '1m' && typeof latest === 'number') {
-              btcusd1mLatest = latest
-              break
+          if (data.gap_stats && typeof data.gap_stats === 'object') {
+            const gs = data.gap_stats as Record<string, unknown>
+            gapStats = {
+              open_gaps: Number(gs.open_gaps || 0),
+              repaired_24h: Number(gs.repaired_24h || 0),
+              oldest_open_gap: typeof gs.oldest_open_gap === 'number' ? gs.oldest_open_gap : null,
             }
           }
 
           setIngestionStatus({
-            apiReachable: true,
-            btcusd1mLatestTime: btcusd1mLatest,
+            apiReachable,
+            btcusd1mLatestTime: latestTime,
+            gapStats,
           })
         })
         .catch((err: unknown) => {
@@ -512,6 +506,7 @@ export default function App() {
           setIngestionStatus({
             apiReachable: false,
             btcusd1mLatestTime: null,
+            gapStats: null,
           })
         })
     }
@@ -722,6 +717,18 @@ export default function App() {
                         }
                       />
                     </div>
+                    {ingestionStatus.gapStats && (
+                      <div className="mt-2">
+                        <Kvp
+                          k="Open gaps"
+                          v={
+                            <span className={ingestionStatus.gapStats.open_gaps > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}>
+                              {ingestionStatus.gapStats.open_gaps}
+                            </span>
+                          }
+                        />
+                      </div>
+                    )}
                   </>
                 )}
               </Panel>
