@@ -51,6 +51,7 @@ function Kvp({ k, v }: { k: string; v: ReactNode }) {
 
 const GAP_STATS_REFRESH_INTERVAL_MS = 60_000
 const SIGNALS_REFRESH_INTERVAL_MS = 30_000
+const INGESTION_STATUS_REFRESH_INTERVAL_MS = 15_000
 
 type Signal = {
   symbol: string
@@ -94,6 +95,15 @@ export default function App() {
 
   const [signals, setSignals] = useState<Signal[]>([])
   const [signalsError, setSignalsError] = useState<string | null>(null)
+
+  const [ingestionStatus, setIngestionStatus] = useState<{
+    apiReachable: boolean
+    btcusd1mLatestTime: number | null
+  }>({
+    apiReachable: false,
+    btcusd1mLatestTime: null,
+  })
+  const [ingestionStatusError, setIngestionStatusError] = useState<string | null>(null)
 
   const marketCapRank: Record<string, number> = {
     BTC: 1,
@@ -422,6 +432,100 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    let mounted = true
+    let inFlight: AbortController | null = null
+
+    const load = () => {
+      if (!mounted) return
+      if (inFlight) inFlight.abort()
+      const controller = new AbortController()
+      inFlight = controller
+
+      setIngestionStatusError(null)
+
+      // Check health endpoint first
+      fetch('/healthz', { signal: controller.signal })
+        .then(async (resp) => {
+          const bodyText = await resp.text()
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`)
+          }
+
+          let payload: unknown
+          try {
+            payload = JSON.parse(bodyText) as unknown
+          } catch {
+            throw new Error(`Non-JSON response`)
+          }
+
+          const isOk = payload && typeof payload === 'object' && 'ok' in payload && payload.ok === true
+          if (!isOk) throw new Error('Health check failed')
+
+          // Now fetch available pairs to get BTCUSD-1m latest time
+          return fetch(`/api/candles/available?exchange=${encodeURIComponent('bitfinex')}`, {
+            signal: controller.signal,
+          })
+        })
+        .then(async (resp) => {
+          const bodyText = await resp.text()
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`)
+          }
+
+          let payload: unknown
+          try {
+            payload = JSON.parse(bodyText) as unknown
+          } catch {
+            throw new Error(`Non-JSON response`)
+          }
+
+          const pairs =
+            payload && typeof payload === 'object' && 'pairs' in payload
+              ? (payload as { pairs?: unknown }).pairs
+              : null
+          if (!Array.isArray(pairs)) throw new Error('Unexpected response format')
+
+          // Find BTCUSD-1m
+          let btcusd1mLatest: number | null = null
+          for (const p of pairs) {
+            if (!p || typeof p !== 'object') continue
+            const sym = String((p as { symbol?: unknown }).symbol || '').toUpperCase()
+            const tf = String((p as { timeframe?: unknown }).timeframe || '')
+            const latest = (p as { latest_open_time?: unknown }).latest_open_time
+
+            if (sym === 'BTCUSD' && tf === '1m' && typeof latest === 'number') {
+              btcusd1mLatest = latest
+              break
+            }
+          }
+
+          setIngestionStatus({
+            apiReachable: true,
+            btcusd1mLatestTime: btcusd1mLatest,
+          })
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          setIngestionStatusError(`API check failed (${message})`)
+          setIngestionStatus({
+            apiReachable: false,
+            btcusd1mLatestTime: null,
+          })
+        })
+    }
+
+    load()
+    const id = window.setInterval(load, INGESTION_STATUS_REFRESH_INTERVAL_MS)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+      if (inFlight) inFlight.abort()
+    }
+  }, [])
+
   const onChartWheel = (ev: React.WheelEvent<HTMLDivElement>) => {
     // Wheel zoom: scroll up -> zoom in (fewer candles), scroll down -> zoom out (more candles).
     // Keep it simple: adjust the fetched window size.
@@ -596,10 +700,30 @@ export default function App() {
               </Panel>
 
               <Panel title="Market Data" subtitle="Bitfinex candles (OHLCV)">
-                <Kvp k="Status" v="Not connected" />
-                <div className="mt-2">
-                  <Kvp k="Latest run" v="—" />
-                </div>
+                {ingestionStatusError ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">{ingestionStatusError}</div>
+                ) : (
+                  <>
+                    <Kvp
+                      k="API"
+                      v={
+                        <span className={ingestionStatus.apiReachable ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                          {ingestionStatus.apiReachable ? 'Reachable' : 'Unreachable'}
+                        </span>
+                      }
+                    />
+                    <div className="mt-2">
+                      <Kvp
+                        k="BTCUSD-1m latest"
+                        v={
+                          ingestionStatus.btcusd1mLatestTime !== null
+                            ? new Date(ingestionStatus.btcusd1mLatestTime).toISOString().slice(0, 16).replace('T', ' ')
+                            : '—'
+                        }
+                      />
+                    </div>
+                  </>
+                )}
               </Panel>
             </div>
 
