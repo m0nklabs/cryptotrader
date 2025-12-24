@@ -48,10 +48,6 @@ class KrakenProvider(ExchangeProvider):
             "ETHEUR": "XETHZEUR",
             "XRPUSD": "XXRPZUSD",
             "XRPEUR": "XXRPZEUR",
-            "SOLUSD": "SOLUSD",
-            "SOLEUR": "SOLEUR",
-            "ADAUSD": "ADAUSD",
-            "ADAEUR": "ADAEUR",
         }
         
         return symbol_map.get(s, s)

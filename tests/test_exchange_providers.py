@@ -168,5 +168,4 @@ def test_providers_to_ms() -> None:
     
     assert bitfinex._to_ms(dt) == expected_ms
     assert binance._to_ms(dt) == expected_ms
-    # Kraken uses seconds, not milliseconds
     assert kraken._to_ms(dt) == expected_ms
