@@ -25,6 +25,40 @@ Run an import smoke test:
 - Lint: `ruff check .`
 - Tests: `pytest`
 
+## Bitfinex API credentials
+
+The Bitfinex client supports both public and authenticated (read-only) endpoints.
+
+**Environment variables** (set in `.env` or shell, never commit secrets):
+
+- `BITFINEX_API_KEY` - Your Bitfinex API key
+- `BITFINEX_API_SECRET` - Your Bitfinex API secret
+- Alternative env var names also supported: `BITFINEX_API_KEY_MAIN`, `BITFINEX_API_KEY_SUB`, `BITFINEX_API_KEY_TEST`, etc.
+
+**Usage example** (authenticated read-only endpoint):
+
+```python
+from cex.bitfinex.api.bitfinex_client_v2 import BitfinexClient
+
+# Client reads credentials from environment variables
+client = BitfinexClient()
+
+# Or pass credentials explicitly (not recommended, prefer env vars)
+# client = BitfinexClient(api_key="...", api_secret="...")
+
+# Get wallet balances (read-only, safe)
+wallets = client.get_wallets()
+for wallet in wallets:
+    print(f"{wallet['type']:10} {wallet['currency']:6} {wallet['balance']:>12.8f}")
+```
+
+**Security notes**:
+
+- Never log or print API keys/secrets
+- Only read-only endpoints are implemented (wallets, account info)
+- Trading/execution endpoints are intentionally excluded to prevent accidental live trading
+- Use separate API keys with read-only permissions when possible
+
 ## Bitfinex candle download smoke test (no DB)
 
 To verify you can download candles from Bitfinex public endpoints without configuring Postgres:
