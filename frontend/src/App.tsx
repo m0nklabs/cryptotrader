@@ -450,53 +450,76 @@ export default function App() {
 
       setIngestionStatusError(null)
 
-      // Use the new combined ingestion status endpoint
-      fetch('/api/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', { signal: controller.signal })
-        .then(async (resp) => {
-          const bodyText = await resp.text()
-          if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status}`)
-          }
+      const fallbackToLegacy = async (): Promise<{ apiReachable: boolean; latestTime: number | null }> => {
+        const resp = await fetch('/api/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', {
+          signal: controller.signal,
+        })
+        const bodyText = await resp.text()
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
 
-          let payload: unknown
-          try {
-            payload = JSON.parse(bodyText) as unknown
-          } catch {
-            throw new Error(`Non-JSON response`)
-          }
+        let payload: unknown
+        try {
+          payload = JSON.parse(bodyText) as unknown
+        } catch {
+          throw new Error('Non-JSON response')
+        }
 
-          if (!payload || typeof payload !== 'object') {
-            throw new Error('Unexpected response format')
-          }
+        if (!payload || typeof payload !== 'object') throw new Error('Unexpected response format')
 
-          const data = payload as {
-            api_reachable?: unknown
-            latest_candle_time?: unknown
-            gap_stats?: unknown
-          }
+        const data = payload as { api_reachable?: unknown; latest_candle_time?: unknown }
+        return {
+          apiReachable: data.api_reachable === true,
+          latestTime: typeof data.latest_candle_time === 'number' ? data.latest_candle_time : null,
+        }
+      }
 
-          const apiReachable = data.api_reachable === true
-          const latestTime = typeof data.latest_candle_time === 'number' ? data.latest_candle_time : null
+      const healthCheck = async (): Promise<boolean> => {
+        try {
+          const resp = await fetch('/health', { signal: controller.signal })
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          return true
+        } catch {
+          const resp = await fetch('/healthz', { signal: controller.signal })
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          return true
+        }
+      }
 
-          let gapStats: {
-            open_gaps: number
-            repaired_24h: number
-            oldest_open_gap: number | null
-          } | null = null
+      const fastApiIngestion = async (): Promise<number | null> => {
+        const resp = await fetch('/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', {
+          signal: controller.signal,
+        })
+        const bodyText = await resp.text()
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
 
-          if (data.gap_stats && typeof data.gap_stats === 'object') {
-            const gs = data.gap_stats as Record<string, unknown>
-            gapStats = {
-              open_gaps: Number(gs.open_gaps || 0),
-              repaired_24h: Number(gs.repaired_24h || 0),
-              oldest_open_gap: typeof gs.oldest_open_gap === 'number' ? gs.oldest_open_gap : null,
-            }
-          }
+        let payload: unknown
+        try {
+          payload = JSON.parse(bodyText) as unknown
+        } catch {
+          throw new Error('Non-JSON response')
+        }
 
+        if (!payload || typeof payload !== 'object') throw new Error('Unexpected response format')
+
+        const data = payload as { latest_candle_open_time?: unknown }
+        return typeof data.latest_candle_open_time === 'number' ? data.latest_candle_open_time : null
+      }
+
+      Promise.all([healthCheck(), fastApiIngestion()])
+        .then(([apiReachable, latestTime]) => {
           setIngestionStatus({
             apiReachable,
             btcusd1mLatestTime: latestTime,
-            gapStats,
+            gapStats: gapStats,
+          })
+        })
+        .catch(() => {
+          return fallbackToLegacy().then(({ apiReachable, latestTime }) => {
+            setIngestionStatus({
+              apiReachable,
+              btcusd1mLatestTime: latestTime,
+              gapStats: gapStats,
+            })
           })
         })
         .catch((err: unknown) => {
@@ -506,7 +529,7 @@ export default function App() {
           setIngestionStatus({
             apiReachable: false,
             btcusd1mLatestTime: null,
-            gapStats: null,
+            gapStats: gapStats,
           })
         })
     }
@@ -519,7 +542,7 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [])
+  }, [gapStats])
 
   const onChartWheel = (ev: React.WheelEvent<HTMLDivElement>) => {
     // Wheel zoom: scroll up -> zoom in (fewer candles), scroll down -> zoom out (more candles).
