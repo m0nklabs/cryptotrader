@@ -86,7 +86,7 @@ def test_seed_config_immutable() -> None:
         chunk_minutes=180,
         sleep_seconds=2.0,
     )
-    with pytest.raises(Exception):  # FrozenInstanceError in dataclass
+    with pytest.raises((AttributeError, TypeError)):  # FrozenInstanceError is a subclass
         config.days = 10
 
 

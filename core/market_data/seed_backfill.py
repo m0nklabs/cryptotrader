@@ -13,6 +13,11 @@ from core.storage import PostgresConfig, PostgresStores
 from core.types import Timeframe
 
 
+# Jitter configuration for rate-limit friendly sleep
+JITTER_MIN = 0.8  # Minimum jitter multiplier (80% of sleep time)
+JITTER_RANGE = 0.4  # Range of jitter (±20%)
+
+
 @dataclass(frozen=True)
 class SeedConfig:
     """Configuration for seed backfill batching."""
@@ -129,7 +134,7 @@ def run_seed_backfill(
     for idx, (chunk_start, chunk_end) in enumerate(chunks, start=1):
         # Add jitter to sleep (±20%)
         if idx > 1 and config.sleep_seconds > 0:
-            jitter_factor = 0.8 + (random.random() * 0.4)  # 0.8 to 1.2
+            jitter_factor = JITTER_MIN + (random.random() * JITTER_RANGE)
             sleep_time = config.sleep_seconds * jitter_factor
             time.sleep(sleep_time)
 
