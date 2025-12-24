@@ -485,7 +485,7 @@ def _fetch_wallet_balances() -> list[dict[str, Any]]:
             "type": wallet["type"],
             "currency": wallet["currency"],
             "balance": wallet["balance"],
-            "available": wallet.get("available_balance") or wallet["balance"],
+            "available": wallet.get("available_balance", wallet["balance"]),
         })
     
     return out

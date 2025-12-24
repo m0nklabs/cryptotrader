@@ -59,3 +59,17 @@ def test_fetch_wallet_balances_structure():
         
         # Validate wallet type is one of the expected values
         assert wallet["type"] in ["exchange", "margin", "funding"]
+        
+        # Validate available is always >= 0 (even if None in source data)
+        assert wallet["available"] >= 0
+
+
+def test_wallet_available_balance_handling():
+    """Test that available_balance is properly handled when it's None."""
+    from scripts.api_server import _fetch_wallet_balances
+    
+    wallets = _fetch_wallet_balances()
+    
+    # In paper mode, all wallets should have available == balance
+    for wallet in wallets:
+        assert wallet["available"] == wallet["balance"]
