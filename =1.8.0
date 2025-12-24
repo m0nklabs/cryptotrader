@@ -1,0 +1,7 @@
+Defaulting to user installation because normal site-packages is not writeable
+Collecting websocket-client
+  Downloading websocket_client-1.9.0-py3-none-any.whl.metadata (8.3 kB)
+Downloading websocket_client-1.9.0-py3-none-any.whl (82 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 82.6/82.6 kB 11.3 MB/s eta 0:00:00
+Installing collected packages: websocket-client
+Successfully installed websocket-client-1.9.0
