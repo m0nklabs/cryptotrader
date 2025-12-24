@@ -28,7 +28,7 @@ def test_fastapi_app_configuration():
     from api.main import app
 
     assert app.title == "CryptoTrader Read-Only API"
-    assert app.description == "Minimal API for candles and health checks"
+    assert app.description == "Minimal API for candles, health checks, and ingestion status"
     assert app.version == "1.0.0"
 
 
