@@ -5,6 +5,8 @@ A v2 trading platform focused on trading opportunities, technical analysis, and 
 ## Scope
 
 - Market data ingestion (OHLCV candles)
+  - REST API backfill for historical data
+  - WebSocket streaming for real-time updates
 - Technical analysis (indicators)
 - Opportunity scoring (signals)
 - Execution with **paper-trading / dry-run by default**
