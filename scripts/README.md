@@ -71,6 +71,18 @@ python -m scripts.ingest_multi_timeframe \
   --end 2024-01-01
 ```
 
+#### Quick Start with Example Script
+
+For convenience, use the example script that ingests common trading pairs:
+
+```bash
+# Resume mode (fetch latest candles for BTCUSD, ETHUSD, SOLUSD, XRPUSD)
+python -m scripts.example_multi_timeframe_ingestion --mode resume
+
+# Backfill mode (last 30 days)
+python -m scripts.example_multi_timeframe_ingestion --mode backfill --days 30
+```
+
 #### Continuous Ingestion (Cron/Systemd)
 
 Set up a cron job or systemd timer to run every 15 minutes:
