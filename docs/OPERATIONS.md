@@ -36,7 +36,24 @@ Restart / stop:
 ## Offline vs online
 
 - Dashboard UI can run without internet once it is built and served locally.
-- Market data ingestion (Bitfinex candle downloads) requires internet.
+- Market data ingestion (Bitfinex, Binance, Kraken candle downloads) requires internet.
+
+## Multi-Exchange Support
+
+cryptotrader v2 now supports multiple exchanges. See [MULTI_EXCHANGE.md](MULTI_EXCHANGE.md) for detailed documentation.
+
+Quick example:
+
+```bash
+# Bitfinex (default)
+python -m core.market_data.bitfinex_backfill --exchange bitfinex --symbol BTCUSD --timeframe 1h --resume
+
+# Binance
+python -m core.market_data.bitfinex_backfill --exchange binance --symbol BTCUSD --timeframe 1h --resume
+
+# Kraken
+python -m core.market_data.bitfinex_backfill --exchange kraken --symbol BTCUSD --timeframe 1h --resume
+```
 
 ## Common checks
 
