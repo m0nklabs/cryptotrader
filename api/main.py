@@ -1,9 +1,13 @@
-"""FastAPI application for read-only candles and health endpoints.
+"""FastAPI application for candles, health, and paper trading endpoints.
 
 This module provides a minimal HTTP API service for:
 - GET /health - Database connectivity and schema check
 - GET /candles/latest - Latest candles with query parameters
 - GET /ingestion/status - Ingestion freshness for UI/ops tools
+- POST /orders - Place paper order
+- GET /orders - List open orders
+- DELETE /orders/{order_id} - Cancel order
+- GET /positions - List open positions
 
 Requirements:
 - DATABASE_URL must be set in environment
@@ -15,24 +19,39 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from core.execution.paper import PaperExecutor, PaperOrder, PaperPosition
 from core.fees.model import FeeModel
 from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
 from core.types import FeeBreakdown
 
 app = FastAPI(
-    title="CryptoTrader Read-Only API",
-    description="Minimal API for candles, health checks, and ingestion status",
+    title="CryptoTrader API",
+    description="API for candles, health checks, ingestion status, and paper trading",
     version="1.0.0",
 )
 
 # Global store instance (initialized on startup)
+_stores: PostgresStores | None = None
+
+# Global paper executor instance (in-memory, no DB persistence)
+_paper_executor: PaperExecutor | None = None
+
+
+def _get_paper_executor() -> PaperExecutor:
+    """Get or initialize the paper trading executor."""
+    global _paper_executor
+    if _paper_executor is None:
+        _paper_executor = PaperExecutor(default_slippage_bps=Decimal("5"))
+    return _paper_executor
+
+
 _stores: PostgresStores | None = None
 
 
@@ -351,6 +370,273 @@ async def get_latest_candles(
                 "message": str(e),
             },
         ) from e
+
+
+# =============================================================================
+# Paper Trading Endpoints
+# =============================================================================
+
+
+class OrderRequest(BaseModel):
+    """Request body for placing a paper order."""
+
+    symbol: str = Field(..., min_length=1, description="Trading pair symbol (e.g., BTCUSD)")
+    side: Literal["BUY", "SELL"] = Field(..., description="Order side")
+    order_type: Literal["market", "limit"] = Field("market", description="Order type")
+    qty: Decimal = Field(..., gt=0, description="Order quantity")
+    limit_price: Optional[Decimal] = Field(None, gt=0, description="Limit price (required for limit orders)")
+    market_price: Optional[Decimal] = Field(None, gt=0, description="Current market price (required for market orders)")
+
+
+class OrderResponse(BaseModel):
+    """Response for order operations."""
+
+    order_id: int
+    symbol: str
+    side: str
+    order_type: str
+    qty: str
+    limit_price: Optional[str] = None
+    status: str
+    fill_price: Optional[str] = None
+    created_at: Optional[str] = None
+    filled_at: Optional[str] = None
+
+
+class PositionResponse(BaseModel):
+    """Response for position queries."""
+
+    symbol: str
+    qty: str
+    side: str
+    avg_entry: str
+    unrealized_pnl: str
+    realized_pnl: str
+
+
+def _order_to_response(order: PaperOrder) -> dict[str, Any]:
+    """Convert PaperOrder to API response dict."""
+    return {
+        "order_id": order.order_id,
+        "symbol": order.symbol,
+        "side": order.side,
+        "order_type": order.order_type,
+        "qty": str(order.qty),
+        "limit_price": str(order.limit_price) if order.limit_price else None,
+        "status": order.status,
+        "fill_price": str(order.fill_price) if order.fill_price else None,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "filled_at": order.filled_at.isoformat() if order.filled_at else None,
+    }
+
+
+def _position_to_response(position: PaperPosition, current_price: Decimal) -> dict[str, Any]:
+    """Convert PaperPosition to API response dict."""
+    executor = _get_paper_executor()
+    unrealized = executor.get_unrealized_pnl(position.symbol, current_price)
+    side = "LONG" if position.qty > 0 else "SHORT"
+    return {
+        "symbol": position.symbol,
+        "qty": str(abs(position.qty)),
+        "side": side,
+        "avg_entry": str(position.avg_entry),
+        "unrealized_pnl": str(unrealized),
+        "realized_pnl": str(position.realized_pnl),
+    }
+
+
+@app.post("/orders")
+async def place_order(request: OrderRequest) -> dict[str, Any]:
+    """Place a paper trading order.
+
+    Args:
+        request: Order details including symbol, side, type, qty, and price.
+
+    Returns:
+        The created order details.
+
+    Raises:
+        HTTPException: If order validation fails.
+    """
+    executor = _get_paper_executor()
+
+    try:
+        if request.order_type == "market":
+            if request.market_price is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": "validation_error", "message": "market_price required for market orders"},
+                )
+            order = executor.execute_paper_order(
+                symbol=request.symbol,
+                side=request.side,
+                qty=request.qty,
+                order_type="market",
+                market_price=request.market_price,
+            )
+        else:  # limit order
+            if request.limit_price is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": "validation_error", "message": "limit_price required for limit orders"},
+                )
+            order = executor.execute_paper_order(
+                symbol=request.symbol,
+                side=request.side,
+                qty=request.qty,
+                order_type="limit",
+                limit_price=request.limit_price,
+            )
+
+        return {"success": True, "order": _order_to_response(order)}
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "validation_error", "message": str(e)},
+        ) from e
+
+
+@app.get("/orders")
+async def list_orders(
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    status: Optional[Literal["PENDING", "FILLED", "CANCELLED"]] = Query(None, description="Filter by status"),
+) -> dict[str, Any]:
+    """List paper trading orders.
+
+    Args:
+        symbol: Optional symbol filter.
+        status: Optional status filter.
+
+    Returns:
+        List of orders matching the filters.
+    """
+    executor = _get_paper_executor()
+    orders = list(executor._orders.values())
+
+    # Apply filters
+    if symbol:
+        orders = [o for o in orders if o.symbol == symbol]
+    if status:
+        orders = [o for o in orders if o.status == status]
+
+    return {"orders": [_order_to_response(o) for o in orders]}
+
+
+@app.delete("/orders/{order_id}")
+async def cancel_order(
+    order_id: int = Path(..., description="Order ID to cancel"),
+) -> dict[str, Any]:
+    """Cancel a pending paper order.
+
+    Args:
+        order_id: The order ID to cancel.
+
+    Returns:
+        Success status and cancelled order details.
+
+    Raises:
+        HTTPException: If order not found or already filled.
+    """
+    executor = _get_paper_executor()
+
+    order = executor.get_order(order_id)
+    if order is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Order {order_id} not found"},
+        )
+
+    if order.status != "PENDING":
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "cancel_failed", "message": f"Cannot cancel order with status {order.status}"},
+        )
+
+    success = executor.cancel_order(order_id)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "cancel_failed", "message": "Order could not be cancelled"},
+        )
+
+    # Re-fetch order to get updated status
+    order = executor.get_order(order_id)
+    return {"success": True, "order": _order_to_response(order) if order else None}
+
+
+@app.get("/positions")
+async def list_positions(
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+) -> dict[str, Any]:
+    """List open paper trading positions.
+
+    Args:
+        symbol: Optional symbol filter.
+
+    Returns:
+        List of open positions with P&L calculations.
+
+    Note:
+        Unrealized P&L requires a current_price query parameter for accurate calculation.
+        If not provided, unrealized P&L will show as 0.
+    """
+    executor = _get_paper_executor()
+    positions = list(executor._positions.values())
+
+    # Apply filter
+    if symbol:
+        positions = [p for p in positions if p.symbol == symbol]
+
+    # Get current prices for P&L calculation
+    result = []
+    for pos in positions:
+        # Use last known price from executor, or avg_entry as fallback
+        current_price = executor.get_last_price(pos.symbol) or pos.avg_entry
+        result.append(_position_to_response(pos, current_price))
+
+    return {"positions": result}
+
+
+@app.post("/positions/{symbol}/close")
+async def close_position(
+    symbol: str = Path(..., description="Symbol to close"),
+    market_price: Decimal = Query(..., gt=0, description="Current market price for closing"),
+) -> dict[str, Any]:
+    """Close an open position at market price.
+
+    Args:
+        symbol: The symbol to close.
+        market_price: Current market price for the closing order.
+
+    Returns:
+        The closing order details.
+
+    Raises:
+        HTTPException: If no position exists for the symbol.
+    """
+    executor = _get_paper_executor()
+    position = executor.get_position(symbol)
+
+    if position is None or position.qty == 0:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"No open position for {symbol}"},
+        )
+
+    # Close position with opposite order
+    side: Literal["BUY", "SELL"] = "SELL" if position.qty > 0 else "BUY"
+    qty = abs(position.qty)
+
+    order = executor.execute_paper_order(
+        symbol=symbol,
+        side=side,
+        qty=qty,
+        order_type="market",
+        market_price=market_price,
+    )
+
+    return {"success": True, "message": "Position closed", "close_order": _order_to_response(order)}
 
 
 @app.exception_handler(Exception)

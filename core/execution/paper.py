@@ -63,6 +63,7 @@ class PaperExecutor:
         self._order_book = OrderBook()
         self._positions: dict[str, PaperPosition] = {}
         self._orders: dict[int, PaperOrder] = {}
+        self._last_prices: dict[str, Decimal] = {}
         self._next_order_id = 1
 
     def execute(self, order: OrderIntent) -> ExecutionResult:
@@ -170,23 +171,19 @@ class PaperExecutor:
         Returns:
             List of orders that were filled
         """
+        self._last_prices[symbol] = price
         filled_orders = []
         limit_orders = self._order_book.check_fills(symbol, price)
 
         for limit_order in limit_orders:
             # Find the corresponding PaperOrder
             for order in self._orders.values():
-                if (
-                    order.order_id == limit_order.order_id
-                    and order.status == "PENDING"
-                ):
+                if order.order_id == limit_order.order_id and order.status == "PENDING":
                     # Fill the order at limit price
                     order.fill_price = limit_order.limit_price
                     order.filled_at = datetime.now(timezone.utc)
                     order.status = "FILLED"
-                    self._update_position(
-                        order.symbol, order.side, order.qty, order.fill_price
-                    )
+                    self._update_position(order.symbol, order.side, order.qty, order.fill_price)
                     filled_orders.append(order)
 
                     # Persist update if database configured
@@ -206,6 +203,17 @@ class PaperExecutor:
             PaperPosition if exists, None otherwise
         """
         return self._positions.get(symbol)
+
+    def get_last_price(self, symbol: str) -> Optional[Decimal]:
+        """Get the last known market price for a symbol.
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            Last price if available, None otherwise
+        """
+        return self._last_prices.get(symbol)
 
     def get_unrealized_pnl(self, symbol: str, current_price: Decimal) -> Decimal:
         """Calculate unrealized P&L for a position.
@@ -257,9 +265,7 @@ class PaperExecutor:
 
         return True
 
-    def _apply_slippage(
-        self, price: Decimal, side: Literal["BUY", "SELL"], slippage_bps: Decimal
-    ) -> Decimal:
+    def _apply_slippage(self, price: Decimal, side: Literal["BUY", "SELL"], slippage_bps: Decimal) -> Decimal:
         """Apply slippage to a price.
 
         Args:
@@ -278,9 +284,7 @@ class PaperExecutor:
             # SELL orders receive less due to slippage
             return price / slippage_factor
 
-    def _update_position(
-        self, symbol: str, side: Literal["BUY", "SELL"], qty: Decimal, price: Decimal
-    ) -> None:
+    def _update_position(self, symbol: str, side: Literal["BUY", "SELL"], qty: Decimal, price: Decimal) -> None:
         """Update position after a trade.
 
         Args:

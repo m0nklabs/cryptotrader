@@ -27,8 +27,8 @@ def test_fastapi_app_configuration():
     """Test that the FastAPI app is properly configured."""
     from api.main import app
 
-    assert app.title == "CryptoTrader Read-Only API"
-    assert app.description == "Minimal API for candles, health checks, and ingestion status"
+    assert app.title == "CryptoTrader API"
+    assert app.description == "API for candles, health checks, ingestion status, and paper trading"
     assert app.version == "1.0.0"
 
 
