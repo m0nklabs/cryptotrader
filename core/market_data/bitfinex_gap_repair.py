@@ -75,7 +75,7 @@ def _fetch_bitfinex_candles_page(
     limit: int = 10_000,
     sort: int = 1,
     timeout_s: int = 20,
-    max_retries: int = 10,
+    max_retries: int = 6,
     initial_backoff_seconds: float = 0.5,
     max_backoff_seconds: float = 8.0,
     jitter_seconds: float = 0.0,
@@ -95,6 +95,7 @@ def _fetch_bitfinex_candles_page(
         try:
             resp = requests.get(url, params=params, timeout=timeout_s)
             if resp.status_code == 429:
+                last_err = RuntimeError("Bitfinex candle fetch failed: HTTP 429 rate limiting")
                 jitter = random.uniform(0, jitter_seconds) if jitter_seconds > 0 else 0
                 time.sleep(backoff + jitter)
                 backoff = min(max_backoff_seconds, backoff * 2)
@@ -110,6 +111,8 @@ def _fetch_bitfinex_candles_page(
             time.sleep(backoff + jitter)
             backoff = min(max_backoff_seconds, backoff * 2)
 
+    if last_err is None:
+        raise RuntimeError("Bitfinex candle fetch failed: exhausted retries")
     raise RuntimeError("Bitfinex candle fetch failed") from last_err
 
 
@@ -400,6 +403,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
+
+    if args.max_retries <= 0:
+        parser.error("--max-retries must be > 0")
+    if args.initial_backoff_seconds < 0:
+        parser.error("--initial-backoff-seconds must be >= 0")
+    if args.max_backoff_seconds < 0:
+        parser.error("--max-backoff-seconds must be >= 0")
+    if args.initial_backoff_seconds > args.max_backoff_seconds:
+        parser.error("--initial-backoff-seconds must be <= --max-backoff-seconds")
+    if args.jitter_seconds < 0:
+        parser.error("--jitter-seconds must be >= 0")
 
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
