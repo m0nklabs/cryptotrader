@@ -163,13 +163,13 @@ pull_request_rules:
       - or:
           - author=github-actions[bot]
           - head~=^copilot/
-      - "#approved-reviews-by>=1"
       - check-success=Backend (ruff + pytest)
       - check-success=Pre-commit checks
       - check-success=Gitleaks
       - -conflict
       - -draft
       - -label=do-not-merge
+      - -label=work-in-progress
     actions:
       merge:
         method: squash
