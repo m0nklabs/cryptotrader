@@ -138,66 +138,102 @@ async def get_signal_history(
         return []
 
     try:
-        # Build query with optional filters
-        conditions = []
-        params_list = []  # For positional parameters (asyncpg)
-        params_dict: dict[str, Any] = {}  # For named parameters (SQLAlchemy)
-
-        if symbol:
-            conditions.append(f"symbol = ${len(params_list) + 1}")
-            params_list.append(symbol)
-            params_dict["symbol"] = symbol
-
-        if timeframe:
-            conditions.append(f"timeframe = ${len(params_list) + 1}")
-            params_list.append(timeframe)
-            params_dict["timeframe"] = timeframe
-
-        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
-        query_asyncpg = f"""
-            SELECT id, symbol, timeframe, score, indicator_contributions, created_at
-            FROM signal_history
-            {where_clause}
-            ORDER BY created_at DESC
-            LIMIT ${len(params_list) + 1}
-        """
-
-        query_sqlalchemy = f"""
-            SELECT id, symbol, timeframe, score, indicator_contributions, created_at
-            FROM signal_history
-            {where_clause.replace('$1', ':symbol').replace('$2', ':timeframe') if where_clause else ''}
-            ORDER BY created_at DESC
-            LIMIT :limit
-        """
-
         # Try asyncpg-style query (has 'fetch' method)
         if hasattr(db_pool, "fetch"):
-            params_list.append(limit)
-            rows = await db_pool.fetch(query_asyncpg, *params_list)
-            return [dict(row) for row in rows]
+            return await _get_signal_history_asyncpg(
+                db_pool=db_pool, symbol=symbol, timeframe=timeframe, limit=limit
+            )
 
         # Try SQLAlchemy async session (has 'commit' method but not 'fetch')
         elif hasattr(db_pool, "commit"):
-            from sqlalchemy import text
-
-            params_dict["limit"] = limit
-            result = await db_pool.execute(text(query_sqlalchemy), params_dict)
-            rows = result.fetchall()
-            return [
-                {
-                    "id": row[0],
-                    "symbol": row[1],
-                    "timeframe": row[2],
-                    "score": float(row[3]),
-                    "indicator_contributions": json.loads(row[4]) if row[4] else {},
-                    "created_at": row[5],
-                }
-                for row in rows
-            ]
+            return await _get_signal_history_sqlalchemy(
+                db_pool=db_pool, symbol=symbol, timeframe=timeframe, limit=limit
+            )
 
     except Exception as exc:
         logger.warning(f"Failed to retrieve signal history: {exc}")
         return []
 
     return []
+
+
+async def _get_signal_history_asyncpg(
+    *,
+    db_pool: Any,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Retrieve signal history using asyncpg-style pool."""
+    # Build query with positional parameters
+    conditions = []
+    params = []
+
+    if symbol:
+        params.append(symbol)
+        conditions.append(f"symbol = ${len(params)}")
+
+    if timeframe:
+        params.append(timeframe)
+        conditions.append(f"timeframe = ${len(params)}")
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    params.append(limit)
+    query = f"""
+        SELECT id, symbol, timeframe, score, indicator_contributions, created_at
+        FROM signal_history
+        {where_clause}
+        ORDER BY created_at DESC
+        LIMIT ${len(params)}
+    """
+
+    rows = await db_pool.fetch(query, *params)
+    return [dict(row) for row in rows]
+
+
+async def _get_signal_history_sqlalchemy(
+    *,
+    db_pool: Any,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Retrieve signal history using SQLAlchemy-style session."""
+    from sqlalchemy import text
+
+    # Build query with named parameters
+    conditions = []
+    params: dict[str, Any] = {"limit": limit}
+
+    if symbol:
+        conditions.append("symbol = :symbol")
+        params["symbol"] = symbol
+
+    if timeframe:
+        conditions.append("timeframe = :timeframe")
+        params["timeframe"] = timeframe
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    query = f"""
+        SELECT id, symbol, timeframe, score, indicator_contributions, created_at
+        FROM signal_history
+        {where_clause}
+        ORDER BY created_at DESC
+        LIMIT :limit
+    """
+
+    result = await db_pool.execute(text(query), params)
+    rows = result.fetchall()
+    return [
+        {
+            "id": row[0],
+            "symbol": row[1],
+            "timeframe": row[2],
+            "score": float(row[3]),
+            "indicator_contributions": json.loads(row[4]) if row[4] else {},
+            "created_at": row[5],
+        }
+        for row in rows
+    ]

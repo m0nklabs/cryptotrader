@@ -369,7 +369,7 @@ async def test_get_signal_history_limit():
                     "indicator_contributions": "{}",
                     "created_at": now,
                 }
-                for i in range(min(self.limit_used, 200))
+                for i in range(min(self.limit_used or 0, 200))
             ]
 
     mock_pool = MockAsyncPGPool()
