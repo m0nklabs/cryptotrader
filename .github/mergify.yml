@@ -116,8 +116,8 @@ pull_request_rules:
     conditions:
       - or:
           - draft
-          - title~=(?i)^\[?WIP\]?
-          - title~=(?i)^WIP:
+          - title~=^WIP
+          - title~=^\[WIP\]
     actions:
       label:
         add:
@@ -126,8 +126,8 @@ pull_request_rules:
   - name: remove-wip-label
     conditions:
       - -draft
-      - -title~=(?i)^\[?WIP\]?
-      - -title~=(?i)^WIP:
+      - -title~=^WIP
+      - -title~=^\[WIP\]
       - label=work-in-progress
     actions:
       label:
