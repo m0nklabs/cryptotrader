@@ -1,7 +1,7 @@
 # cryptotrader
 
-[![CI](https://github.com/m0nk111/cryptotrader/actions/workflows/ci.yml/badge.svg)](https://github.com/m0nk111/cryptotrader/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/m0nk111/cryptotrader/branch/master/graph/badge.svg)](https://codecov.io/gh/m0nk111/cryptotrader)
+[![CI](https://github.com/m0nklabs/cryptotrader/actions/workflows/ci.yml/badge.svg)](https://github.com/m0nklabs/cryptotrader/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/m0nklabs/cryptotrader/branch/master/graph/badge.svg)](https://codecov.io/gh/m0nklabs/cryptotrader)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -31,7 +31,7 @@ Out of scope for v2:
 
 ```bash
 # Clone and setup
-git clone https://github.com/m0nk111/cryptotrader.git
+git clone https://github.com/m0nklabs/cryptotrader.git
 cd cryptotrader
 python -m venv .venv
 source .venv/bin/activate
