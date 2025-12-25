@@ -26,6 +26,7 @@ jobs:
           private_key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Check if Copilot PR and request fix
+        id: check-fix
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.generate-token.outputs.token }}
@@ -121,21 +122,33 @@ jobs:
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
             const requestNum = recentFixRequests.length + 1;
 
-            const comment = [
-              `@copilot CI failed on commit \`${shortSha}\`. Please fix the following issues and push again:`,
-              '',
-              `**Failed checks:** ${failedJobNames}`,
-              '',
-              `[View failed run](${runUrl})`,
-              '',
-              `_Auto-fix request ${requestNum}/${MAX_FIX_REQUESTS}_`
-            ].join('\n');
+            // Store info for next step (PAT comment)
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('short_sha', shortSha);
+            core.setOutput('failed_jobs', failedJobNames);
+            core.setOutput('run_url', runUrl);
+            core.setOutput('request_num', requestNum);
+            core.setOutput('should_comment', 'true');
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: comment
-            });
+            console.log(`Will request Copilot to fix CI failures on PR #${prNumber}`);
 
-            console.log(`Requested Copilot to fix CI failures on PR #${prNumber}`);
+      - name: Request Copilot fix (as user)
+        if: steps.check-fix.outputs.should_comment == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.check-fix.outputs.pr_number }}"
+          SHORT_SHA="${{ steps.check-fix.outputs.short_sha }}"
+          FAILED_JOBS="${{ steps.check-fix.outputs.failed_jobs }}"
+          RUN_URL="${{ steps.check-fix.outputs.run_url }}"
+          REQUEST_NUM="${{ steps.check-fix.outputs.request_num }}"
+
+          gh pr comment "$PR_NUMBER" --body "@copilot CI failed on commit \`${SHORT_SHA}\`. Please fix the following issues and push again:
+
+          **Failed checks:** ${FAILED_JOBS}
+
+          [View failed run](${RUN_URL})
+
+          _Auto-fix request ${REQUEST_NUM}/3_"
+
+          echo "Requested Copilot to fix CI failures on PR #${PR_NUMBER}"
