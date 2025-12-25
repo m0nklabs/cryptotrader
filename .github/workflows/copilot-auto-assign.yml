@@ -75,9 +75,13 @@ jobs:
 
             // Priority labels (if present, use these)
             const labelPriority = {
+              'priority: critical': 0,
               'priority:critical': 0,
+              'priority: high': 1,
               'priority:high': 1,
+              'priority: medium': 2,
               'priority:medium': 2,
+              'priority: low': 3,
               'priority:low': 3
             };
 
@@ -104,7 +108,7 @@ jobs:
               // Must have 'copilot' label OR be unassigned with priority label
               const labels = issue.labels.map(l => l.name.toLowerCase());
               const hasCopilotLabel = labels.includes('copilot');
-              const hasPriorityLabel = labels.some(l => l.startsWith('priority:'));
+              const hasPriorityLabel = labels.some(l => l.startsWith('priority:') || l.startsWith('priority: '));
 
               // Eligible if: has copilot label, OR has priority label and no assignees
               if (!hasCopilotLabel && !(hasPriorityLabel && issue.assignees.length === 0)) {
