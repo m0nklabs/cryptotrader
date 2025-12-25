@@ -4,13 +4,7 @@ Focused on essential functionality like timezone handling.
 """
 
 from datetime import datetime, timezone
-from pathlib import Path
-import sys
 from unittest.mock import Mock, patch
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
