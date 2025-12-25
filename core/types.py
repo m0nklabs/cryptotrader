@@ -245,7 +245,7 @@ class AutomationRule:
 class PaperOrder:
     symbol: str
     side: Literal["BUY", "SELL"]
-    order_type: Literal["MARKET", "LIMIT"]
+    order_type: Literal["market", "limit"]
     qty: Decimal
     status: Literal["PENDING", "FILLED", "CANCELLED"]
     limit_price: Optional[Decimal] = None
@@ -275,7 +275,7 @@ class PortfolioSnapshot:
     positions_value: Decimal
     unrealized_pnl: Decimal
     realized_pnl: Decimal
-    timestamp: datetime
+    snapshot_time: datetime
     exchange: Optional[str] = None
     positions: Sequence[PositionSnapshot] = ()
     wallets: Sequence[WalletSnapshot] = ()
