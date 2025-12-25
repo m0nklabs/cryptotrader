@@ -1,6 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import CandlestickChart from './components/CandlestickChart'
+import OrderForm from './components/OrderForm'
+import OrdersTable from './components/OrdersTable'
+import PositionsTable from './components/PositionsTable'
+import {
+  placeOrder,
+  listOrders,
+  cancelOrder,
+  listPositions,
+  closePosition,
+  type Order,
+  type Position,
+  type PlaceOrderRequest,
+} from './api/trading'
 
 type Theme = 'light' | 'dark'
 
@@ -123,6 +136,11 @@ export default function App() {
     gapStats: null,
   })
   const [ingestionStatusError, setIngestionStatusError] = useState<string | null>(null)
+
+  // Paper trading state
+  const [orders, setOrders] = useState<Order[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
+  const [tradingLoading, setTradingLoading] = useState(false)
 
   const marketCapRank: Record<string, number> = {
     BTC: 1,
@@ -672,6 +690,79 @@ export default function App() {
     }
   }, [settingsOpen])
 
+  // Paper trading: fetch orders and positions
+  const TRADING_REFRESH_INTERVAL_MS = 5_000
+
+  const fetchTradingData = useCallback(async () => {
+    try {
+      const [ordersData, positionsData] = await Promise.all([
+        listOrders(),
+        listPositions(),
+      ])
+      setOrders(ordersData)
+      setPositions(positionsData)
+    } catch (err) {
+      console.error('Failed to fetch trading data:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchTradingData()
+    const interval = setInterval(fetchTradingData, TRADING_REFRESH_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [fetchTradingData])
+
+  const handlePlaceOrder = useCallback(
+    async (request: PlaceOrderRequest) => {
+      setTradingLoading(true)
+      try {
+        await placeOrder(request)
+        await fetchTradingData()
+      } finally {
+        setTradingLoading(false)
+      }
+    },
+    [fetchTradingData]
+  )
+
+  const handleCancelOrder = useCallback(
+    async (orderId: number) => {
+      setTradingLoading(true)
+      try {
+        await cancelOrder(orderId)
+        await fetchTradingData()
+      } finally {
+        setTradingLoading(false)
+      }
+    },
+    [fetchTradingData]
+  )
+
+  const handleClosePosition = useCallback(
+    async (symbol: string) => {
+      // Get current price from chart data
+      const lastCandle = chartCandles[chartCandles.length - 1]
+      if (!lastCandle) {
+        console.error('No price data available')
+        return
+      }
+      setTradingLoading(true)
+      try {
+        await closePosition(symbol, lastCandle.c.toString())
+        await fetchTradingData()
+      } finally {
+        setTradingLoading(false)
+      }
+    },
+    [fetchTradingData, chartCandles]
+  )
+
+  // Get current price for order form
+  const currentPrice = useMemo(() => {
+    const lastCandle = chartCandles[chartCandles.length - 1]
+    return lastCandle?.c
+  }, [chartCandles])
+
   const nextThemeLabel = useMemo(() => (theme === 'dark' ? 'light' : 'dark'), [theme])
 
   return (
@@ -901,20 +992,34 @@ export default function App() {
               </Panel>
 
               <div className="ct-dock-bottom flex flex-col gap-3">
-                <Panel title="Terminal" subtitle="Orders / positions / logs">
-                  <Kvp k="Orders" v="0" />
-                  <div className="mt-2">
-                    <Kvp k="Positions" v="0" />
-                  </div>
-                  <div className="mt-2 rounded border border-gray-200 bg-white p-2 text-[11px] text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
-                    <div className="font-mono">[log] service online</div>
-                    <div className="font-mono">[log] waiting for backend</div>
-                  </div>
+                <Panel title="Orders" subtitle={`${orders.filter(o => o.status === 'PENDING').length} pending / ${orders.filter(o => o.status === 'FILLED').length} filled`}>
+                  <OrdersTable
+                    orders={orders}
+                    onCancel={handleCancelOrder}
+                    loading={tradingLoading}
+                  />
+                </Panel>
+
+                <Panel title="Positions" subtitle={`${positions.filter(p => parseFloat(p.qty) !== 0).length} open`}>
+                  <PositionsTable
+                    positions={positions}
+                    onClose={handleClosePosition}
+                    loading={tradingLoading}
+                  />
                 </Panel>
               </div>
             </div>
 
             <div className="ct-dock-right flex flex-col gap-3">
+              <Panel title="Order Entry" subtitle={chartSymbol}>
+                <OrderForm
+                  symbol={chartSymbol}
+                  currentPrice={currentPrice}
+                  onSubmit={handlePlaceOrder}
+                  disabled={tradingLoading}
+                />
+              </Panel>
+
               <Panel title="Opportunities" subtitle="Signals snapshot">
                 {signalsError ? (
                   <div className="text-xs text-gray-600 dark:text-gray-400">{signalsError}</div>
@@ -998,11 +1103,22 @@ export default function App() {
                 )}
               </Panel>
 
-              <Panel title="Execution" subtitle="Intents / results">
-                <Kvp k="Mode" v="dry-run" />
+              <Panel title="Execution" subtitle="Paper trading">
+                <Kvp k="Mode" v="paper" />
                 <div className="mt-2">
-                  <Kvp k="Last order" v="—" />
+                  <Kvp k="Total Orders" v={orders.length.toString()} />
                 </div>
+                <div className="mt-2">
+                  <Kvp k="Open Positions" v={positions.filter(p => parseFloat(p.qty) !== 0).length.toString()} />
+                </div>
+                {orders.length > 0 && (
+                  <div className="mt-2">
+                    <Kvp
+                      k="Last Order"
+                      v={`${orders[orders.length - 1].side} ${orders[orders.length - 1].symbol}`}
+                    />
+                  </div>
+                )}
               </Panel>
 
               <Panel title="System" subtitle="Health">
