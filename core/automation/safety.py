@@ -2,12 +2,14 @@
 
 Implements concrete safety checks including kill switch, position limits,
 cooldowns, daily limits, and balance verification.
+
+All timestamps use timezone-aware UTC datetimes for consistency.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Protocol, Sequence
 
@@ -67,7 +69,12 @@ class PositionSizeCheck:
             # TODO: Implement proper position value calculation with current market price
             # For now, simplified implementation assumes amount is in quote currency
             position_value = intent.amount
-            total_position = self.current_position_value + position_value
+            
+            # BUY orders increase position value, SELL orders decrease it
+            if intent.side == "SELL":
+                total_position = self.current_position_value - position_value
+            else:
+                total_position = self.current_position_value + position_value
 
             if total_position > symbol_config.max_position_size:
                 return SafetyResult(
@@ -95,7 +102,7 @@ class CooldownCheck:
         if last_trade_time is None:
             return SafetyResult(ok=True, reason="No previous trades")
 
-        time_since_last = datetime.now() - last_trade_time
+        time_since_last = datetime.now(timezone.utc) - last_trade_time
         cooldown = timedelta(seconds=symbol_config.cooldown_seconds)
 
         if time_since_last < cooldown:
@@ -141,7 +148,11 @@ class DailyTradeCountCheck:
 
 @dataclass
 class BalanceCheck:
-    """Check if balance meets minimum requirements."""
+    """Check if balance meets minimum requirements.
+    
+    Note: This is a simplified check. In production, balance verification should be
+    currency-aware (quote currency for BUY, base currency for SELL).
+    """
 
     config: AutomationConfig
     current_balance: Decimal
@@ -156,7 +167,10 @@ class BalanceCheck:
                 reason=f"Insufficient balance: {self.current_balance} < {self.config.min_balance_required}",
             )
 
-        # Also check if we have enough to execute this order
+        # Check if we have enough to execute this order
+        # Note: For BUY orders, amount should be in quote currency (e.g., USDT)
+        # For SELL orders, amount should be in base currency (e.g., BTC)
+        # This simplified check assumes the balance is in the appropriate currency
         if self.current_balance < intent.amount:
             return SafetyResult(
                 ok=False,

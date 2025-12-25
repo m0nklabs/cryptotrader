@@ -2,12 +2,14 @@
 
 Provides structured event format for logging all automation decisions,
 rule violations, and rejections with full context for replay and debugging.
+
+All timestamps use timezone-aware UTC datetimes for consistency.
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 
@@ -30,7 +32,7 @@ class AuditEvent:
 
     event_type: EventType
     message: str
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     severity: Severity = "info"
     context: dict[str, Any] = field(default_factory=dict)
 
@@ -45,8 +47,17 @@ class AuditEvent:
     def from_dict(cls, data: dict[str, Any]) -> AuditEvent:
         """Create from dictionary."""
         # Convert timestamp string back to datetime
-        if isinstance(data.get("timestamp"), str):
-            data["timestamp"] = datetime.fromisoformat(data["timestamp"])
+        timestamp_value = data.get("timestamp")
+        if isinstance(timestamp_value, str):
+            ts = timestamp_value
+            # Normalize common ISO 8601 variant with trailing 'Z' (UTC)
+            if ts.endswith("Z"):
+                ts = ts[:-1] + "+00:00"
+            try:
+                data["timestamp"] = datetime.fromisoformat(ts)
+            except ValueError:
+                # On parse failure, fall back to default by removing invalid value
+                data.pop("timestamp", None)
         return cls(**data)
 
 
@@ -174,16 +185,13 @@ class AuditLogger:
         symbol: Optional[str] = None,
     ) -> list[AuditEvent]:
         """Get filtered audit events."""
-        events = self.events
-
-        if event_type:
-            events = [e for e in events if e.event_type == event_type]
-        if severity:
-            events = [e for e in events if e.severity == severity]
-        if symbol:
-            events = [e for e in events if e.context.get("symbol") == symbol]
-
-        return events
+        return [
+            e
+            for e in self.events
+            if (event_type is None or e.event_type == event_type)
+            and (severity is None or e.severity == severity)
+            and (symbol is None or e.context.get("symbol") == symbol)
+        ]
 
     def clear(self) -> None:
         """Clear all events (for testing)."""

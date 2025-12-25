@@ -1,8 +1,7 @@
 """Tests for automation engine skeleton."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-
 
 from core.automation import (
     AuditEvent,
@@ -94,7 +93,7 @@ class TestTradeHistory:
     def test_add_trade(self) -> None:
         """Test adding trades to history."""
         history = TradeHistory()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         history.add_trade("BTC/USDT", now)
         assert len(history.trades) == 1
@@ -104,7 +103,7 @@ class TestTradeHistory:
     def test_get_trades_since(self) -> None:
         """Test getting trades since a specific time."""
         history = TradeHistory()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         hour_ago = now - timedelta(hours=1)
         two_hours_ago = now - timedelta(hours=2)
 
@@ -119,7 +118,7 @@ class TestTradeHistory:
     def test_get_symbol_trades_since(self) -> None:
         """Test getting symbol-specific trades."""
         history = TradeHistory()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         hour_ago = now - timedelta(hours=1)
 
         history.add_trade("BTC/USDT", hour_ago)
@@ -133,7 +132,7 @@ class TestTradeHistory:
     def test_get_last_trade_time(self) -> None:
         """Test getting last trade time for a symbol."""
         history = TradeHistory()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         hour_ago = now - timedelta(hours=1)
 
         assert history.get_last_trade_time("BTC/USDT") is None
@@ -147,7 +146,7 @@ class TestTradeHistory:
     def test_get_daily_trade_count(self) -> None:
         """Test getting daily trade count."""
         history = TradeHistory()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         yesterday = now - timedelta(days=1)
 
         history.add_trade("BTC/USDT", yesterday)
@@ -232,6 +231,16 @@ class TestPositionSizeCheck:
         assert result.ok is False
         assert "limit exceeded" in result.reason
 
+    def test_sell_order_reduces_position(self) -> None:
+        """Test that SELL orders reduce position size."""
+        symbol_config = SymbolConfig(symbol="BTC/USDT", max_position_size=Decimal("5000"))
+        config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
+        check = PositionSizeCheck(config=config, current_position_value=Decimal("4000"))
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="SELL", amount=Decimal("2000"))
+
+        result = check.check(intent=intent)
+        assert result.ok is True  # 4000 - 2000 = 2000, which is within the 5000 limit
+
 
 class TestCooldownCheck:
     """Tests for CooldownCheck."""
@@ -261,7 +270,7 @@ class TestCooldownCheck:
         symbol_config = SymbolConfig(symbol="BTC/USDT", cooldown_seconds=120)
         config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
         history = TradeHistory()
-        recent_time = datetime.now() - timedelta(seconds=30)  # 30 seconds ago
+        recent_time = datetime.now(timezone.utc) - timedelta(seconds=30)  # 30 seconds ago
         history.add_trade("BTC/USDT", recent_time)
 
         check = CooldownCheck(config=config, trade_history=history)
@@ -276,7 +285,7 @@ class TestCooldownCheck:
         symbol_config = SymbolConfig(symbol="BTC/USDT", cooldown_seconds=60)
         config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
         history = TradeHistory()
-        old_time = datetime.now() - timedelta(seconds=120)  # 2 minutes ago
+        old_time = datetime.now(timezone.utc) - timedelta(seconds=120)  # 2 minutes ago
         history.add_trade("BTC/USDT", old_time)
 
         check = CooldownCheck(config=config, trade_history=history)
@@ -304,7 +313,7 @@ class TestDailyTradeCountCheck:
         symbol_config = SymbolConfig(symbol="BTC/USDT", max_daily_trades=5)
         config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
         history = TradeHistory()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         for _ in range(3):
             history.add_trade("BTC/USDT", now)
 
@@ -319,7 +328,7 @@ class TestDailyTradeCountCheck:
         symbol_config = SymbolConfig(symbol="BTC/USDT", max_daily_trades=3)
         config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
         history = TradeHistory()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         for _ in range(3):
             history.add_trade("BTC/USDT", now)
 
@@ -334,7 +343,7 @@ class TestDailyTradeCountCheck:
         """Test global limit exceeded."""
         config = AutomationConfig(enabled=True, max_daily_trades_global=5)
         history = TradeHistory()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         for i in range(5):
             history.add_trade(f"SYM{i}", now)
 
@@ -504,7 +513,7 @@ class TestAuditEvent:
 
     def test_to_dict(self) -> None:
         """Test converting event to dictionary."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         event = AuditEvent(
             event_type="decision",
             message="Test message",
@@ -522,7 +531,7 @@ class TestAuditEvent:
 
     def test_from_dict(self) -> None:
         """Test creating event from dictionary."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         data = {
             "event_type": "decision",
             "message": "Test message",
@@ -537,6 +546,35 @@ class TestAuditEvent:
         assert event.timestamp == now
         assert event.severity == "warning"
         assert event.context == {"symbol": "BTC/USDT"}
+
+    def test_from_dict_with_z_suffix(self) -> None:
+        """Test creating event from dictionary with Z suffix timestamp."""
+        data = {
+            "event_type": "decision",
+            "message": "Test message",
+            "timestamp": "2024-01-01T12:00:00Z",
+            "severity": "info",
+            "context": {},
+        }
+
+        event = AuditEvent.from_dict(data)
+        assert event.event_type == "decision"
+        assert event.timestamp.tzinfo is not None  # Should be timezone-aware
+
+    def test_from_dict_invalid_timestamp(self) -> None:
+        """Test creating event from dictionary with invalid timestamp."""
+        data = {
+            "event_type": "error",
+            "message": "Test message",
+            "timestamp": "invalid-timestamp",
+            "severity": "error",
+            "context": {},
+        }
+
+        # Should not raise an error, just use default timestamp
+        event = AuditEvent.from_dict(data)
+        assert event.event_type == "error"
+        assert event.timestamp is not None  # Should have a default timestamp
 
 
 class TestAuditLogger:
