@@ -166,125 +166,71 @@ jobs:
 
       - name: Assign Copilot to issue (GraphQL)
         if: steps.check-prs.outputs.busy == 'false' && steps.find-issue.outputs.found == 'true'
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ steps.generate-token.outputs.token }}
-          script: |
-            const issueNumber = ${{ steps.find-issue.outputs.issue_number }};
-            const issueTitle = `${{ steps.find-issue.outputs.issue_title }}`;
+        env:
+          # Use PAT for Copilot assignment - GitHub App tokens cannot see copilot-swe-agent bot
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          ISSUE_NUMBER=${{ steps.find-issue.outputs.issue_number }}
+          echo "Assigning Copilot to issue #${ISSUE_NUMBER}"
 
-            console.log(`Assigning Copilot to issue #${issueNumber}: ${issueTitle}`);
-
-            // Step 1: Find the Copilot bot in suggested actors
-            // This is required because Copilot can't be assigned via normal API
-            let copilotBotId = null;
-            let endCursor = null;
-
-            while (!copilotBotId) {
-              const suggestedActorsQuery = `
-                query($owner: String!, $name: String!, $endCursor: String) {
-                  repository(owner: $owner, name: $name) {
-                    suggestedActors(first: 100, after: $endCursor, capabilities: CAN_BE_ASSIGNED) {
-                      nodes {
-                        ... on Bot {
-                          id
-                          login
-                        }
-                      }
-                      pageInfo {
-                        hasNextPage
-                        endCursor
-                      }
+          # Step 1: Find the Copilot bot ID from suggested actors
+          COPILOT_BOT_ID=$(gh api graphql -f query='
+            query($owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) {
+                suggestedActors(first: 100, capabilities: CAN_BE_ASSIGNED) {
+                  nodes {
+                    ... on Bot {
+                      id
+                      login
                     }
                   }
                 }
-              `;
-
-              const suggestedResult = await github.graphql(suggestedActorsQuery, {
-                owner: context.repo.owner,
-                name: context.repo.repo,
-                endCursor: endCursor
-              });
-
-              for (const node of suggestedResult.repository.suggestedActors.nodes) {
-                if (node.login === 'copilot-swe-agent') {
-                  copilotBotId = node.id;
-                  break;
-                }
               }
-
-              if (!suggestedResult.repository.suggestedActors.pageInfo.hasNextPage) {
-                break;
-              }
-              endCursor = suggestedResult.repository.suggestedActors.pageInfo.endCursor;
             }
+          ' -f owner="${{ github.repository_owner }}" -f name="${{ github.event.repository.name }}" \
+            --jq '.data.repository.suggestedActors.nodes[] | select(.login == "copilot-swe-agent") | .id')
 
-            if (!copilotBotId) {
-              core.setFailed('Copilot bot not found in suggested actors. Make sure Copilot is enabled for this repo.');
-              return;
+          if [ -z "$COPILOT_BOT_ID" ]; then
+            echo "::error::Copilot bot not found. Make sure Copilot is enabled and GH_PAT secret has correct scopes."
+            exit 1
+          fi
+
+          echo "Found Copilot bot with ID: $COPILOT_BOT_ID"
+
+          # Step 2: Get the issue's GraphQL ID
+          ISSUE_ID=$(gh api graphql -f query='
+            query($owner: String!, $name: String!, $number: Int!) {
+              repository(owner: $owner, name: $name) {
+                issue(number: $number) {
+                  id
+                }
+              }
             }
+          ' -f owner="${{ github.repository_owner }}" -f name="${{ github.event.repository.name }}" -F number="$ISSUE_NUMBER" \
+            --jq '.data.repository.issue.id')
 
-            console.log(`Found Copilot bot with ID: ${copilotBotId}`);
+          echo "Issue GraphQL ID: $ISSUE_ID"
 
-            // Step 2: Get the issue's GraphQL ID and current assignees
-            const issueQuery = `
-              query($owner: String!, $name: String!, $number: Int!) {
-                repository(owner: $owner, name: $name) {
-                  issue(number: $number) {
-                    id
-                    assignees(first: 100) {
+          # Step 3: Assign Copilot using replaceActorsForAssignable mutation
+          RESULT=$(gh api graphql -f query='
+            mutation($issueId: ID!, $actorIds: [ID!]!) {
+              replaceActorsForAssignable(input: {assignableId: $issueId, actorIds: $actorIds}) {
+                assignable {
+                  ... on Issue {
+                    assignees(first: 10) {
                       nodes {
-                        id
+                        login
                       }
                     }
                   }
                 }
               }
-            `;
+            }
+          ' -f issueId="$ISSUE_ID" -f actorIds="[\"$COPILOT_BOT_ID\"]" \
+            --jq '.data.replaceActorsForAssignable.assignable.assignees.nodes[].login')
 
-            const issueResult = await github.graphql(issueQuery, {
-              owner: context.repo.owner,
-              name: context.repo.repo,
-              number: issueNumber
-            });
-
-            const issueId = issueResult.repository.issue.id;
-            const currentAssigneeIds = issueResult.repository.issue.assignees.nodes.map(n => n.id);
-
-            console.log(`Issue ID: ${issueId}, Current assignees: ${currentAssigneeIds.length}`);
-
-            // Step 3: Assign Copilot using replaceActorsForAssignable mutation
-            // This adds Copilot while keeping existing assignees
-            const actorIds = [...currentAssigneeIds, copilotBotId];
-
-            const assignMutation = `
-              mutation($input: ReplaceActorsForAssignableInput!) {
-                replaceActorsForAssignable(input: $input) {
-                  assignable {
-                    ... on Issue {
-                      assignees(first: 10) {
-                        nodes {
-                          login
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            `;
-
-            const assignResult = await github.graphql(assignMutation, {
-              input: {
-                assignableId: issueId,
-                actorIds: actorIds
-              }
-            });
-
-            const newAssignees = assignResult.replaceActorsForAssignable.assignable.assignees.nodes
-              .map(n => n.login).join(', ');
-            console.log(`Successfully assigned! New assignees: ${newAssignees}`);
-
-            core.setOutput('assigned', 'true');
+          echo "Successfully assigned! New assignees: $RESULT"
+          echo "assigned=true" >> $GITHUB_OUTPUT
 
       - name: Mention Copilot on issue
         if: steps.check-prs.outputs.busy == 'false' && steps.find-issue.outputs.found == 'true'
