@@ -20,6 +20,7 @@ from cex.bitfinex.api.bitfinex_client_v2 import BitfinexClient
 class TestBitfinexClientAuth:
     """Test BitfinexClient authenticated endpoint integration."""
     
+    @patch.dict('os.environ', {}, clear=True)
     def test_get_wallets_requires_api_credentials(self) -> None:
         """get_wallets should raise ValueError if API credentials not provided."""
         client = BitfinexClient()
@@ -44,8 +45,8 @@ class TestBitfinexClientAuth:
         mock_post.assert_called_once()
         call_args = mock_post.call_args
         
-        # Check URL
-        assert "https://api-pub.bitfinex.com/v2/v2/auth/r/wallets" in call_args[0][0]
+        # Check URL (BASE_URL already includes /v2, path is /auth/r/wallets)
+        assert "https://api-pub.bitfinex.com/v2/auth/r/wallets" in call_args[0][0]
         
         # Check headers were provided
         assert "headers" in call_args[1]

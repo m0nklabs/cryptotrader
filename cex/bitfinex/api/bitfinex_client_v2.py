@@ -1,4 +1,4 @@
-"""
+""" 
 Bitfinex API v2 Client - REST API Implementation
 =================================================
 
@@ -336,7 +336,7 @@ class BitfinexClient:
         if not self.api_key or not self.api_secret:
             raise ValueError("API key and secret required for authenticated endpoints")
         
-        path = "/v2/auth/r/wallets"
+        path = "/auth/r/wallets"
         url = f"{self.BASE_URL}{path}"
         
         # Build authentication headers

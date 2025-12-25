@@ -39,37 +39,47 @@ def test_fetch_wallet_balances_paper_mode():
 
 def test_fetch_wallet_balances_structure():
     """Test that wallet response has the correct structure."""
-    from scripts.api_server import _fetch_wallet_balances
-    
-    wallets = _fetch_wallet_balances()
-    
-    assert isinstance(wallets, list)
-    
-    for wallet in wallets:
-        assert "type" in wallet
-        assert "currency" in wallet
-        assert "balance" in wallet
-        assert "available" in wallet
+    # Clear env to force paper mode (mock data)
+    with patch.dict(os.environ, {}, clear=True):
+        from importlib import reload
+        import scripts.api_server as api_server_mod
+        reload(api_server_mod)
+        from scripts.api_server import _fetch_wallet_balances
         
-        # Validate types
-        assert isinstance(wallet["type"], str)
-        assert isinstance(wallet["currency"], str)
-        assert isinstance(wallet["balance"], (int, float))
-        assert isinstance(wallet["available"], (int, float))
+        wallets = _fetch_wallet_balances()
+    
+        assert isinstance(wallets, list)
         
-        # Validate wallet type is one of the expected values
-        assert wallet["type"] in ["exchange", "margin", "funding"]
-        
-        # Validate available is always >= 0 (even if None in source data)
-        assert wallet["available"] >= 0
+        for wallet in wallets:
+            assert "type" in wallet
+            assert "currency" in wallet
+            assert "balance" in wallet
+            assert "available" in wallet
+            
+            # Validate types
+            assert isinstance(wallet["type"], str)
+            assert isinstance(wallet["currency"], str)
+            assert isinstance(wallet["balance"], (int, float))
+            assert isinstance(wallet["available"], (int, float))
+            
+            # Validate wallet type is one of the expected values
+            assert wallet["type"] in ["exchange", "margin", "funding"]
+            
+            # Validate available is always >= 0 (even if None in source data)
+            assert wallet["available"] >= 0
 
 
 def test_wallet_available_balance_handling():
     """Test that available_balance is properly handled when it's None."""
-    from scripts.api_server import _fetch_wallet_balances
+    # Clear env to force paper mode (mock data)
+    with patch.dict(os.environ, {}, clear=True):
+        from importlib import reload
+        import scripts.api_server as api_server_mod
+        reload(api_server_mod)
+        from scripts.api_server import _fetch_wallet_balances
+        
+        wallets = _fetch_wallet_balances()
     
-    wallets = _fetch_wallet_balances()
-    
-    # In paper mode, all wallets should have available == balance
-    for wallet in wallets:
-        assert wallet["available"] == wallet["balance"]
+        # In paper mode, all wallets should have available == balance
+        for wallet in wallets:
+            assert wallet["available"] == wallet["balance"]
