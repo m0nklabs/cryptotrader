@@ -269,6 +269,7 @@ class PaperPosition:
 @dataclass(frozen=True)
 class PortfolioSnapshot:
     """Aggregate portfolio view at a point in time."""
+
     total_value: Decimal
     cash_balance: Decimal
     positions_value: Decimal

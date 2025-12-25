@@ -36,9 +36,7 @@ def test_schema_contains_required_tables():
     ]
 
     for table_name in required_tables:
-        assert (
-            f"CREATE TABLE IF NOT EXISTS {table_name}" in schema_sql
-        ), f"Schema should contain {table_name} table"
+        assert f"CREATE TABLE IF NOT EXISTS {table_name}" in schema_sql, f"Schema should contain {table_name} table"
 
 
 def test_schema_is_idempotent():
