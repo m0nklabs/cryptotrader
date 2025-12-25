@@ -163,7 +163,7 @@ pull_request_rules:
       - or:
           - author=github-actions[bot]
           - head~=^copilot/
-      - "#approved-reviews-by>=1"
+      - "#approved-reviews-by>=2"
       - check-success=Backend (ruff + pytest)
       - check-success=Pre-commit checks
       - check-success=Gitleaks
@@ -179,7 +179,7 @@ pull_request_rules:
   - name: auto-merge-approved
     conditions:
       - label=automerge
-      - "#approved-reviews-by>=1"
+      - "#approved-reviews-by>=2"
       - check-success=Backend (ruff + pytest)
       - check-success=Pre-commit checks
       - check-success=Gitleaks
