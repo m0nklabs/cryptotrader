@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional, Protocol, Sequence
+from decimal import Decimal
+from typing import Literal, Optional, Protocol, Sequence
 
 from core.types import (
     Candle,
@@ -14,6 +15,9 @@ from core.types import (
     Opportunity,
     OrderIntent,
     OrderRecord,
+    PaperOrder,
+    PaperPosition,
+    PortfolioSnapshot,
     PositionSnapshot,
     Strategy,
     Symbol,
@@ -203,3 +207,65 @@ class FeeScheduleStore(Protocol):
 
     def get_latest(self, *, exchange: str, symbol: str | None = None) -> Optional[FeeSchedule]:
         """Fetch latest fee schedule for exchange and optional symbol."""
+
+
+class PaperOrderStore(Protocol):
+    """Protocol defining the interface for persisting and querying paper trading orders."""
+
+    def create_order(self, *, order: PaperOrder) -> int:
+        """Create a paper order and return its id."""
+
+    def update_order_status(
+        self,
+        *,
+        order_id: int,
+        status: Literal["pending", "filled", "cancelled"],
+        fill_price: Decimal | None = None,
+        slippage_bps: Decimal | None = None,
+        filled_at: datetime | None = None,
+    ) -> None:
+        """Update paper order status and fill details."""
+
+    def get_orders(
+        self,
+        *,
+        symbol: str | None = None,
+        status: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 1000,
+    ) -> Sequence[PaperOrder]:
+        """List paper orders with optional filters."""
+
+
+class PaperPositionStore(Protocol):
+    """Protocol defining the interface for persisting and querying paper trading positions."""
+
+    def upsert_position(self, *, position: PaperPosition) -> int:
+        """Insert or update a paper position and return its id."""
+
+    def get_position(self, *, symbol: str) -> Optional[PaperPosition]:
+        """Fetch current paper position for a symbol."""
+
+    def get_all_positions(self) -> Sequence[PaperPosition]:
+        """Fetch all current paper positions."""
+
+
+class PortfolioSnapshotStore(Protocol):
+    """Interface for persisting and querying portfolio snapshots."""
+
+    def log_snapshot(self, *, snapshot: PortfolioSnapshot) -> int:
+        """Persist a portfolio snapshot and return its id."""
+
+    def get_latest(self, *, exchange: str | None = None) -> Optional[PortfolioSnapshot]:
+        """Fetch latest portfolio snapshot, optionally filtered by exchange."""
+
+    def get_snapshots(
+        self,
+        *,
+        exchange: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 1000,
+    ) -> Sequence[PortfolioSnapshot]:
+        """List portfolio snapshots with optional filters."""

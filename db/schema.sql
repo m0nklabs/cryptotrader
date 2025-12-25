@@ -240,6 +240,21 @@ CREATE TABLE IF NOT EXISTS positions (
 CREATE INDEX IF NOT EXISTS idx_positions_lookup
     ON positions(exchange, symbol, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    exchange VARCHAR(50),
+    total_value DECIMAL(30, 10) NOT NULL,
+    cash_balance DECIMAL(30, 10) NOT NULL,
+    positions_value DECIMAL(30, 10) NOT NULL,
+    unrealized_pnl DECIMAL(30, 10) NOT NULL,
+    realized_pnl DECIMAL(30, 10) NOT NULL,
+    snapshot_time TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_lookup
+    ON portfolio_snapshots(exchange, snapshot_time DESC);
+
 
 -- =====================
 -- Orders & trade fills
