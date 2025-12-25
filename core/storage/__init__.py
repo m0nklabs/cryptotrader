@@ -7,21 +7,21 @@ Keeping implementations separate makes delegation easier.
 """
 
 from .noop_stores import (
-	NoopAuditEventStore,
-	NoopCandleGapStore,
-	NoopCandleStore,
-	NoopExchangeStore,
-	NoopExecutionStore,
-	NoopFeeScheduleStore,
-	NoopMarketDataJobRunStore,
-	NoopMarketDataJobStore,
-	NoopOpportunityStore,
-	NoopOrderStore,
-	NoopPositionStore,
-	NoopStrategyStore,
-	NoopSymbolStore,
-	NoopTradeFillStore,
-	NoopWalletSnapshotStore,
+    NoopAuditEventStore,
+    NoopCandleGapStore,
+    NoopCandleStore,
+    NoopExchangeStore,
+    NoopExecutionStore,
+    NoopFeeScheduleStore,
+    NoopMarketDataJobRunStore,
+    NoopMarketDataJobStore,
+    NoopOpportunityStore,
+    NoopOrderStore,
+    NoopPositionStore,
+    NoopStrategyStore,
+    NoopSymbolStore,
+    NoopTradeFillStore,
+    NoopWalletSnapshotStore,
 )
 
 from .postgres import PostgresConfig, PostgresStores

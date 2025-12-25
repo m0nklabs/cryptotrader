@@ -12,9 +12,9 @@ assignees: ''
 
 ## Steps to Reproduce
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ## Expected Behavior
 
@@ -26,9 +26,9 @@ assignees: ''
 
 ## Environment
 
-- OS: 
-- Python version: 
-- Branch/commit: 
+- OS:
+- Python version:
+- Branch/commit:
 
 ## Logs/Screenshots
 

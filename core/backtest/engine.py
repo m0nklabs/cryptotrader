@@ -62,11 +62,11 @@ class BacktestEngine:
         candles: Sequence[Candle],
     ) -> BacktestResult:
         """Run backtest simulation on historical data.
-        
+
         Args:
             strategy: Strategy implementing on_candle protocol
             candles: Historical candle data
-            
+
         Returns:
             BacktestResult with trades and performance metrics
         """

@@ -16,10 +16,10 @@ class MyStrategy:
     def on_candle(self, candle: Candle, indicators: dict) -> Signal | None:
         # Access computed indicators
         rsi = indicators.get('rsi')
-        
+
         if rsi is None:
             return None
-            
+
         # Generate signals based on your logic
         if rsi < 30:
             return Signal(side="BUY", strength=50)

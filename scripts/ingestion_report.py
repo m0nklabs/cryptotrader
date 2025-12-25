@@ -10,24 +10,10 @@ DB_URL = os.environ.get("DATABASE_URL")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Print ingestion summary for exchange/symbol/timeframe tuples."
-    )
-    parser.add_argument(
-        "--exchange", 
-        action="append",
-        help="Exchange name (repeatable)"
-    )
-    parser.add_argument(
-        "--symbol", 
-        action="append",
-        help="Symbol name (repeatable)"
-    )
-    parser.add_argument(
-        "--timeframe", 
-        action="append",
-        help="Timeframe (repeatable)"
-    )
+    parser = argparse.ArgumentParser(description="Print ingestion summary for exchange/symbol/timeframe tuples.")
+    parser.add_argument("--exchange", action="append", help="Exchange name (repeatable)")
+    parser.add_argument("--symbol", action="append", help="Symbol name (repeatable)")
+    parser.add_argument("--timeframe", action="append", help="Timeframe (repeatable)")
     return parser.parse_args()
 
 
@@ -50,7 +36,9 @@ def validate_schema() -> bool:
     try:
         engine = create_engine(DB_URL)
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'candles')"))
+            result = conn.execute(
+                text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'candles')")
+            )
             if not result.fetchone()[0]:
                 print("Schema missing: candles table not found")
                 return False
@@ -60,17 +48,13 @@ def validate_schema() -> bool:
         return False
 
 
-def get_ingestion_summary(
-    exchange: str,
-    symbol: str,
-    timeframe: str
-) -> dict:
+def get_ingestion_summary(exchange: str, symbol: str, timeframe: str) -> dict:
     try:
         engine = create_engine(DB_URL)
         with engine.connect() as conn:
             query = text(
                 """
-                SELECT 
+                SELECT
                     EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'candles') AS schema_ok,
                     COUNT(*) AS candles_count,
                     MAX(open_time) AS latest_candle_open_time
@@ -80,17 +64,9 @@ def get_ingestion_summary(
                 AND timeframe = :timeframe
                 """
             )
-            result = conn.execute(query, {
-                "exchange": exchange,
-                "symbol": symbol,
-                "timeframe": timeframe
-            })
+            result = conn.execute(query, {"exchange": exchange, "symbol": symbol, "timeframe": timeframe})
             row = result.fetchone()
-            return {
-                "schema_ok": row[0],
-                "candles_count": row[1],
-                "latest_candle_open_time": row[2]
-            }
+            return {"schema_ok": row[0], "candles_count": row[1], "latest_candle_open_time": row[2]}
     except Exception as e:
         print(f"Error fetching data: {e}")
         return {}
@@ -116,7 +92,9 @@ def main() -> int:
         summary = get_ingestion_summary(exchange, symbol, timeframe)
         if not summary:
             return 1
-        print(f"exchange={exchange} symbol={symbol} timeframe={timeframe} schema_ok={summary['schema_ok']} candles_count={summary['candles_count']} latest_candle_open_time={summary['latest_candle_open_time']}")
+        print(
+            f"exchange={exchange} symbol={symbol} timeframe={timeframe} schema_ok={summary['schema_ok']} candles_count={summary['candles_count']} latest_candle_open_time={summary['latest_candle_open_time']}"
+        )
 
     return 0
 

@@ -37,12 +37,24 @@ def test_parse_args_single_values():
 
 def test_parse_args_multiple_values():
     """Parse args handles multiple repeatable values."""
-    with patch("sys.argv", [
-        "prog",
-        "--exchange", "bitfinex", "--exchange", "kraken",
-        "--symbol", "BTCUSD", "--symbol", "ETHUSD",
-        "--timeframe", "1h", "--timeframe", "4h",
-    ]):
+    with patch(
+        "sys.argv",
+        [
+            "prog",
+            "--exchange",
+            "bitfinex",
+            "--exchange",
+            "kraken",
+            "--symbol",
+            "BTCUSD",
+            "--symbol",
+            "ETHUSD",
+            "--timeframe",
+            "1h",
+            "--timeframe",
+            "4h",
+        ],
+    ):
         args = parse_args()
         assert args.exchange == ["bitfinex", "kraken"]
         assert args.symbol == ["BTCUSD", "ETHUSD"]
@@ -67,7 +79,7 @@ def test_validate_db_connection_no_url():
         # Ensure DATABASE_URL is not set
         if "DATABASE_URL" in os.environ:
             del os.environ["DATABASE_URL"]
-        
+
         # Need to reload the module to pick up env change
         with patch("scripts.ingestion_report.DB_URL", None):
             result = validate_db_connection()
@@ -84,7 +96,7 @@ def test_validate_db_connection_success():
     mock_conn.__enter__ = MagicMock(return_value=mock_conn)
     mock_conn.__exit__ = MagicMock(return_value=False)
     mock_engine.connect.return_value = mock_conn
-    
+
     with patch("scripts.ingestion_report.DB_URL", "postgresql://test:test@localhost/test"):
         with patch("scripts.ingestion_report.create_engine", return_value=mock_engine):
             result = validate_db_connection()
@@ -112,7 +124,7 @@ def test_validate_schema_table_exists():
     mock_conn.__enter__ = MagicMock(return_value=mock_conn)
     mock_conn.__exit__ = MagicMock(return_value=False)
     mock_engine.connect.return_value = mock_conn
-    
+
     with patch("scripts.ingestion_report.DB_URL", "postgresql://test:test@localhost/test"):
         with patch("scripts.ingestion_report.create_engine", return_value=mock_engine):
             result = validate_schema()
@@ -129,7 +141,7 @@ def test_validate_schema_table_missing():
     mock_conn.__enter__ = MagicMock(return_value=mock_conn)
     mock_conn.__exit__ = MagicMock(return_value=False)
     mock_engine.connect.return_value = mock_conn
-    
+
     with patch("scripts.ingestion_report.DB_URL", "postgresql://test:test@localhost/test"):
         with patch("scripts.ingestion_report.create_engine", return_value=mock_engine):
             result = validate_schema()
@@ -158,11 +170,11 @@ def test_get_ingestion_summary_success():
     mock_conn.__enter__ = MagicMock(return_value=mock_conn)
     mock_conn.__exit__ = MagicMock(return_value=False)
     mock_engine.connect.return_value = mock_conn
-    
+
     with patch("scripts.ingestion_report.DB_URL", "postgresql://test:test@localhost/test"):
         with patch("scripts.ingestion_report.create_engine", return_value=mock_engine):
             result = get_ingestion_summary("bitfinex", "BTCUSD", "1h")
-            
+
             assert result["schema_ok"] is True
             assert result["candles_count"] == 1000
             assert result["latest_candle_open_time"] == test_time
@@ -178,11 +190,11 @@ def test_get_ingestion_summary_no_candles():
     mock_conn.__enter__ = MagicMock(return_value=mock_conn)
     mock_conn.__exit__ = MagicMock(return_value=False)
     mock_engine.connect.return_value = mock_conn
-    
+
     with patch("scripts.ingestion_report.DB_URL", "postgresql://test:test@localhost/test"):
         with patch("scripts.ingestion_report.create_engine", return_value=mock_engine):
             result = get_ingestion_summary("bitfinex", "BTCUSD", "1h")
-            
+
             assert result["candles_count"] == 0
             assert result["latest_candle_open_time"] is None
 
@@ -237,15 +249,15 @@ def test_main_success(capsys):
         "candles_count": 500,
         "latest_candle_open_time": test_time,
     }
-    
+
     with patch("sys.argv", ["prog", "--exchange", "bitfinex", "--symbol", "BTCUSD", "--timeframe", "1h"]):
         with patch("scripts.ingestion_report.validate_db_connection", return_value=True):
             with patch("scripts.ingestion_report.validate_schema", return_value=True):
                 with patch("scripts.ingestion_report.get_ingestion_summary", return_value=mock_summary):
                     result = main()
-                    
+
                     assert result == 0
-                    
+
                     captured = capsys.readouterr()
                     assert "bitfinex" in captured.out
                     assert "BTCUSD" in captured.out

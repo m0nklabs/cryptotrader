@@ -198,7 +198,9 @@ class _Handler(BaseHTTPRequestHandler):
         )
 
 
-def _fetch_latest_candles(*, stores: PostgresStores, exchange: str, symbol: str, timeframe: str, limit: int) -> list[dict[str, Any]]:
+def _fetch_latest_candles(
+    *, stores: PostgresStores, exchange: str, symbol: str, timeframe: str, limit: int
+) -> list[dict[str, Any]]:
     engine = stores._get_engine()  # noqa: SLF001
     _, text = stores._require_sqlalchemy()  # noqa: SLF001
 
@@ -441,14 +443,22 @@ def _fetch_signals(
 
 def _fetch_wallet_balances() -> list[dict[str, Any]]:
     """Fetch wallet balances from Bitfinex or return mock balances for paper trading.
-    
+
     Returns:
         List of wallet dicts with type, currency, balance, and available balance.
     """
     # Check if we're in paper trading mode (no API keys configured)
-    api_key = os.environ.get('BITFINEX_API_KEY') or os.environ.get('BITFINEX_API_KEY_SUB') or os.environ.get('BITFINEX_API_KEY_MAIN')
-    api_secret = os.environ.get('BITFINEX_API_SECRET') or os.environ.get('BITFINEX_API_SECRET_SUB') or os.environ.get('BITFINEX_API_SECRET_MAIN')
-    
+    api_key = (
+        os.environ.get("BITFINEX_API_KEY")
+        or os.environ.get("BITFINEX_API_KEY_SUB")
+        or os.environ.get("BITFINEX_API_KEY_MAIN")
+    )
+    api_secret = (
+        os.environ.get("BITFINEX_API_SECRET")
+        or os.environ.get("BITFINEX_API_SECRET_SUB")
+        or os.environ.get("BITFINEX_API_SECRET_MAIN")
+    )
+
     if not api_key or not api_secret:
         # Return mock balances for paper trading mode
         return [
@@ -471,23 +481,25 @@ def _fetch_wallet_balances() -> list[dict[str, Any]]:
                 "available": 2.0,
             },
         ]
-    
+
     # Use the BitfinexClient to fetch real balances (imported here to avoid dependency in paper mode)
     from cex.bitfinex.api.bitfinex_client_v2 import BitfinexClient  # noqa: E402
-    
+
     client = BitfinexClient(api_key=api_key, api_secret=api_secret)
     wallets = client.get_wallets()
-    
+
     # Transform to match the expected format
     out: list[dict[str, Any]] = []
     for wallet in wallets:
-        out.append({
-            "type": wallet["type"],
-            "currency": wallet["currency"],
-            "balance": wallet["balance"],
-            "available": wallet.get("available_balance", wallet["balance"]),
-        })
-    
+        out.append(
+            {
+                "type": wallet["type"],
+                "currency": wallet["currency"],
+                "balance": wallet["balance"],
+                "available": wallet.get("available_balance", wallet["balance"]),
+            }
+        )
+
     return out
 
 

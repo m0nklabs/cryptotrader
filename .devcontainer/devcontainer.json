@@ -1,7 +1,7 @@
 {
   "name": "cryptotrader",
   "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye",
-  
+
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": "20"
@@ -44,7 +44,7 @@
   },
 
   "postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt -r requirements-dev.txt && cd frontend && npm install",
-  
+
   "remoteEnv": {
     "PYTHONPATH": "${containerWorkspaceFolder}",
     "DATABASE_URL": "postgresql://postgres:postgres@db:5432/cryptotrader",
@@ -56,7 +56,7 @@
   ],
 
   "runServices": ["db"],
-  
+
   "dockerComposeFile": "../docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspace"

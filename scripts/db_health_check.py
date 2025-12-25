@@ -24,9 +24,7 @@ from datetime import datetime
 
 
 def _parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="DB + ingestion healthcheck (no secrets output)."
-    )
+    p = argparse.ArgumentParser(description="DB + ingestion healthcheck (no secrets output).")
     p.add_argument(
         "--exchange",
         default="bitfinex",
@@ -142,10 +140,7 @@ def main() -> int:
                 f"{latest_open_time.isoformat()}"
             )
         else:
-            print(
-                f"⚠️  latest_candle_open_time ({args.exchange}/{args.symbol}/{args.timeframe}): "
-                f"No candles found"
-            )
+            print(f"⚠️  latest_candle_open_time ({args.exchange}/{args.symbol}/{args.timeframe}): " f"No candles found")
     except Exception as exc:
         print(
             "⚠️  latest_candle_open_time: Unable to query latest candle",

@@ -88,4 +88,3 @@ Install + start:
 - `systemctl --user enable --now cryptotrader-dashboard-api.service`
 
 The unit loads `DATABASE_URL` from `/home/flip/cryptotrader/.env` (see `.env.example`).
-

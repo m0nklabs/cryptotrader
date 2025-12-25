@@ -35,9 +35,9 @@ def test_detect_rsi_signal_oversold():
     """Test RSI oversold detection (should return BUY signal)."""
     # Create descending prices to generate oversold RSI
     candles = [_make_candle(close=100.0 - i, idx=i) for i in range(30)]
-    
+
     signal = detect_rsi_signal(candles, period=14, oversold=30.0, overbought=70.0)
-    
+
     assert signal is not None
     assert signal.code == "RSI"
     assert signal.side == "BUY"
@@ -48,9 +48,9 @@ def test_detect_rsi_signal_overbought():
     """Test RSI overbought detection (should return SELL signal)."""
     # Create ascending prices to generate overbought RSI
     candles = [_make_candle(close=100.0 + i, idx=i) for i in range(30)]
-    
+
     signal = detect_rsi_signal(candles, period=14, oversold=30.0, overbought=70.0)
-    
+
     assert signal is not None
     assert signal.code == "RSI"
     assert signal.side == "SELL"
@@ -61,9 +61,9 @@ def test_detect_rsi_signal_neutral():
     """Test RSI in neutral zone (should return None)."""
     # Create stable prices
     candles = [_make_candle(close=100.0 + (i % 2), idx=i) for i in range(30)]
-    
+
     signal = detect_rsi_signal(candles, period=14, oversold=30.0, overbought=70.0)
-    
+
     assert signal is None
 
 
@@ -79,9 +79,9 @@ def test_detect_ma_crossover_golden():
         else:
             close = 105.0 + (i - 200) * 2.0  # Sharp rise to trigger crossover
         candles.append(_make_candle(close=close, idx=i))
-    
+
     signal = detect_ma_crossover(candles, fast_period=50, slow_period=200)
-    
+
     # The crossover might not happen in this test scenario, so make it optional
     if signal is not None:
         assert signal.code == "MA_CROSS"
@@ -100,9 +100,9 @@ def test_detect_ma_crossover_death():
         else:
             close = 95.0 - (i - 200) * 2.0  # Sharp fall to trigger crossover
         candles.append(_make_candle(close=close, idx=i))
-    
+
     signal = detect_ma_crossover(candles, fast_period=50, slow_period=200)
-    
+
     # The crossover might not happen in this test scenario, so make it optional
     if signal is not None:
         assert signal.code == "MA_CROSS"
@@ -116,9 +116,9 @@ def test_detect_volume_spike():
     for i in range(30):
         volume = 1000.0 if i < 29 else 3000.0  # Last candle has 3x volume
         candles.append(_make_candle(close=100.0, volume=volume, idx=i))
-    
+
     signal = detect_volume_spike(candles, period=20, threshold=2.0)
-    
+
     assert signal is not None
     assert signal.code == "VOLUME_SPIKE"
     assert signal.side == "CONFIRM"
@@ -133,14 +133,14 @@ def test_detect_signals_integration():
         close = 100.0 - i * 2  # Descending prices for oversold
         volume = 1000.0 if i < 29 else 3000.0  # Volume spike at end
         candles.append(_make_candle(close=close, volume=volume, idx=i))
-    
+
     opportunity = detect_signals(
         candles=candles,
         symbol="BTCUSD",
         timeframe="1h",
         exchange="bitfinex",
     )
-    
+
     assert opportunity is not None
     assert opportunity.symbol == "BTCUSD"
     assert opportunity.timeframe == "1h"
@@ -151,11 +151,11 @@ def test_detect_signals_integration():
 def test_detect_signals_insufficient_data():
     """Test that signal detection returns None with insufficient data."""
     candles = [_make_candle(close=100.0, idx=i) for i in range(10)]
-    
+
     opportunity = detect_signals(
         candles=candles,
         symbol="BTCUSD",
         timeframe="1h",
     )
-    
+
     assert opportunity is None

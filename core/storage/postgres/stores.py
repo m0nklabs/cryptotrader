@@ -231,7 +231,7 @@ class PostgresStores(
     def log_opportunity(self, *, opportunity: Opportunity, exchange: str | None = None) -> None:
         engine = self._get_engine()
         _, text = self._require_sqlalchemy()
-        
+
         # Convert signals to JSON
         signals_list = [
             {
@@ -244,14 +244,14 @@ class PostgresStores(
             for sig in opportunity.signals
         ]
         signals_json = json.dumps(signals_list, separators=(",", ":"))
-        
+
         stmt = text(
             """
             INSERT INTO opportunities (exchange, symbol, timeframe, score, side, signals_json)
             VALUES (:exchange, :symbol, :timeframe, :score, :side, :signals_json)
             """
         )
-        
+
         with engine.begin() as conn:
             conn.execute(
                 stmt,
@@ -264,7 +264,7 @@ class PostgresStores(
                     "signals_json": signals_json,
                 },
             )
-    
+
     def get_opportunities(
         self,
         *,
@@ -276,20 +276,20 @@ class PostgresStores(
         """Fetch latest opportunities with optional filters."""
         engine = self._get_engine()
         _, text = self._require_sqlalchemy()
-        
+
         filters = ["exchange = :exchange"]
         params: dict[str, Any] = {"exchange": exchange, "limit": limit}
-        
+
         if symbol:
             filters.append("symbol = :symbol")
             params["symbol"] = symbol
-        
+
         if timeframe:
             filters.append("timeframe = :timeframe")
             params["timeframe"] = timeframe
-        
+
         where_clause = " AND ".join(filters)
-        
+
         stmt = text(
             f"""
             SELECT id, exchange, symbol, timeframe, score, side, signals_json, created_at
@@ -299,15 +299,15 @@ class PostgresStores(
             LIMIT :limit
             """
         )
-        
+
         with engine.begin() as conn:
             rows = conn.execute(stmt, params).fetchall()
-        
+
         results: list[OpportunitySnapshot] = []
         for row in rows:
             signals_json = row[6]
             signals: list[IndicatorSignal] = []
-            
+
             if signals_json:
                 try:
                     signals_data = json.loads(signals_json)
@@ -323,7 +323,7 @@ class PostgresStores(
                     ]
                 except Exception:
                     signals = []
-            
+
             results.append(
                 OpportunitySnapshot(
                     exchange=row[1],
@@ -335,7 +335,7 @@ class PostgresStores(
                     created_at=row[7],
                 )
             )
-        
+
         return results
 
     # ---- ExecutionStore

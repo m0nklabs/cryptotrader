@@ -27,12 +27,12 @@ class FeeModel:
         fee_rate = self.breakdown.taker_fee_rate if taker else self.breakdown.maker_fee_rate
         estimated_fees = (gross_notional * fee_rate).quantize(Decimal("0.00000001"))
 
-        spread_cost = (
-            gross_notional * Decimal(self.breakdown.assumed_spread_bps) / BPS_IN_PERCENT
-        ).quantize(Decimal("0.00000001"))
-        slippage_cost = (
-            gross_notional * Decimal(self.breakdown.assumed_slippage_bps) / BPS_IN_PERCENT
-        ).quantize(Decimal("0.00000001"))
+        spread_cost = (gross_notional * Decimal(self.breakdown.assumed_spread_bps) / BPS_IN_PERCENT).quantize(
+            Decimal("0.00000001")
+        )
+        slippage_cost = (gross_notional * Decimal(self.breakdown.assumed_slippage_bps) / BPS_IN_PERCENT).quantize(
+            Decimal("0.00000001")
+        )
 
         total = (estimated_fees + spread_cost + slippage_cost).quantize(Decimal("0.00000001"))
         minimum_edge_rate = (total / gross_notional).quantize(Decimal("0.00000001"))

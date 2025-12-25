@@ -25,12 +25,17 @@ def test_parse_args_multiple_symbols():
 
 def test_parse_args_custom_timeframes():
     """Test parsing args with custom timeframes."""
-    args = parse_args([
-        "--symbol", "BTCUSD",
-        "--timeframe", "1h",
-        "--timeframe", "4h",
-        "--resume",
-    ])
+    args = parse_args(
+        [
+            "--symbol",
+            "BTCUSD",
+            "--timeframe",
+            "1h",
+            "--timeframe",
+            "4h",
+            "--resume",
+        ]
+    )
     assert args.timeframe == ["1h", "4h"]
 
 
@@ -75,12 +80,17 @@ def test_main_success_multiple_symbols(mock_backfill):
     """Test successful ingestion for multiple symbols."""
     mock_backfill.return_value = 0
 
-    exit_code = main([
-        "--symbol", "BTCUSD",
-        "--symbol", "ETHUSD",
-        "--timeframe", "1h",
-        "--resume",
-    ])
+    exit_code = main(
+        [
+            "--symbol",
+            "BTCUSD",
+            "--symbol",
+            "ETHUSD",
+            "--timeframe",
+            "1h",
+            "--resume",
+        ]
+    )
 
     assert exit_code == 0
     assert mock_backfill.call_count == 2  # 2 symbols × 1 timeframe
@@ -93,13 +103,19 @@ def test_main_partial_failure_continue(mock_backfill):
     # First call succeeds, second fails, third succeeds
     mock_backfill.side_effect = [0, 1, 0]
 
-    exit_code = main([
-        "--symbol", "BTCUSD",
-        "--timeframe", "1h",
-        "--timeframe", "4h",
-        "--timeframe", "1d",
-        "--resume",
-    ])
+    exit_code = main(
+        [
+            "--symbol",
+            "BTCUSD",
+            "--timeframe",
+            "1h",
+            "--timeframe",
+            "4h",
+            "--timeframe",
+            "1d",
+            "--resume",
+        ]
+    )
 
     assert exit_code == 1  # Non-zero because there was a failure
     assert mock_backfill.call_count == 3  # All three were attempted
@@ -111,14 +127,20 @@ def test_main_fail_fast(mock_backfill):
     """Test fail-fast mode stops on first error."""
     mock_backfill.side_effect = [0, 1, 0]  # Second call fails
 
-    exit_code = main([
-        "--symbol", "BTCUSD",
-        "--timeframe", "1h",
-        "--timeframe", "4h",
-        "--timeframe", "1d",
-        "--resume",
-        "--fail-fast",
-    ])
+    exit_code = main(
+        [
+            "--symbol",
+            "BTCUSD",
+            "--timeframe",
+            "1h",
+            "--timeframe",
+            "4h",
+            "--timeframe",
+            "1d",
+            "--resume",
+            "--fail-fast",
+        ]
+    )
 
     assert exit_code == 1
     assert mock_backfill.call_count == 2  # Stopped after failure
@@ -143,11 +165,15 @@ def test_main_resume_mode(mock_backfill):
     """Test that resume mode passes --resume to backfill."""
     mock_backfill.return_value = 0
 
-    exit_code = main([
-        "--symbol", "BTCUSD",
-        "--timeframe", "1h",
-        "--resume",
-    ])
+    exit_code = main(
+        [
+            "--symbol",
+            "BTCUSD",
+            "--timeframe",
+            "1h",
+            "--resume",
+        ]
+    )
 
     assert exit_code == 0
     call_args = mock_backfill.call_args[0][0]
@@ -161,12 +187,18 @@ def test_main_backfill_mode_with_end(mock_backfill):
     """Test backfill mode with start and end dates."""
     mock_backfill.return_value = 0
 
-    exit_code = main([
-        "--symbol", "BTCUSD",
-        "--timeframe", "1h",
-        "--start", "2024-01-01",
-        "--end", "2024-01-31",
-    ])
+    exit_code = main(
+        [
+            "--symbol",
+            "BTCUSD",
+            "--timeframe",
+            "1h",
+            "--start",
+            "2024-01-01",
+            "--end",
+            "2024-01-31",
+        ]
+    )
 
     assert exit_code == 0
     call_args = mock_backfill.call_args[0][0]

@@ -17,18 +17,18 @@ class Signal:
 
 class Strategy(Protocol):
     """Protocol for backtesting strategies.
-    
+
     Strategies implement on_candle to generate trading signals
     based on current candle and calculated indicators.
     """
 
     def on_candle(self, candle: Candle, indicators: dict) -> Signal | None:
         """Process a candle and return a trading signal.
-        
+
         Args:
             candle: Current OHLCV candle
             indicators: Dict of computed indicators (e.g., {'rsi': 45.2})
-            
+
         Returns:
             Signal with side (BUY/SELL/HOLD) or None for no action
         """

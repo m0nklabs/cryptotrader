@@ -204,9 +204,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.no_enable_timers:
             continue
 
-        _run(["systemctl", "--user", "enable", "--now", f"cryptotrader-bitfinex-realtime@{instance_name}.timer"], env=env)
+        _run(
+            ["systemctl", "--user", "enable", "--now", f"cryptotrader-bitfinex-realtime@{instance_name}.timer"], env=env
+        )
         if args.enable_gap_repair:
-            _run(["systemctl", "--user", "enable", "--now", f"cryptotrader-bitfinex-gap-repair@{instance_name}.timer"], env=env)
+            _run(
+                ["systemctl", "--user", "enable", "--now", f"cryptotrader-bitfinex-gap-repair@{instance_name}.timer"],
+                env=env,
+            )
 
     if failures:
         raise SystemExit(f"Some symbols failed initial backfill: {', '.join(failures)}")

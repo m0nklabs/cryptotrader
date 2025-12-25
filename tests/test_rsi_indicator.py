@@ -17,6 +17,7 @@ def _make_candle(close: float, idx: int = 0) -> Candle:
     """Helper to create a candle with minimal required fields."""
     # Use timedelta to safely handle any idx value
     from datetime import timedelta
+
     base_time = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
     open_time = base_time + timedelta(hours=idx)
     close_time = base_time + timedelta(hours=idx, minutes=59)
@@ -71,9 +72,31 @@ def test_compute_rsi_deterministic_with_fixed_data() -> None:
     """RSI produces deterministic output given fixed candle data."""
     # Fixed price series
     prices = [
-        44.0, 44.25, 44.5, 43.75, 44.0, 44.5, 44.75, 44.5, 44.25,
-        44.75, 45.0, 45.25, 45.5, 45.25, 45.0, 44.75, 44.5, 44.25,
-        44.0, 43.75, 43.5, 43.25, 43.0, 42.75, 42.5,
+        44.0,
+        44.25,
+        44.5,
+        43.75,
+        44.0,
+        44.5,
+        44.75,
+        44.5,
+        44.25,
+        44.75,
+        45.0,
+        45.25,
+        45.5,
+        45.25,
+        45.0,
+        44.75,
+        44.5,
+        44.25,
+        44.0,
+        43.75,
+        43.5,
+        43.25,
+        43.0,
+        42.75,
+        42.5,
     ]
     candles = [_make_candle(p, i) for i, p in enumerate(prices)]
 
@@ -91,8 +114,26 @@ def test_compute_rsi_with_mixed_gains_and_losses() -> None:
     """RSI computes correctly with mixed price movements."""
     # Mix of ups and downs, ending slightly bearish
     prices = [
-        100, 102, 101, 103, 102, 104, 103, 105, 104, 106,
-        105, 104, 103, 102, 101, 100, 99, 98, 97, 96,
+        100,
+        102,
+        101,
+        103,
+        102,
+        104,
+        103,
+        105,
+        104,
+        106,
+        105,
+        104,
+        103,
+        102,
+        101,
+        100,
+        99,
+        98,
+        97,
+        96,
     ]
     candles = [_make_candle(p, i) for i, p in enumerate(prices)]
     rsi = compute_rsi(candles, period=14)

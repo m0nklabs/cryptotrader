@@ -58,7 +58,9 @@ def compute_macd(
 
     min_candles = slow + signal_period
     if len(candles) < min_candles:
-        raise ValueError(f"need at least {min_candles} candles for MACD({fast},{slow},{signal_period}), got {len(candles)}")
+        raise ValueError(
+            f"need at least {min_candles} candles for MACD({fast},{slow},{signal_period}), got {len(candles)}"
+        )
 
     closes = [float(c.close) for c in candles]
 

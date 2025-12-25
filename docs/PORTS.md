@@ -14,4 +14,3 @@ This document tracks ports used by this repository on the shared server to avoid
 | Frontend dashboard (Vite preview via systemd) | 5176 | TCP | `cryptotrader-frontend.service` |
 | Dashboard API (DB-backed candles) | 8787 | TCP | `python scripts/api_server.py` (dev helper) |
 | Read-only API (FastAPI) | 8000 | TCP | `python scripts/run_api.py` (new, WP-API1) |
-

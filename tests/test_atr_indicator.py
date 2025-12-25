@@ -151,12 +151,12 @@ def test_generate_atr_signal_detects_high_volatility() -> None:
     """Signal detects high volatility condition."""
     # Create increasing volatility scenario
     candles = []
-    
+
     # Normal volatility for first 40 candles
     for i in range(40):
         close = 100
         candles.append(_make_candle(close, high=close + 1, low=close - 1, idx=i))
-    
+
     # High volatility for last few candles
     for i in range(40, 50):
         close = 100
@@ -174,12 +174,12 @@ def test_generate_atr_signal_detects_low_volatility() -> None:
     """Signal detects low volatility condition."""
     # Create decreasing volatility scenario
     candles = []
-    
+
     # High volatility for first 40 candles
     for i in range(40):
         close = 100
         candles.append(_make_candle(close, high=close + 5, low=close - 5, idx=i))
-    
+
     # Low volatility for last few candles
     for i in range(40, 50):
         close = 100

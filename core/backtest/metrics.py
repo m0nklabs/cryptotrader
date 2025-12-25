@@ -33,14 +33,14 @@ class Trade:
 
 def calculate_sharpe_ratio(returns: Sequence[float], risk_free_rate: float = 0.0, trading_days: int = 365) -> float:
     """Calculate Sharpe ratio from returns.
-    
+
     Sharpe Ratio = (Mean Return - Risk Free Rate) / Std Dev of Returns
-    
+
     Args:
         returns: Sequence of returns (e.g., daily returns)
         risk_free_rate: Annual risk-free rate (default 0.0)
         trading_days: Number of trading days per year for annualization (default 365 for crypto)
-        
+
     Returns:
         Sharpe ratio (annualized assuming daily returns)
     """
@@ -61,12 +61,12 @@ def calculate_sharpe_ratio(returns: Sequence[float], risk_free_rate: float = 0.0
 
 def calculate_max_drawdown(equity_curve: Sequence[float]) -> float:
     """Calculate maximum drawdown from equity curve.
-    
+
     Max Drawdown = max((peak - trough) / peak)
-    
+
     Args:
         equity_curve: Sequence of equity values over time
-        
+
     Returns:
         Maximum drawdown as a percentage (0.0 to 1.0)
     """
@@ -88,12 +88,12 @@ def calculate_max_drawdown(equity_curve: Sequence[float]) -> float:
 
 def calculate_win_rate(trades: Sequence[Trade]) -> float:
     """Calculate win rate from trades.
-    
+
     Win Rate = Number of Winning Trades / Total Trades
-    
+
     Args:
         trades: Sequence of completed trades
-        
+
     Returns:
         Win rate as percentage (0.0 to 1.0)
     """
@@ -106,12 +106,12 @@ def calculate_win_rate(trades: Sequence[Trade]) -> float:
 
 def calculate_profit_factor(trades: Sequence[Trade]) -> float:
     """Calculate profit factor from trades.
-    
+
     Profit Factor = Total Gross Profit / Total Gross Loss
-    
+
     Args:
         trades: Sequence of completed trades
-        
+
     Returns:
         Profit factor (> 1.0 is profitable)
     """

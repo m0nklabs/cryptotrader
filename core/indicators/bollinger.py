@@ -146,9 +146,13 @@ def generate_bollinger_signal(
 
         # More descriptive reason based on position
         if current_price > middle_band:
-            reason = f"Bollinger({period},{std_dev}) price above middle band (${current_price:.2f} > ${middle_band:.2f})"
+            reason = (
+                f"Bollinger({period},{std_dev}) price above middle band (${current_price:.2f} > ${middle_band:.2f})"
+            )
         elif current_price < middle_band:
-            reason = f"Bollinger({period},{std_dev}) price below middle band (${current_price:.2f} < ${middle_band:.2f})"
+            reason = (
+                f"Bollinger({period},{std_dev}) price below middle band (${current_price:.2f} < ${middle_band:.2f})"
+            )
         else:
             reason = f"Bollinger({period},{std_dev}) price at middle band (${current_price:.2f})"
 

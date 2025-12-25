@@ -156,7 +156,9 @@ def generate_stochastic_signal(
         # Neutral zone: HOLD
         strength = 0
         side = "HOLD"
-        reason = f"Stochastic({k_period},{d_period}) neutral: %K={k:.2f}, %D={d:.2f} (range {oversold:.0f}-{overbought:.0f})"
+        reason = (
+            f"Stochastic({k_period},{d_period}) neutral: %K={k:.2f}, %D={d:.2f} (range {oversold:.0f}-{overbought:.0f})"
+        )
 
     return IndicatorSignal(
         code="STOCHASTIC",

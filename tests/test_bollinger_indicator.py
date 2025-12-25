@@ -201,7 +201,7 @@ def test_generate_bollinger_signal_strength_increases_with_distance() -> None:
     """Signal strength increases as price moves further beyond bands."""
     # Two scenarios: slightly below and far below lower band
     base_prices = [100] * 20
-    
+
     slight_breach = base_prices + [99.5]  # Very slightly below
     moderate_breach = base_prices + [98]  # Moderately below
 

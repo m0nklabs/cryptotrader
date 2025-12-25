@@ -2,7 +2,7 @@
 
 Tests cover:
 - Pass case: edge exceeds required threshold
-- Fail case: edge below required threshold  
+- Fail case: edge below required threshold
 - Boundary case: edge exactly equals threshold
 - Edge cases: validation errors, zero edge, etc.
 """
@@ -37,13 +37,13 @@ def _default_fee_model() -> FeeModel:
 def test_evaluate_opportunity_pass_case() -> None:
     """Test PASS decision when edge exceeds required threshold."""
     fee_model = _default_fee_model()
-    
+
     # For $1000 notional with taker fee:
     # - Fees: $1000 * 0.002 = $2.00 (20 bps)
     # - Spread: $1000 * 0.001 = $1.00 (10 bps)
     # - Slippage: $1000 * 0.0005 = $0.50 (5 bps)
     # - Total: $3.50 (35 bps required)
-    
+
     # Test with 50 bps edge (should pass)
     result = evaluate_opportunity(
         gross_notional=Decimal("1000"),
@@ -51,7 +51,7 @@ def test_evaluate_opportunity_pass_case() -> None:
         fee_model=fee_model,
         taker=True,
     )
-    
+
     assert result.decision == "PASS"
     assert result.required_bps == Decimal("35.00")
     assert result.observed_bps == Decimal("50.00")
@@ -66,7 +66,7 @@ def test_evaluate_opportunity_pass_case() -> None:
 def test_evaluate_opportunity_fail_case() -> None:
     """Test FAIL decision when edge is below required threshold."""
     fee_model = _default_fee_model()
-    
+
     # Test with 12 bps edge (should fail, need 35 bps)
     result = evaluate_opportunity(
         gross_notional=Decimal("1000"),
@@ -74,7 +74,7 @@ def test_evaluate_opportunity_fail_case() -> None:
         fee_model=fee_model,
         taker=True,
     )
-    
+
     assert result.decision == "FAIL"
     assert result.required_bps == Decimal("35.00")
     assert result.observed_bps == Decimal("12.00")
@@ -88,7 +88,7 @@ def test_evaluate_opportunity_fail_case() -> None:
 def test_evaluate_opportunity_boundary_equal_threshold() -> None:
     """Test boundary case when edge exactly equals required threshold."""
     fee_model = _default_fee_model()
-    
+
     # Test with exactly 35 bps edge (boundary: should pass)
     result = evaluate_opportunity(
         gross_notional=Decimal("1000"),
@@ -96,7 +96,7 @@ def test_evaluate_opportunity_boundary_equal_threshold() -> None:
         fee_model=fee_model,
         taker=True,
     )
-    
+
     assert result.decision == "PASS"
     assert result.required_bps == Decimal("35.00")
     assert result.observed_bps == Decimal("35.00")
@@ -107,7 +107,7 @@ def test_evaluate_opportunity_boundary_equal_threshold() -> None:
 def test_evaluate_opportunity_maker_fees_lower_threshold() -> None:
     """Test that maker fees result in lower required threshold than taker fees."""
     fee_model = _default_fee_model()
-    
+
     # Maker fees: 10 bps (vs taker 20 bps)
     # Total required: 10 (fee) + 10 (spread) + 5 (slippage) = 25 bps
     result = evaluate_opportunity(
@@ -116,7 +116,7 @@ def test_evaluate_opportunity_maker_fees_lower_threshold() -> None:
         fee_model=fee_model,
         taker=False,  # Use maker fees
     )
-    
+
     assert result.decision == "PASS"
     assert result.required_bps == Decimal("25.00")  # Lower than taker's 35 bps
     assert result.observed_bps == Decimal("30.00")
@@ -125,14 +125,14 @@ def test_evaluate_opportunity_maker_fees_lower_threshold() -> None:
 def test_evaluate_opportunity_zero_edge_fails() -> None:
     """Test that zero edge always fails."""
     fee_model = _default_fee_model()
-    
+
     result = evaluate_opportunity(
         gross_notional=Decimal("1000"),
         edge_rate=Decimal("0"),  # 0 bps
         fee_model=fee_model,
         taker=True,
     )
-    
+
     assert result.decision == "FAIL"
     assert result.observed_bps == Decimal("0.00")
     assert result.required_bps == Decimal("35.00")
@@ -141,13 +141,13 @@ def test_evaluate_opportunity_zero_edge_fails() -> None:
 def test_evaluate_opportunity_with_precomputed_cost_estimate() -> None:
     """Test evaluation with pre-computed cost estimate."""
     fee_model = _default_fee_model()
-    
+
     # Pre-compute cost estimate
     cost_estimate = fee_model.estimate_cost(
         gross_notional=Decimal("1000"),
         taker=True,
     )
-    
+
     # Evaluate with pre-computed estimate
     result = evaluate_opportunity(
         gross_notional=Decimal("1000"),
@@ -156,7 +156,7 @@ def test_evaluate_opportunity_with_precomputed_cost_estimate() -> None:
         taker=True,
         cost_estimate=cost_estimate,
     )
-    
+
     assert result.decision == "PASS"
     assert result.cost_estimate is cost_estimate  # Same instance
 
@@ -164,7 +164,7 @@ def test_evaluate_opportunity_with_precomputed_cost_estimate() -> None:
 def test_evaluate_opportunity_different_notional_scales_threshold() -> None:
     """Test that required threshold scales correctly with notional size."""
     fee_model = _default_fee_model()
-    
+
     # Small notional: $100
     result_small = evaluate_opportunity(
         gross_notional=Decimal("100"),
@@ -172,7 +172,7 @@ def test_evaluate_opportunity_different_notional_scales_threshold() -> None:
         fee_model=fee_model,
         taker=True,
     )
-    
+
     # Large notional: $10,000
     result_large = evaluate_opportunity(
         gross_notional=Decimal("10000"),
@@ -180,7 +180,7 @@ def test_evaluate_opportunity_different_notional_scales_threshold() -> None:
         fee_model=fee_model,
         taker=True,
     )
-    
+
     # Required bps should be the same (percentage-based)
     assert result_small.required_bps == result_large.required_bps == Decimal("35.00")
     assert result_small.decision == result_large.decision == "PASS"
@@ -189,7 +189,7 @@ def test_evaluate_opportunity_different_notional_scales_threshold() -> None:
 def test_evaluate_opportunity_validates_positive_notional() -> None:
     """Test validation: gross_notional must be positive."""
     fee_model = _default_fee_model()
-    
+
     with pytest.raises(ValueError, match="gross_notional must be positive"):
         evaluate_opportunity(
             gross_notional=Decimal("0"),
@@ -197,7 +197,7 @@ def test_evaluate_opportunity_validates_positive_notional() -> None:
             fee_model=fee_model,
             taker=True,
         )
-    
+
     with pytest.raises(ValueError, match="gross_notional must be positive"):
         evaluate_opportunity(
             gross_notional=Decimal("-100"),
@@ -210,7 +210,7 @@ def test_evaluate_opportunity_validates_positive_notional() -> None:
 def test_evaluate_opportunity_validates_non_negative_edge() -> None:
     """Test validation: edge_rate must be non-negative."""
     fee_model = _default_fee_model()
-    
+
     with pytest.raises(ValueError, match="edge_rate must be non-negative"):
         evaluate_opportunity(
             gross_notional=Decimal("1000"),
@@ -223,14 +223,14 @@ def test_evaluate_opportunity_validates_non_negative_edge() -> None:
 def test_evaluate_opportunity_very_high_edge_passes() -> None:
     """Test that very high edge (100+ bps) passes easily."""
     fee_model = _default_fee_model()
-    
+
     result = evaluate_opportunity(
         gross_notional=Decimal("1000"),
         edge_rate=Decimal("0.02"),  # 200 bps
         fee_model=fee_model,
         taker=True,
     )
-    
+
     assert result.decision == "PASS"
     assert result.observed_bps == Decimal("200.00")
     assert result.required_bps == Decimal("35.00")
@@ -240,14 +240,14 @@ def test_evaluate_opportunity_very_high_edge_passes() -> None:
 def test_evaluate_opportunity_result_immutable() -> None:
     """Test that EvaluationResult is immutable (frozen dataclass)."""
     fee_model = _default_fee_model()
-    
+
     result = evaluate_opportunity(
         gross_notional=Decimal("1000"),
         edge_rate=Decimal("0.005"),
         fee_model=fee_model,
         taker=True,
     )
-    
+
     # Attempt to modify should raise error
     with pytest.raises(Exception):  # FrozenInstanceError or AttributeError
         result.decision = "FAIL"  # type: ignore
@@ -256,14 +256,14 @@ def test_evaluate_opportunity_result_immutable() -> None:
 def test_evaluate_opportunity_reasons_contain_cost_breakdown() -> None:
     """Test that reasons include detailed cost breakdown."""
     fee_model = _default_fee_model()
-    
+
     result = evaluate_opportunity(
         gross_notional=Decimal("1000"),
         edge_rate=Decimal("0.005"),
         fee_model=fee_model,
         taker=True,
     )
-    
+
     # Second reason should contain cost breakdown
     cost_reason = result.reasons[1]
     assert "fees=" in cost_reason
@@ -276,7 +276,7 @@ def test_evaluate_opportunity_reasons_contain_cost_breakdown() -> None:
 def test_evaluate_opportunity_close_to_boundary() -> None:
     """Test cases very close to the boundary threshold."""
     fee_model = _default_fee_model()
-    
+
     # Just barely passes (35.01 bps)
     result_pass = evaluate_opportunity(
         gross_notional=Decimal("1000"),
@@ -285,7 +285,7 @@ def test_evaluate_opportunity_close_to_boundary() -> None:
         taker=True,
     )
     assert result_pass.decision == "PASS"
-    
+
     # Just barely fails (34.99 bps)
     result_fail = evaluate_opportunity(
         gross_notional=Decimal("1000"),

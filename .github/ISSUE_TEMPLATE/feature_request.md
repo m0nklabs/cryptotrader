@@ -20,9 +20,9 @@ assignees: ''
 
 ## Acceptance Criteria
 
-- [ ] 
-- [ ] 
-- [ ] 
+- [ ]
+- [ ]
+- [ ]
 
 ## Technical Notes
 

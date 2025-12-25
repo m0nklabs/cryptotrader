@@ -371,7 +371,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Only used with --resume. Default: 30",
     )
     parser.add_argument("--exchange", default="bitfinex", help="Exchange code stored in DB")
-    parser.add_argument("--detect-only", action="store_true", help="Only detect and log gaps; do not fetch missing candles")
+    parser.add_argument(
+        "--detect-only", action="store_true", help="Only detect and log gaps; do not fetch missing candles"
+    )
     parser.add_argument("--max", type=int, default=10_000, help="Max number of gaps to process")
     parser.add_argument(
         "--max-retries",

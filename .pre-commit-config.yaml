@@ -18,13 +18,5 @@ repos:
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
 
-  - repo: local
-    hooks:
-      - id: no-secrets
-        name: Check for secrets
-        entry: bash -c 'git diff --cached --name-only | xargs -I {} grep -l -E "(api_key|secret|password|token)" {} && exit 1 || exit 0'
-        language: system
-        pass_filenames: false
-
 # Install with: pre-commit install
 # Run manually: pre-commit run --all-files

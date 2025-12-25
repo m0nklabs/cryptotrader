@@ -141,14 +141,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             # Build argv for backfill_main
             backfill_argv = [
-                "--symbol", symbol,
-                "--timeframe", timeframe,
-                "--exchange", args.exchange,
-                "--batch-size", str(args.batch_size),
-                "--max-retries", str(args.max_retries),
-                "--initial-backoff-seconds", str(args.initial_backoff_seconds),
-                "--max-backoff-seconds", str(args.max_backoff_seconds),
-                "--jitter-seconds", str(args.jitter_seconds),
+                "--symbol",
+                symbol,
+                "--timeframe",
+                timeframe,
+                "--exchange",
+                args.exchange,
+                "--batch-size",
+                str(args.batch_size),
+                "--max-retries",
+                str(args.max_retries),
+                "--initial-backoff-seconds",
+                str(args.initial_backoff_seconds),
+                "--max-backoff-seconds",
+                str(args.max_backoff_seconds),
+                "--jitter-seconds",
+                str(args.jitter_seconds),
             ]
 
             if args.resume:

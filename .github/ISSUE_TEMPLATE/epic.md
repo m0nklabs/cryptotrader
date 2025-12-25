@@ -15,11 +15,11 @@ assignees: ''
 <!-- What is included and what is explicitly out of scope -->
 
 ### In Scope
-- 
-- 
+-
+-
 
 ### Out of Scope
-- 
+-
 
 ## Sub-Issues
 

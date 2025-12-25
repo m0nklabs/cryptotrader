@@ -93,13 +93,20 @@ def test_seed_config_immutable() -> None:
 def test_build_arg_parser_accepts_all_required_args() -> None:
     """Test that the argument parser accepts all required arguments."""
     parser = seed_backfill.build_arg_parser()
-    args = parser.parse_args([
-        "--symbol", "BTCUSD",
-        "--timeframe", "1h",
-        "--days", "7",
-        "--chunk-minutes", "180",
-        "--sleep-seconds", "2.5",
-    ])
+    args = parser.parse_args(
+        [
+            "--symbol",
+            "BTCUSD",
+            "--timeframe",
+            "1h",
+            "--days",
+            "7",
+            "--chunk-minutes",
+            "180",
+            "--sleep-seconds",
+            "2.5",
+        ]
+    )
     assert args.symbol == "BTCUSD"
     assert args.timeframe == "1h"
     assert args.days == 7
@@ -110,11 +117,16 @@ def test_build_arg_parser_accepts_all_required_args() -> None:
 def test_build_arg_parser_uses_defaults() -> None:
     """Test that optional arguments have sensible defaults."""
     parser = seed_backfill.build_arg_parser()
-    args = parser.parse_args([
-        "--symbol", "ETHUSD",
-        "--timeframe", "5m",
-        "--days", "30",
-    ])
+    args = parser.parse_args(
+        [
+            "--symbol",
+            "ETHUSD",
+            "--timeframe",
+            "5m",
+            "--days",
+            "30",
+        ]
+    )
     assert args.chunk_minutes == 180  # Default 3 hours
     assert args.sleep_seconds == 2.0  # Default 2 seconds
     assert args.exchange == "bitfinex"  # Default exchange
