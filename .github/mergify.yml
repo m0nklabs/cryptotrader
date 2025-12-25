@@ -179,3 +179,69 @@ pull_request_rules:
       label:
         add:
           - size/L
+
+  # ========== Auto-merge ==========
+
+  - name: auto-merge-dependabot
+    description: Auto-merge Dependabot PRs when CI passes
+    conditions:
+      - author=dependabot[bot]
+      - check-success=test
+      - check-success=lint
+      - -conflict
+      - -draft
+    actions:
+      merge:
+        method: squash
+      delete_head_branch: {}
+
+  - name: auto-merge-copilot
+    description: Auto-merge Copilot PRs when approved and CI passes
+    conditions:
+      - or:
+        - author=github-actions[bot]
+        - head~=^copilot/
+      - "#approved-reviews-by>=1"
+      - check-success=test
+      - check-success=lint
+      - check-success=Gitleaks
+      - -conflict
+      - -draft
+      - -label=do-not-merge
+    actions:
+      merge:
+        method: squash
+      delete_head_branch: {}
+
+  - name: auto-merge-approved
+    description: Auto-merge any PR with automerge label when approved and CI passes
+    conditions:
+      - label=automerge
+      - "#approved-reviews-by>=1"
+      - check-success=test
+      - check-success=lint
+      - check-success=Gitleaks
+      - -conflict
+      - -draft
+      - -label=do-not-merge
+    actions:
+      merge:
+        method: squash
+      delete_head_branch: {}
+
+  - name: request-review-on-ready
+    description: Request review when PR is ready (not draft, CI passing)
+    conditions:
+      - -draft
+      - check-success=test
+      - check-success=lint
+      - -conflict
+      - "#review-requested=0"
+      - "#approved-reviews-by=0"
+      - -author=dependabot[bot]
+    actions:
+      comment:
+        message: |
+          ✅ CI passed! This PR is ready for review.
+
+          @m0nk1111 please review when you have a moment.
