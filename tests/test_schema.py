@@ -84,7 +84,7 @@ def test_init_db_script_can_be_imported():
     """Test that the init_db module can be imported."""
     from db import init_db
 
-    assert hasattr(init_db, "main"), "init_db should have a main function"
+    assert hasattr(init_db, "main"), "db/init_db.py should have a main function"
 
 
 def test_persistence_protocols_can_be_imported():

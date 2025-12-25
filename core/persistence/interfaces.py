@@ -210,6 +210,8 @@ class FeeScheduleStore(Protocol):
 
 
 class PaperOrderStore(Protocol):
+    """Protocol defining the interface for persisting and querying paper trading orders."""
+
     def create_order(self, *, order: PaperOrder) -> int:
         """Create a paper order and return its id."""
 
@@ -237,8 +239,10 @@ class PaperOrderStore(Protocol):
 
 
 class PaperPositionStore(Protocol):
+    """Protocol defining the interface for persisting and querying paper trading positions."""
+
     def upsert_position(self, *, position: PaperPosition) -> int:
-        """Insert or update a paper position and return affected row count or id."""
+        """Insert or update a paper position and return its id."""
 
     def get_position(self, *, symbol: str) -> Optional[PaperPosition]:
         """Fetch current paper position for a symbol."""
@@ -248,6 +252,8 @@ class PaperPositionStore(Protocol):
 
 
 class PortfolioSnapshotStore(Protocol):
+    """Interface for persisting and querying portfolio snapshots."""
+
     def log_snapshot(self, *, snapshot: PortfolioSnapshot) -> int:
         """Persist a portfolio snapshot and return its id."""
 

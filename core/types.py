@@ -243,11 +243,13 @@ class AutomationRule:
 
 @dataclass(frozen=True)
 class PaperOrder:
+    """Represents a simulated order used in paper-trading mode."""
+
     symbol: str
     side: Literal["BUY", "SELL"]
     order_type: Literal["market", "limit"]
     qty: Decimal
-    status: Literal["PENDING", "FILLED", "CANCELLED"]
+    status: Literal["pending", "filled", "cancelled"]
     limit_price: Optional[Decimal] = None
     fill_price: Optional[Decimal] = None
     slippage_bps: Optional[Decimal] = None
@@ -258,6 +260,8 @@ class PaperOrder:
 
 @dataclass(frozen=True)
 class PaperPosition:
+    """Represents a simulated position held in paper trading mode."""
+
     symbol: str
     qty: Decimal
     avg_entry: Decimal
