@@ -14,6 +14,9 @@ from core.types import (
     Opportunity,
     OrderIntent,
     OrderRecord,
+    PaperOrder,
+    PaperPosition,
+    PortfolioSnapshot,
     PositionSnapshot,
     Strategy,
     Symbol,
@@ -203,3 +206,59 @@ class FeeScheduleStore(Protocol):
 
     def get_latest(self, *, exchange: str, symbol: str | None = None) -> Optional[FeeSchedule]:
         """Fetch latest fee schedule for exchange and optional symbol."""
+
+
+class PaperOrderStore(Protocol):
+    def create_order(self, *, order: PaperOrder) -> int:
+        """Create a paper order and return its id."""
+
+    def update_order_status(
+        self,
+        *,
+        order_id: int,
+        status: str,
+        fill_price: Optional[float] = None,
+        slippage_bps: Optional[float] = None,
+        filled_at: datetime | None = None,
+    ) -> None:
+        """Update paper order status and fill details."""
+
+    def get_orders(
+        self,
+        *,
+        symbol: str | None = None,
+        status: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 1000,
+    ) -> Sequence[PaperOrder]:
+        """List paper orders with optional filters."""
+
+
+class PaperPositionStore(Protocol):
+    def upsert_position(self, *, position: PaperPosition) -> int:
+        """Insert or update a paper position and return affected row count or id."""
+
+    def get_position(self, *, symbol: str) -> Optional[PaperPosition]:
+        """Fetch current paper position for a symbol."""
+
+    def get_all_positions(self) -> Sequence[PaperPosition]:
+        """Fetch all current paper positions."""
+
+
+class PortfolioSnapshotStore(Protocol):
+    def log_snapshot(self, *, snapshot: PortfolioSnapshot) -> int:
+        """Persist a portfolio snapshot and return its id."""
+
+    def get_latest(self, *, exchange: str | None = None) -> Optional[PortfolioSnapshot]:
+        """Fetch latest portfolio snapshot, optionally filtered by exchange."""
+
+    def get_snapshots(
+        self,
+        *,
+        exchange: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 1000,
+    ) -> Sequence[PortfolioSnapshot]:
+        """List portfolio snapshots with optional filters."""

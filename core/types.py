@@ -239,3 +239,42 @@ class AutomationRule:
     is_active: bool = True
     id: Optional[int] = None
     created_at: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
+class PaperOrder:
+    symbol: str
+    side: Literal["BUY", "SELL"]
+    order_type: Literal["MARKET", "LIMIT"]
+    qty: Decimal
+    status: Literal["PENDING", "FILLED", "CANCELLED"]
+    limit_price: Optional[Decimal] = None
+    fill_price: Optional[Decimal] = None
+    slippage_bps: Optional[Decimal] = None
+    created_at: Optional[datetime] = None
+    filled_at: Optional[datetime] = None
+    id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class PaperPosition:
+    symbol: str
+    qty: Decimal
+    avg_entry: Decimal
+    realized_pnl: Decimal = Decimal("0")
+    updated_at: Optional[datetime] = None
+    id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class PortfolioSnapshot:
+    """Aggregate portfolio view at a point in time."""
+    total_value: Decimal
+    cash_balance: Decimal
+    positions_value: Decimal
+    unrealized_pnl: Decimal
+    realized_pnl: Decimal
+    timestamp: datetime
+    exchange: Optional[str] = None
+    positions: Sequence[PositionSnapshot] = ()
+    wallets: Sequence[WalletSnapshot] = ()
