@@ -25,10 +25,11 @@ We use GitHub's native sub-issue feature for hierarchical planning:
 
 | Epic | Focus | Issues |
 |------|-------|--------|
-| [#71 Trading System](https://github.com/m0nk111/cryptotrader/issues/71) | Paper trading, order execution, portfolio | #29, #48, #46 |
-| [#69 Technical Analysis](https://github.com/m0nk111/cryptotrader/issues/69) | Chart indicators, signal detection | #45, #25 |
-| [#70 Market Data](https://github.com/m0nk111/cryptotrader/issues/70) | Real-time feeds, multi-exchange | #26, #28, #30, #17 |
-| [#68 Infrastructure](https://github.com/m0nk111/cryptotrader/issues/68) | CI/CD, testing, health monitoring | #31, #33, #21 |
+| [#71 Trading System](https://github.com/m0nk111/cryptotrader/issues/71) | Paper trading, order execution, portfolio | #29, #48, #46, #75 |
+| [#69 Technical Analysis](https://github.com/m0nk111/cryptotrader/issues/69) | Chart indicators, signal detection | #105, #107, #72, #73 |
+| [#70 Market Data](https://github.com/m0nk111/cryptotrader/issues/70) | Real-time feeds, multi-exchange | #101, #102, #103, #17 |
+| [#68 Infrastructure](https://github.com/m0nk111/cryptotrader/issues/68) | CI/CD, testing, health monitoring | #104, #106, #108, #21, #74 |
+| [#76 Frontend & UI](https://github.com/m0nk111/cryptotrader/issues/76) | Dashboard, order entry, mobile | #77, #78, #79, #80, #81, #107 |
 
 ### Epic Template
 
@@ -198,6 +199,115 @@ When multiple agents work in parallel, merge conflicts occur. Mitigate by:
 - `frontend/src/App.tsx` — many features touch this
 - `scripts/api_server.py` — multiple endpoints added here
 
+## Stale PR Recovery
+
+When a Copilot PR is closed without merge (e.g., "Outdated branch", merge conflicts, rate limits), the linked issue becomes orphaned. Follow this procedure to recover:
+
+### Detection
+
+```bash
+# Find closed unmerged PRs
+gh pr list --repo m0nk111/cryptotrader --state closed --json number,title,mergedAt \
+  | jq '.[] | select(.mergedAt == null)'
+```
+
+### Recovery Flow
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              STALE PR RECOVERY FLOW                      │
+└─────────────────────────────────────────────────────────┘
+
+     ┌───────────────────────┐
+     │ 1. Find closed PRs    │
+     │    without merge      │
+     └───────────┬───────────┘
+                 │
+                 ▼
+     ┌───────────────────────┐
+     │ 2. Identify linked    │
+     │    issue (Fixes #XX)  │
+     └───────────┬───────────┘
+                 │
+                 ▼
+     ┌───────────────────────┐     Already done?
+     │ 3. Check if issue     │─────────────────┐
+     │    was implemented    │                 │
+     └───────────┬───────────┘                 │
+                 │ No                          │ Yes
+                 ▼                             ▼
+     ┌───────────────────────┐     ┌───────────────────┐
+     │ 4. Close old issue    │     │ Close issue as    │
+     │    (not_planned)      │     │ completed         │
+     └───────────┬───────────┘     └───────────────────┘
+                 │
+                 ▼
+     ┌───────────────────────┐
+     │ 5. Create new issue   │
+     │    with [v2] suffix   │
+     └───────────┬───────────┘
+                 │
+                 ▼
+     ┌───────────────────────┐
+     │ 6. Link to parent     │
+     │    EPIC               │
+     └───────────┬───────────┘
+                 │
+                 ▼
+     ┌───────────────────────┐
+     │ 7. Update EPIC body   │
+     │    with new issue #   │
+     └───────────┬───────────┘
+                 │
+                 ▼
+     ┌───────────────────────┐
+     │ 8. Assign to agent    │
+     │    (@copilot mention) │
+     └───────────────────────┘
+```
+
+### New Issue Template (v2)
+
+```markdown
+## Summary
+[Original description]
+
+> Supersedes #XX (stale Copilot PR)
+
+## Scope
+[Original scope]
+
+## Acceptance criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Parent Epic
+EPIC #YY — [Epic Name]
+```
+
+### Commands
+
+```bash
+# 1. Close old issue
+gh issue close <OLD#> --reason "not planned" --comment "Superseded by #NEW"
+
+# 2. Create new issue
+gh issue create --title "Feature name [v2]" --body "..." --label enhancement
+
+# 3. Update EPIC body (manual or via API)
+gh issue edit <EPIC#> --body "..."
+
+# 4. Assign Copilot (must @mention in comment)
+gh issue comment <NEW#> --body "@copilot please implement this issue"
+```
+
+### Naming Convention
+
+| Original Issue | New Issue |
+|----------------|------------|
+| #45 Extended indicators | #105 Extended indicators [v2] |
+| #31 Automated tests | #108 Automated tests [v2] |
+
 ## Agent Assignment Criteria
 
 | Criteria | Assign to |
@@ -208,6 +318,22 @@ When multiple agents work in parallel, merge conflicts occur. Mitigate by:
 | Cost-sensitive | Agent-Forge |
 
 ## Orchestration log (newest-first)
+
+## 2025-12-25
+- Implemented stale PR recovery procedure
+- Closed old issues with stale PRs: #45, #31, #33, #25, #4, #26, #28, #30
+- Created new [v2] issues:
+  - #101 Dynamic market-cap ranking [v2] (was #30) → EPIC #70
+  - #102 Real-time WebSocket updates [v2] (was #26) → EPIC #70
+  - #103 Multi-exchange support [v2] (was #28) → EPIC #70
+  - #104 Minimal quality gate [v2] (was #4) → EPIC #68
+  - #105 Extended indicators [v2] (was #45) → EPIC #69
+  - #106 System health panel [v2] (was #33) → EPIC #68
+  - #107 Technical indicators chart [v2] (was #25) → EPIC #69/76
+  - #108 Automated tests + CI [v2] (was #31) → EPIC #68
+- Updated all EPICs with new issue references
+- Added EPIC #76 (Frontend & UI) to documentation
+- Documented Stale PR Recovery flow in ORCHESTRATION.md
 
 ## 2025-12-24 (PM)
 - Reorganized issues into Epic/Sub-issue hierarchy
