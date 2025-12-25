@@ -64,7 +64,8 @@ class PositionSizeCheck:
 
         # Check symbol-specific max position size
         if symbol_config.max_position_size is not None:
-            # Convert amount to value (simplified - assumes amount is in quote currency)
+            # TODO: Implement proper position value calculation with current market price
+            # For now, simplified implementation assumes amount is in quote currency
             position_value = intent.amount
             total_position = self.current_position_value + position_value
 
