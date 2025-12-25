@@ -69,7 +69,7 @@ class PositionSizeCheck:
             # TODO: Implement proper position value calculation with current market price
             # For now, simplified implementation assumes amount is in quote currency
             position_value = intent.amount
-            
+
             # BUY orders increase position value, SELL orders decrease it
             if intent.side == "SELL":
                 total_position = self.current_position_value - position_value
@@ -149,7 +149,7 @@ class DailyTradeCountCheck:
 @dataclass
 class BalanceCheck:
     """Check if balance meets minimum requirements.
-    
+
     Note: This is a simplified check. In production, balance verification should be
     currency-aware (quote currency for BUY, base currency for SELL).
     """
