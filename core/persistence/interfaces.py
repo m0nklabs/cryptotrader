@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, Protocol, Sequence
+from typing import Literal, Optional, Protocol, Sequence
 
 from core.types import (
     Candle,
@@ -219,7 +219,7 @@ class PaperOrderStore(Protocol):
         self,
         *,
         order_id: int,
-        status: str,
+        status: Literal["pending", "filled", "cancelled"],
         fill_price: Decimal | None = None,
         slippage_bps: Decimal | None = None,
         filled_at: datetime | None = None,
