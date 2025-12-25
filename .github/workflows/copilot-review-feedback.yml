@@ -1,0 +1,85 @@
+name: Copilot Review Feedback
+
+on:
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  forward-review-to-agent:
+    # Only run for Copilot PRs when Copilot reviewer leaves comments
+    if: |
+      (github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' ||
+       github.event.comment.user.login == 'copilot-pull-request-reviewer[bot]' ||
+       github.event.comment.user.login == 'Copilot')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if PR is from Copilot coding agent
+        id: check-pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_AUTHOR=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER --jq '.user.login')
+          PR_AUTHOR_LOWER=$(echo "$PR_AUTHOR" | tr '[:upper:]' '[:lower:]')
+
+          echo "PR #$PR_NUMBER by $PR_AUTHOR"
+
+          if [[ "$PR_AUTHOR_LOWER" == *"copilot"* ]]; then
+            echo "is_copilot_pr=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_copilot_pr=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get review comments
+        if: steps.check-pr.outputs.is_copilot_pr == 'true'
+        id: get-comments
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          # Get all review comments from copilot-pull-request-reviewer
+          COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+            --jq '[.[] | select(.user.login | test("copilot"; "i")) | {path: .path, line: .line, body: .body}]')
+
+          # Count comments
+          COMMENT_COUNT=$(echo "$COMMENTS" | jq 'length')
+          echo "Found $COMMENT_COUNT review comments"
+
+          if [ "$COMMENT_COUNT" -gt 0 ]; then
+            echo "has_comments=true" >> $GITHUB_OUTPUT
+
+            # Format comments for the agent
+            FORMATTED=$(echo "$COMMENTS" | jq -r '.[] | "- **\(.path):\(.line)**: \(.body | split("\n")[0])"')
+            echo "formatted<<EOF" >> $GITHUB_OUTPUT
+            echo "$FORMATTED" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "has_comments=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify Copilot agent about review feedback
+        if: steps.check-pr.outputs.is_copilot_pr == 'true' && steps.get-comments.outputs.has_comments == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          cat <<EOF > /tmp/comment.md
+          @copilot The Copilot code reviewer found issues that need to be fixed:
+
+          ${{ steps.get-comments.outputs.formatted }}
+
+          Please address these review comments and push fixes.
+
+          _Auto-forwarded from Copilot code review_
+          EOF
+
+          gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body-file /tmp/comment.md
+
+          echo "Forwarded review feedback to Copilot agent on PR #$PR_NUMBER"
