@@ -212,11 +212,10 @@ jobs:
           echo "Issue GraphQL ID: $ISSUE_ID"
 
           # Step 3: Assign Copilot using replaceActorsForAssignable mutation
-          # Use --raw-field for JSON array
-          RESULT=$(gh api graphql \
-            -f query='mutation($input: ReplaceActorsForAssignableInput!) { replaceActorsForAssignable(input: $input) { assignable { ... on Issue { assignees(first: 10) { nodes { login } } } } } }' \
-            --raw-field input="{\"assignableId\": \"$ISSUE_ID\", \"actorIds\": [\"$COPILOT_BOT_ID\"]}" \
-            --jq '.data.replaceActorsForAssignable.assignable.assignees.nodes[].login')
+          # Build the full GraphQL request as JSON
+          RESULT=$(echo '{}' | jq --arg issueId "$ISSUE_ID" --arg botId "$COPILOT_BOT_ID" \
+            '{query: "mutation { replaceActorsForAssignable(input: {assignableId: \"" + $issueId + "\", actorIds: [\"" + $botId + "\"]}) { assignable { ... on Issue { assignees(first: 10) { nodes { login } } } } } }"}' | \
+            gh api graphql --input - --jq '.data.replaceActorsForAssignable.assignable.assignees.nodes[].login')
 
           echo "Successfully assigned! New assignees: $RESULT"
           echo "assigned=true" >> $GITHUB_OUTPUT
