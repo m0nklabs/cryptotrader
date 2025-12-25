@@ -5,6 +5,10 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  schedule:
+    # Full repo scan every Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:  # Manual trigger for full scan
 
 jobs:
   gitleaks:
@@ -14,9 +18,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for scanning
+          fetch-depth: 0  # Full history for scanning all commits
 
-      - name: Run Gitleaks
+      - name: Run Gitleaks (full scan)
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
