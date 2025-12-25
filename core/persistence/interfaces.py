@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional, Protocol, Sequence
 
 from core.types import (
@@ -217,8 +218,8 @@ class PaperOrderStore(Protocol):
         *,
         order_id: int,
         status: str,
-        fill_price: Optional[float] = None,
-        slippage_bps: Optional[float] = None,
+        fill_price: Decimal | None = None,
+        slippage_bps: Decimal | None = None,
         filled_at: datetime | None = None,
     ) -> None:
         """Update paper order status and fill details."""
