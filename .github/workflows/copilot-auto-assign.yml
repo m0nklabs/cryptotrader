@@ -232,23 +232,17 @@ jobs:
           echo "Successfully assigned! New assignees: $RESULT"
           echo "assigned=true" >> $GITHUB_OUTPUT
 
-      - name: Mention Copilot on issue
+      - name: Mention Copilot on issue (as user)
         if: steps.check-prs.outputs.busy == 'false' && steps.find-issue.outputs.found == 'true'
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ steps.generate-token.outputs.token }}
-          script: |
-            const issueNumber = ${{ steps.find-issue.outputs.issue_number }};
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          ISSUE_NUMBER=${{ steps.find-issue.outputs.issue_number }}
 
-            // Post @copilot comment to trigger the agent to start work
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              body: '@copilot Please implement this issue. Create a fresh branch from current master and open a PR when ready.\n\n_Auto-triggered by CI (no active Copilot PRs detected)_'
-            });
+          # Post @copilot comment using PAT (Copilot only responds to user comments, not bot comments)
+          gh issue comment "$ISSUE_NUMBER" --body "@copilot Please implement this issue. Create a fresh branch from current master and open a PR when ready. _Auto-triggered by CI (no active Copilot PRs detected)_"
 
-            console.log(`Mentioned Copilot on issue #${issueNumber}`);
+          echo "Mentioned Copilot on issue #${ISSUE_NUMBER}"
 
       - name: Summary
         if: always()

@@ -1,0 +1,31 @@
+# Copilot Coding Agent Environment Setup
+# This file configures the development environment for Copilot coding agent
+# See: https://docs.github.com/en/copilot/customizing-copilot/customizing-the-development-environment-for-copilot-coding-agent
+
+setup:
+  - name: Setup Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.12'
+
+  - name: Setup Node.js
+    uses: actions/setup-node@v4
+    with:
+      node-version: '20'
+
+  - name: Install Python dependencies
+    run: |
+      pip install --upgrade pip
+      if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+  - name: Install pre-commit hooks
+    run: |
+      pip install pre-commit
+      pre-commit install --install-hooks || true
+
+  - name: Install frontend dependencies
+    run: |
+      if [ -d frontend ] && [ -f frontend/package.json ]; then
+        cd frontend && npm ci
+      fi
