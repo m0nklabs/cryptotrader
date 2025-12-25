@@ -1,0 +1,186 @@
+name: Auto-assign Copilot to Priority Issues
+
+on:
+  # Run every 2 hours
+  schedule:
+    - cron: '0 */2 * * *'
+  # Manual trigger
+  workflow_dispatch:
+  # Run when a PR is closed (to assign next issue)
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  assign-copilot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for active Copilot PRs
+        id: check-prs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Find open PRs by Copilot
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            const copilotPRs = prs.filter(pr =>
+              pr.user.login === 'copilot[bot]' ||
+              pr.user.login === 'Copilot'
+            );
+
+            console.log(`Found ${copilotPRs.length} active Copilot PRs`);
+
+            if (copilotPRs.length > 0) {
+              console.log('Copilot is busy, skipping assignment');
+              core.setOutput('busy', 'true');
+              return;
+            }
+
+            core.setOutput('busy', 'false');
+
+      - name: Find highest priority unassigned issue
+        id: find-issue
+        if: steps.check-prs.outputs.busy == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Priority order for EPICs (highest first)
+            const epicPriority = {
+              71: 1,  // Trading System (core functionality)
+              70: 2,  // Market Data (data pipeline)
+              69: 3,  // Technical Analysis
+              68: 4,  // Infrastructure
+              76: 5   // Frontend & UI
+            };
+
+            // Priority labels (if present, use these)
+            const labelPriority = {
+              'priority:critical': 0,
+              'priority:high': 1,
+              'priority:medium': 2,
+              'priority:low': 3
+            };
+
+            // Get all open issues
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            // Filter: not a PR, not an EPIC, not already assigned to Copilot
+            const candidates = issues.filter(issue => {
+              // Skip PRs
+              if (issue.pull_request) return false;
+
+              // Skip EPICs (have 🎯 in title)
+              if (issue.title.includes('🎯') || issue.title.includes('EPIC')) return false;
+
+              // Skip if already assigned to Copilot
+              const assignees = issue.assignees.map(a => a.login.toLowerCase());
+              if (assignees.includes('copilot') || assignees.includes('copilot[bot]')) return false;
+
+              // Skip issues with [blocked] or [wip] in title
+              const titleLower = issue.title.toLowerCase();
+              if (titleLower.includes('[blocked]') || titleLower.includes('[wip]')) return false;
+
+              return true;
+            });
+
+            if (candidates.length === 0) {
+              console.log('No unassigned issues found');
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            // Score each issue
+            const scoredIssues = candidates.map(issue => {
+              let score = 1000; // Base score
+
+              // Check for priority labels
+              for (const label of issue.labels) {
+                const labelName = label.name.toLowerCase();
+                if (labelPriority[labelName] !== undefined) {
+                  score = labelPriority[labelName] * 100;
+                  break;
+                }
+              }
+
+              // Check issue body for EPIC reference
+              const body = issue.body || '';
+              const epicMatch = body.match(/EPIC #(\d+)/i);
+              if (epicMatch) {
+                const epicNum = parseInt(epicMatch[1]);
+                if (epicPriority[epicNum]) {
+                  score += epicPriority[epicNum];
+                }
+              }
+
+              // Prefer older issues (lower number = older = higher priority)
+              score += issue.number / 1000;
+
+              return { issue, score };
+            });
+
+            // Sort by score (lowest = highest priority)
+            scoredIssues.sort((a, b) => a.score - b.score);
+
+            const topIssue = scoredIssues[0].issue;
+            console.log(`Selected issue #${topIssue.number}: ${topIssue.title}`);
+            console.log(`Score: ${scoredIssues[0].score}`);
+
+            core.setOutput('found', 'true');
+            core.setOutput('issue_number', topIssue.number);
+            core.setOutput('issue_title', topIssue.title);
+
+      - name: Assign Copilot to issue
+        if: steps.check-prs.outputs.busy == 'false' && steps.find-issue.outputs.found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = ${{ steps.find-issue.outputs.issue_number }};
+            const issueTitle = `${{ steps.find-issue.outputs.issue_title }}`;
+
+            console.log(`Assigning Copilot to issue #${issueNumber}: ${issueTitle}`);
+
+            // Add Copilot as assignee
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              assignees: ['copilot']
+            });
+
+            // Post @copilot comment to trigger the agent
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: '@copilot Please implement this issue. Create a fresh branch from current master and open a PR when ready.\n\n_Auto-assigned by CI (no active Copilot PRs detected)_'
+            });
+
+            console.log(`Successfully assigned Copilot to issue #${issueNumber}`);
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Copilot Auto-Assignment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.check-prs.outputs.busy }}" == "true" ]; then
+            echo "⏳ Copilot is currently busy with an open PR" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.find-issue.outputs.found }}" == "true" ]; then
+            echo "✅ Assigned Copilot to issue #${{ steps.find-issue.outputs.issue_number }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**${{ steps.find-issue.outputs.issue_title }}**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "📭 No unassigned issues found" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -106,6 +106,70 @@ One-sentence goal.
 | **GitHub Copilot** | `@copilot` | Cloud (GitHub) | Complex features, multi-file changes |
 | **Agent-Forge** | `m0nk111-post` | Ollama (qwen3coder 30b) | Local execution, cost-free, privacy |
 
+## Automated Copilot Assignment
+
+A GitHub Action automatically assigns Copilot to the highest priority issue when no active Copilot PR exists.
+
+**Workflow:** `.github/workflows/copilot-auto-assign.yml`
+
+### Triggers
+
+| Trigger | Frequency |
+|---------|-----------|
+| Schedule | Every 2 hours |
+| Manual | `workflow_dispatch` |
+| PR closed | When any PR is closed/merged |
+
+### Priority Algorithm
+
+Issues are scored and sorted (lowest score = highest priority):
+
+1. **Priority labels** (if present):
+   - `priority:critical` → score 0
+   - `priority:high` → score 100
+   - `priority:medium` → score 200
+   - `priority:low` → score 300
+
+2. **EPIC membership** (adds to score):
+   - #71 Trading System → +1
+   - #70 Market Data → +2
+   - #69 Technical Analysis → +3
+   - #68 Infrastructure → +4
+   - #76 Frontend & UI → +5
+
+3. **Issue age**: older issues get slight priority boost
+
+### Exclusions
+
+The workflow skips issues that:
+- Are already assigned to Copilot
+- Have `🎯` or `EPIC` in title
+- Have `[blocked]` or `[wip]` in title
+- Are pull requests
+
+### Manual Override
+
+To prioritize a specific issue, add `priority:critical` label:
+
+```bash
+gh issue edit <ISSUE#> --add-label "priority:critical"
+```
+
+To block an issue from auto-assignment:
+
+```bash
+# Rename with [blocked] prefix
+gh issue edit <ISSUE#> --title "[blocked] Original title"
+```
+
+### Monitoring
+
+View workflow runs:
+```bash
+gh run list --workflow=copilot-auto-assign.yml
+gh run view <RUN_ID>
+```
+
 ## Review Loop
 
 ```
