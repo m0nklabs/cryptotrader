@@ -149,6 +149,7 @@ pull_request_rules:
   - name: auto-merge-dependabot
     conditions:
       - author=dependabot[bot]
+      - "#approved-reviews-by>=1"
       - check-success=Backend (ruff + pytest)
       - check-success=Pre-commit checks
       - -conflict
