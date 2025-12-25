@@ -129,7 +129,7 @@ def execute_order(symbol, entry_price, stop_loss_price):
     # 1. Check drawdown
     if not drawdown_monitor.is_trading_allowed():
         return {"status": "rejected", "reason": "Trading paused due to drawdown"}
-    
+
     # 2. Calculate position size
     position_size = calculate_position_size(
         sizing_config,
@@ -137,7 +137,7 @@ def execute_order(symbol, entry_price, stop_loss_price):
         entry_price,
         stop_loss_price
     )
-    
+
     # 3. Check exposure limits
     position_value = position_size * entry_price
     allowed, reasons = exposure_checker.check_all(
@@ -147,10 +147,10 @@ def execute_order(symbol, entry_price, stop_loss_price):
         portfolio_value=portfolio_value,
         current_positions=get_position_count()
     )
-    
+
     if not allowed:
         return {"status": "rejected", "reason": reasons}
-    
+
     # 4. Execute order
     return execute_trade(symbol, position_size)
 ```

@@ -122,9 +122,7 @@ class TestExposureLimits:
 
         # Current exposure: $8000, new position: $1000, portfolio: $10000
         # Total: $9000 / $10000 = 90% < 95%
-        allowed, reason = checker.check_total_exposure(
-            Decimal("8000"), Decimal("10000"), Decimal("1000")
-        )
+        allowed, reason = checker.check_total_exposure(Decimal("8000"), Decimal("10000"), Decimal("1000"))
         assert allowed is True
         assert reason is None
 
@@ -135,9 +133,7 @@ class TestExposureLimits:
 
         # Current exposure: $9000, new position: $2000, portfolio: $10000
         # Total: $11000 / $10000 = 110% > 95%
-        allowed, reason = checker.check_total_exposure(
-            Decimal("9000"), Decimal("10000"), Decimal("2000")
-        )
+        allowed, reason = checker.check_total_exposure(Decimal("9000"), Decimal("10000"), Decimal("2000"))
         assert allowed is False
         assert "would exceed max" in reason
 
