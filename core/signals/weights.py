@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from core.signals.scoring import normalize_weights
+
 logger = logging.getLogger(__name__)
 
 # Default indicator weights (hardcoded, no DB required)
@@ -33,24 +35,6 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "MA_CROSS": 0.15,
     "VOLUME_SPIKE": 0.05,
 }
-
-
-def normalize_weights(weights: dict[str, float]) -> dict[str, float]:
-    """Normalize weights to sum to 1.0.
-
-    Args:
-        weights: Dictionary of indicator codes to weights
-
-    Returns:
-        Normalized weights that sum to 1.0
-
-    Raises:
-        ValueError: If total weight is <= 0
-    """
-    total = sum(weights.values())
-    if total <= 0:
-        raise ValueError("weights total must be > 0")
-    return {k: v / total for k, v in weights.items()}
 
 
 async def load_weights_from_db(

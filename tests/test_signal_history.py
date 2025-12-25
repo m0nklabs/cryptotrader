@@ -40,6 +40,10 @@ async def test_log_signal_history_with_mock_asyncpg():
             self.query = query
             self.params = args
 
+        async def fetch(self, query: str, *args):
+            """Mock fetch method to identify as asyncpg."""
+            return []
+
     mock_pool = MockAsyncPGPool()
     result = await log_signal_history(
         symbol="BTCUSD",
@@ -103,6 +107,10 @@ async def test_log_signal_history_empty_contributions():
             """Mock execute method."""
             self.executed = True
             self.params = args
+
+        async def fetch(self, query: str, *args):
+            """Mock fetch method to identify as asyncpg."""
+            return []
 
     mock_pool = MockAsyncPGPool()
     result = await log_signal_history(
@@ -245,6 +253,10 @@ async def test_log_signal_history_special_characters():
             """Mock execute method."""
             self.params = args
 
+        async def fetch(self, query: str, *args):
+            """Mock fetch method to identify as asyncpg."""
+            return []
+
     mock_pool = MockAsyncPGPool()
     result = await log_signal_history(
         symbol="BTC/USD",  # Symbol with slash
@@ -272,6 +284,10 @@ async def test_log_signal_history_high_precision_score():
             """Mock execute method."""
             self.params = args
 
+        async def fetch(self, query: str, *args):
+            """Mock fetch method to identify as asyncpg."""
+            return []
+
     mock_pool = MockAsyncPGPool()
     result = await log_signal_history(
         symbol="BTCUSD",
@@ -298,6 +314,10 @@ async def test_log_signal_history_many_indicators():
         async def execute(self, query: str, *args):
             """Mock execute method."""
             self.params = args
+
+        async def fetch(self, query: str, *args):
+            """Mock fetch method to identify as asyncpg."""
+            return []
 
     mock_pool = MockAsyncPGPool()
 

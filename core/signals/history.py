@@ -66,8 +66,8 @@ async def log_signal_history(
             VALUES ($1, $2, $3, $4, $5)
         """
 
-        # Try asyncpg-style query
-        if hasattr(db_pool, "execute"):
+        # Try asyncpg-style query (has 'fetch' method)
+        if hasattr(db_pool, "fetch"):
             await db_pool.execute(
                 query,
                 symbol,
@@ -79,8 +79,8 @@ async def log_signal_history(
             logger.debug(f"Logged signal history: {symbol} {timeframe} score={score}")
             return True
 
-        # Try SQLAlchemy async session
-        elif hasattr(db_pool, "execute"):
+        # Try SQLAlchemy async session (has 'commit' method but not 'fetch')
+        elif hasattr(db_pool, "commit"):
             from sqlalchemy import text
 
             await db_pool.execute(
@@ -140,40 +140,49 @@ async def get_signal_history(
     try:
         # Build query with optional filters
         conditions = []
-        params: dict[str, Any] = {"limit": limit}
+        params_list = []  # For positional parameters (asyncpg)
+        params_dict: dict[str, Any] = {}  # For named parameters (SQLAlchemy)
 
         if symbol:
-            conditions.append("symbol = :symbol")
-            params["symbol"] = symbol
+            conditions.append(f"symbol = ${len(params_list) + 1}")
+            params_list.append(symbol)
+            params_dict["symbol"] = symbol
 
         if timeframe:
-            conditions.append("timeframe = :timeframe")
-            params["timeframe"] = timeframe
+            conditions.append(f"timeframe = ${len(params_list) + 1}")
+            params_list.append(timeframe)
+            params_dict["timeframe"] = timeframe
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-        query = f"""
+        query_asyncpg = f"""
             SELECT id, symbol, timeframe, score, indicator_contributions, created_at
             FROM signal_history
             {where_clause}
             ORDER BY created_at DESC
+            LIMIT ${len(params_list) + 1}
+        """
+
+        query_sqlalchemy = f"""
+            SELECT id, symbol, timeframe, score, indicator_contributions, created_at
+            FROM signal_history
+            {where_clause.replace('$1', ':symbol').replace('$2', ':timeframe') if where_clause else ''}
+            ORDER BY created_at DESC
             LIMIT :limit
         """
 
-        # Try asyncpg-style query
+        # Try asyncpg-style query (has 'fetch' method)
         if hasattr(db_pool, "fetch"):
-            query_asyncpg = query.replace(":symbol", "$1").replace(":timeframe", "$2").replace(":limit", "$3")
-            param_values = [params.get("symbol"), params.get("timeframe"), limit]
-            # Filter out None values
-            param_values = [p for p in param_values if p is not None]
-            rows = await db_pool.fetch(query_asyncpg, *param_values)
+            params_list.append(limit)
+            rows = await db_pool.fetch(query_asyncpg, *params_list)
             return [dict(row) for row in rows]
 
-        # Try SQLAlchemy async session
-        elif hasattr(db_pool, "execute"):
+        # Try SQLAlchemy async session (has 'commit' method but not 'fetch')
+        elif hasattr(db_pool, "commit"):
             from sqlalchemy import text
 
-            result = await db_pool.execute(text(query), params)
+            params_dict["limit"] = limit
+            result = await db_pool.execute(text(query_sqlalchemy), params_dict)
             rows = result.fetchall()
             return [
                 {
