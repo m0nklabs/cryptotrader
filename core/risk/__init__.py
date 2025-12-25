@@ -1,6 +1,22 @@
-"""Risk management skeleton.
+"""Risk management module.
 
-Defines risk limits and validators used by the automation layer.
+Position sizing, exposure limits, and drawdown controls.
 """
 
-from .limits import RiskLimits
+from .drawdown import DrawdownConfig, DrawdownMonitor, DrawdownState
+from .limits import ExposureChecker, ExposureLimits, RiskLimits
+from .sizing import PositionSize, calculate_position_size
+
+__all__ = [
+    # Limits
+    "RiskLimits",
+    "ExposureLimits",
+    "ExposureChecker",
+    # Sizing
+    "PositionSize",
+    "calculate_position_size",
+    # Drawdown
+    "DrawdownConfig",
+    "DrawdownMonitor",
+    "DrawdownState",
+]
