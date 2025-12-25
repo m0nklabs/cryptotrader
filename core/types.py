@@ -279,3 +279,4 @@ class PortfolioSnapshot:
     exchange: Optional[str] = None
     positions: Sequence[PositionSnapshot] = ()
     wallets: Sequence[WalletSnapshot] = ()
+    id: Optional[int] = None
