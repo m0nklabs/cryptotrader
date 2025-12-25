@@ -19,11 +19,12 @@ jobs:
           PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
           echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
 
-          # Check if PR is from Copilot
+          # Check if PR is from Copilot (case-insensitive)
           PR_AUTHOR=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER --jq '.user.login')
           echo "author=$PR_AUTHOR" >> $GITHUB_OUTPUT
+          PR_AUTHOR_LOWER=$(echo "$PR_AUTHOR" | tr '[:upper:]' '[:lower:]')
 
-          if [[ "$PR_AUTHOR" == *"copilot"* ]] || [[ "$PR_AUTHOR" == "copilot-swe-agent" ]]; then
+          if [[ "$PR_AUTHOR_LOWER" == *"copilot"* ]]; then
             echo "is_copilot=true" >> $GITHUB_OUTPUT
           else
             echo "is_copilot=false" >> $GITHUB_OUTPUT
