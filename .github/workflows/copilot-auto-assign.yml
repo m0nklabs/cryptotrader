@@ -228,7 +228,8 @@ jobs:
           ISSUE_NUMBER=${{ steps.find-issue.outputs.issue_number }}
 
           # Post @copilot comment using PAT (Copilot only responds to user comments, not bot comments)
-          gh issue comment "$ISSUE_NUMBER" --body "@copilot Please implement this issue. Create a fresh branch from current master and open a PR when ready. _Auto-triggered by CI (no active Copilot PRs detected)_"
+          # Use --repo flag to avoid needing git checkout
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "@copilot Please implement this issue. Create a fresh branch from current master and open a PR when ready. _Auto-triggered by CI (no active Copilot PRs detected)_"
 
           echo "Mentioned Copilot on issue #${ISSUE_NUMBER}"
 
