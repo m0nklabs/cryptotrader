@@ -186,8 +186,8 @@ pull_request_rules:
     description: Auto-merge Dependabot PRs when CI passes
     conditions:
       - author=dependabot[bot]
-      - check-success=test
-      - check-success=lint
+      - check-success=Backend (ruff + pytest)
+      - check-success=Pre-commit checks
       - -conflict
       - -draft
     actions:
@@ -202,8 +202,8 @@ pull_request_rules:
         - author=github-actions[bot]
         - head~=^copilot/
       - "#approved-reviews-by>=1"
-      - check-success=test
-      - check-success=lint
+      - check-success=Backend (ruff + pytest)
+      - check-success=Pre-commit checks
       - check-success=Gitleaks
       - -conflict
       - -draft
@@ -218,8 +218,8 @@ pull_request_rules:
     conditions:
       - label=automerge
       - "#approved-reviews-by>=1"
-      - check-success=test
-      - check-success=lint
+      - check-success=Backend (ruff + pytest)
+      - check-success=Pre-commit checks
       - check-success=Gitleaks
       - -conflict
       - -draft
@@ -233,8 +233,8 @@ pull_request_rules:
     description: Request review when PR is ready (not draft, CI passing)
     conditions:
       - -draft
-      - check-success=test
-      - check-success=lint
+      - check-success=Backend (ruff + pytest)
+      - check-success=Pre-commit checks
       - -conflict
       - "#review-requested=0"
       - "#approved-reviews-by=0"
