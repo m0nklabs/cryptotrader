@@ -316,3 +316,27 @@ class TestDrawdownMonitor:
         assert monitor.is_daily_drawdown_exceeded() is False
         assert monitor.is_total_drawdown_exceeded() is False
         assert monitor.is_trading_allowed() is True
+
+    def test_drawdown_monitor_boundary_consistency(self) -> None:
+        """Test that boundary conditions are consistent across methods."""
+        config = DrawdownConfig(max_daily_drawdown=Decimal("0.05"))
+        monitor = DrawdownMonitor(config)
+
+        # At exactly 5% drawdown, should NOT be exceeded
+        # check_daily_drawdown should return True (within limits)
+        # is_daily_drawdown_exceeded should return False (not exceeded)
+        result = monitor.check_daily_drawdown(Decimal("950"), Decimal("1000"))
+        assert result is True, "At limit should be within limits"
+
+        # Simulate the same scenario via update_balance
+        monitor.update_balance(Decimal("1000"))
+        monitor.update_balance(Decimal("950"))
+        assert monitor.is_daily_drawdown_exceeded() is False, "At limit should not be exceeded"
+        assert monitor.is_trading_allowed() is True, "Trading should be allowed at limit"
+
+        # Just over 5% should be exceeded
+        monitor2 = DrawdownMonitor(config)
+        monitor2.update_balance(Decimal("1000"))
+        monitor2.update_balance(Decimal("949"))  # 5.1% drawdown
+        assert monitor2.is_daily_drawdown_exceeded() is True, "Over limit should be exceeded"
+        assert monitor2.is_trading_allowed() is False, "Trading should be paused over limit"

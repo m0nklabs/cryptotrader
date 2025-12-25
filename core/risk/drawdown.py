@@ -123,7 +123,7 @@ class DrawdownMonitor:
         if self.config.max_daily_drawdown is None:
             return False
 
-        return self.get_daily_drawdown() >= self.config.max_daily_drawdown
+        return self.get_daily_drawdown() > self.config.max_daily_drawdown
 
     def is_total_drawdown_exceeded(self) -> bool:
         """Check if total drawdown limit is exceeded.
@@ -134,7 +134,7 @@ class DrawdownMonitor:
         if self.config.max_total_drawdown is None:
             return False
 
-        return self.get_total_drawdown() >= self.config.max_total_drawdown
+        return self.get_total_drawdown() > self.config.max_total_drawdown
 
     def is_trading_allowed(self) -> bool:
         """Check if trading is currently allowed.
