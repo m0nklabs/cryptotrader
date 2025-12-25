@@ -140,9 +140,7 @@ async def get_signal_history(
     try:
         # Try asyncpg-style query (has 'fetch' method)
         if hasattr(db_pool, "fetch"):
-            return await _get_signal_history_asyncpg(
-                db_pool=db_pool, symbol=symbol, timeframe=timeframe, limit=limit
-            )
+            return await _get_signal_history_asyncpg(db_pool=db_pool, symbol=symbol, timeframe=timeframe, limit=limit)
 
         # Try SQLAlchemy async session (has 'commit' method but not 'fetch')
         elif hasattr(db_pool, "commit"):
