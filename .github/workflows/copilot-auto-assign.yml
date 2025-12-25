@@ -1,9 +1,9 @@
 name: Auto-assign Copilot to Priority Issues
 
 on:
-  # Run every 2 hours
+  # Run every 5 minutes when no Copilot PR is active
   schedule:
-    - cron: '0 */2 * * *'
+    - cron: '*/5 * * * *'
   # Manual trigger
   workflow_dispatch:
   # Run when a PR is closed (to assign next issue)
@@ -89,7 +89,7 @@ jobs:
               per_page: 100
             });
 
-            // Filter: not a PR, not an EPIC, has label 'copilot' for eligibility
+            // Filter: not a PR, not an EPIC, not already assigned to Copilot
             const candidates = issues.filter(issue => {
               // Skip PRs
               if (issue.pull_request) return false;
@@ -97,9 +97,19 @@ jobs:
               // Skip EPICs (have 🎯 in title)
               if (issue.title.includes('🎯') || issue.title.includes('EPIC')) return false;
 
-              // Must have 'copilot' label to be eligible for auto-assignment
+              // Skip if already assigned to Copilot
+              const assignees = issue.assignees.map(a => a.login.toLowerCase());
+              if (assignees.some(a => a.includes('copilot'))) return false;
+
+              // Must have 'copilot' label OR be unassigned with priority label
               const labels = issue.labels.map(l => l.name.toLowerCase());
-              if (!labels.includes('copilot')) return false;
+              const hasCopilotLabel = labels.includes('copilot');
+              const hasPriorityLabel = labels.some(l => l.startsWith('priority:'));
+
+              // Eligible if: has copilot label, OR has priority label and no assignees
+              if (!hasCopilotLabel && !(hasPriorityLabel && issue.assignees.length === 0)) {
+                return false;
+              }
 
               // Skip issues with [blocked] or [wip] in title
               const titleLower = issue.title.toLowerCase();
@@ -109,7 +119,7 @@ jobs:
             });
 
             if (candidates.length === 0) {
-              console.log('No unassigned issues found');
+              console.log('No eligible issues found for Copilot assignment');
               core.setOutput('found', 'false');
               return;
             }
