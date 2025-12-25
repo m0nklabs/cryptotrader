@@ -32,7 +32,7 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401"]
 "core/storage/postgres/stores.py" = ["F811"]
-"scripts/run_backtest.py" = ["E402"]
+"scripts/*.py" = ["E402"]
 "tests/**" = ["E402"]
 
 [tool.pytest.ini_options]
