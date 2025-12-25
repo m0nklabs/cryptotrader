@@ -27,7 +27,7 @@ jobs:
 
       - name: Check for active Copilot PRs
         id: check-prs
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ steps.generate-token.outputs.token }}
           script: |
@@ -57,7 +57,7 @@ jobs:
       - name: Find highest priority unassigned issue
         id: find-issue
         if: steps.check-prs.outputs.busy == 'false'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ steps.generate-token.outputs.token }}
           script: |
@@ -153,7 +153,7 @@ jobs:
 
       - name: Assign Copilot to issue
         if: steps.check-prs.outputs.busy == 'false' && steps.find-issue.outputs.found == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ steps.generate-token.outputs.token }}
           script: |
