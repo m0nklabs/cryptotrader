@@ -42,7 +42,9 @@ jobs:
 
             const copilotPRs = prs.filter(pr =>
               pr.user.login === 'copilot[bot]' ||
-              pr.user.login === 'Copilot'
+              pr.user.login === 'Copilot' ||
+              pr.user.login === 'app/copilot-swe-agent' ||
+              pr.user.login.toLowerCase().includes('copilot')
             );
 
             console.log(`Found ${copilotPRs.length} active Copilot PRs`);
