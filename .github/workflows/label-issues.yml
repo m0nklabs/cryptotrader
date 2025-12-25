@@ -1,0 +1,69 @@
+name: Label issues based on keywords
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Label based on keywords
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || '').toLowerCase();
+            const text = title + ' ' + body;
+
+            const labelMap = {
+              // Bug/Error keywords
+              'bug': ['bug', 'error', 'exception', 'crash', 'fail', 'broken', 'not working'],
+              // Feature keywords
+              'enhancement': ['feature', 'request', 'add', 'implement', 'enhance', 'improvement'],
+              // Question keywords
+              'question': ['how to', 'how do', 'question', 'help', 'why does', 'what is'],
+              // Documentation keywords
+              'documentation': ['docs', 'documentation', 'readme', 'typo', 'spelling'],
+              // Exchange keywords
+              'exchange': ['binance', 'kucoin', 'bitfinex', 'kraken', 'exchange', 'api'],
+              // Trading keywords
+              'trading': ['order', 'trade', 'position', 'portfolio', 'balance', 'margin'],
+              // Technical Analysis
+              'indicators': ['indicator', 'rsi', 'macd', 'ema', 'sma', 'bollinger', 'signal'],
+              // Database
+              'database': ['database', 'postgres', 'sql', 'migration', 'db'],
+              // Frontend
+              'frontend': ['ui', 'frontend', 'dashboard', 'react', 'chart', 'display'],
+            };
+
+            const labelsToAdd = [];
+
+            for (const [label, keywords] of Object.entries(labelMap)) {
+              for (const keyword of keywords) {
+                if (text.includes(keyword)) {
+                  labelsToAdd.push(label);
+                  break;
+                }
+              }
+            }
+
+            if (labelsToAdd.length > 0) {
+              // Filter out labels that already exist on the issue
+              const existingLabels = issue.labels.map(l => l.name);
+              const newLabels = labelsToAdd.filter(l => !existingLabels.includes(l));
+
+              if (newLabels.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: newLabels
+                });
+                console.log(`Added labels: ${newLabels.join(', ')}`);
+              }
+            }

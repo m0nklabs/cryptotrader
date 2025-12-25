@@ -1,0 +1,97 @@
+name: Cleanup PR Body
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Cleanup PR Body
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            let body = pr.body || '';
+
+            // Skip if body is empty or very short
+            if (body.length < 10) {
+              console.log('PR body is too short, skipping cleanup');
+              return;
+            }
+
+            let modified = false;
+
+            // Remove HTML comments (often from templates)
+            const withoutComments = body.replace(/<!--[\s\S]*?-->/g, '');
+            if (withoutComments !== body) {
+              body = withoutComments;
+              modified = true;
+            }
+
+            // Remove empty sections (headers with nothing after them)
+            // Pattern: ## Header\n\n## or ## Header\n\nEOF
+            const lines = body.split('\n');
+            const cleanedLines = [];
+            let skipUntilNextHeader = false;
+            let lastLineWasHeader = false;
+
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              const isHeader = line.match(/^#{1,6}\s+/);
+              const isEmpty = line.trim() === '';
+
+              if (isHeader) {
+                // Check if next non-empty line is also a header or EOF
+                let hasContent = false;
+                for (let j = i + 1; j < lines.length; j++) {
+                  const nextLine = lines[j];
+                  if (nextLine.trim() === '') continue;
+                  if (nextLine.match(/^#{1,6}\s+/)) break;
+                  hasContent = true;
+                  break;
+                }
+                if (hasContent) {
+                  cleanedLines.push(line);
+                  lastLineWasHeader = true;
+                } else {
+                  modified = true;
+                }
+              } else {
+                cleanedLines.push(line);
+                lastLineWasHeader = false;
+              }
+            }
+
+            body = cleanedLines.join('\n');
+
+            // Remove multiple consecutive empty lines
+            const withSingleNewlines = body.replace(/\n{3,}/g, '\n\n');
+            if (withSingleNewlines !== body) {
+              body = withSingleNewlines;
+              modified = true;
+            }
+
+            // Trim whitespace
+            const trimmed = body.trim();
+            if (trimmed !== body) {
+              body = trimmed;
+              modified = true;
+            }
+
+            // Update PR if modified
+            if (modified && body.length > 0) {
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                body: body
+              });
+              console.log('PR body cleaned up successfully');
+            } else {
+              console.log('No cleanup needed');
+            }
