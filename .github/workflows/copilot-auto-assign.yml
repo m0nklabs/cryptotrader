@@ -13,6 +13,7 @@ on:
 permissions:
   issues: write
   pull-requests: read
+  contents: read
 
 jobs:
   assign-copilot:
@@ -86,7 +87,7 @@ jobs:
               per_page: 100
             });
 
-            // Filter: not a PR, not an EPIC, not already assigned to Copilot
+            // Filter: not a PR, not an EPIC, has label 'copilot' for eligibility
             const candidates = issues.filter(issue => {
               // Skip PRs
               if (issue.pull_request) return false;
@@ -94,9 +95,9 @@ jobs:
               // Skip EPICs (have 🎯 in title)
               if (issue.title.includes('🎯') || issue.title.includes('EPIC')) return false;
 
-              // Skip if already assigned to Copilot
-              const assignees = issue.assignees.map(a => a.login.toLowerCase());
-              if (assignees.includes('copilot') || assignees.includes('copilot[bot]')) return false;
+              // Must have 'copilot' label to be eligible for auto-assignment
+              const labels = issue.labels.map(l => l.name.toLowerCase());
+              if (!labels.includes('copilot')) return false;
 
               // Skip issues with [blocked] or [wip] in title
               const titleLower = issue.title.toLowerCase();
@@ -151,7 +152,7 @@ jobs:
             core.setOutput('issue_number', topIssue.number);
             core.setOutput('issue_title', topIssue.title);
 
-      - name: Assign Copilot to issue
+      - name: Assign Copilot to issue (GraphQL)
         if: steps.check-prs.outputs.busy == 'false' && steps.find-issue.outputs.found == 'true'
         uses: actions/github-script@v8
         with:
@@ -162,23 +163,134 @@ jobs:
 
             console.log(`Assigning Copilot to issue #${issueNumber}: ${issueTitle}`);
 
-            // Add Copilot as assignee
-            await github.rest.issues.addAssignees({
+            // Step 1: Find the Copilot bot in suggested actors
+            // This is required because Copilot can't be assigned via normal API
+            let copilotBotId = null;
+            let endCursor = null;
+
+            while (!copilotBotId) {
+              const suggestedActorsQuery = `
+                query($owner: String!, $name: String!, $endCursor: String) {
+                  repository(owner: $owner, name: $name) {
+                    suggestedActors(first: 100, after: $endCursor, capabilities: CAN_BE_ASSIGNED) {
+                      nodes {
+                        ... on Bot {
+                          id
+                          login
+                        }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                    }
+                  }
+                }
+              `;
+
+              const suggestedResult = await github.graphql(suggestedActorsQuery, {
+                owner: context.repo.owner,
+                name: context.repo.repo,
+                endCursor: endCursor
+              });
+
+              for (const node of suggestedResult.repository.suggestedActors.nodes) {
+                if (node.login === 'copilot-swe-agent') {
+                  copilotBotId = node.id;
+                  break;
+                }
+              }
+
+              if (!suggestedResult.repository.suggestedActors.pageInfo.hasNextPage) {
+                break;
+              }
+              endCursor = suggestedResult.repository.suggestedActors.pageInfo.endCursor;
+            }
+
+            if (!copilotBotId) {
+              core.setFailed('Copilot bot not found in suggested actors. Make sure Copilot is enabled for this repo.');
+              return;
+            }
+
+            console.log(`Found Copilot bot with ID: ${copilotBotId}`);
+
+            // Step 2: Get the issue's GraphQL ID and current assignees
+            const issueQuery = `
+              query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  issue(number: $number) {
+                    id
+                    assignees(first: 100) {
+                      nodes {
+                        id
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const issueResult = await github.graphql(issueQuery, {
               owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              assignees: ['copilot']
+              name: context.repo.repo,
+              number: issueNumber
             });
 
-            // Post @copilot comment to trigger the agent
+            const issueId = issueResult.repository.issue.id;
+            const currentAssigneeIds = issueResult.repository.issue.assignees.nodes.map(n => n.id);
+
+            console.log(`Issue ID: ${issueId}, Current assignees: ${currentAssigneeIds.length}`);
+
+            // Step 3: Assign Copilot using replaceActorsForAssignable mutation
+            // This adds Copilot while keeping existing assignees
+            const actorIds = [...currentAssigneeIds, copilotBotId];
+
+            const assignMutation = `
+              mutation($input: ReplaceActorsForAssignableInput!) {
+                replaceActorsForAssignable(input: $input) {
+                  assignable {
+                    ... on Issue {
+                      assignees(first: 10) {
+                        nodes {
+                          login
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const assignResult = await github.graphql(assignMutation, {
+              input: {
+                assignableId: issueId,
+                actorIds: actorIds
+              }
+            });
+
+            const newAssignees = assignResult.replaceActorsForAssignable.assignable.assignees.nodes
+              .map(n => n.login).join(', ');
+            console.log(`Successfully assigned! New assignees: ${newAssignees}`);
+
+            core.setOutput('assigned', 'true');
+
+      - name: Mention Copilot on issue
+        if: steps.check-prs.outputs.busy == 'false' && steps.find-issue.outputs.found == 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.generate-token.outputs.token }}
+          script: |
+            const issueNumber = ${{ steps.find-issue.outputs.issue_number }};
+
+            // Post @copilot comment to trigger the agent to start work
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
-              body: '@copilot Please implement this issue. Create a fresh branch from current master and open a PR when ready.\n\n_Auto-assigned by CI (no active Copilot PRs detected)_'
+              body: '@copilot Please implement this issue. Create a fresh branch from current master and open a PR when ready.\n\n_Auto-triggered by CI (no active Copilot PRs detected)_'
             });
 
-            console.log(`Successfully assigned Copilot to issue #${issueNumber}`);
+            console.log(`Mentioned Copilot on issue #${issueNumber}`);
 
       - name: Summary
         if: always()
