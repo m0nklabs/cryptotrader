@@ -5,7 +5,6 @@ pull_request_rules:
   # ========== Auto-labeling based on files changed ==========
 
   - name: label-frontend
-    description: Label PRs touching frontend code
     conditions:
       - files~=^frontend/
     actions:
@@ -14,18 +13,16 @@ pull_request_rules:
           - frontend
 
   - name: label-backend
-    description: Label PRs touching backend core/api code
     conditions:
       - or:
-        - files~=^core/
-        - files~=^api/
+          - files~=^core/
+          - files~=^api/
     actions:
       label:
         add:
           - backend
 
   - name: label-exchange
-    description: Label PRs touching exchange adapters
     conditions:
       - files~=^cex/
     actions:
@@ -34,7 +31,6 @@ pull_request_rules:
           - exchange
 
   - name: label-database
-    description: Label PRs touching database code
     conditions:
       - files~=^db/
     actions:
@@ -43,7 +39,6 @@ pull_request_rules:
           - database
 
   - name: label-tests
-    description: Label PRs adding or modifying tests
     conditions:
       - files~=^tests/
     actions:
@@ -52,39 +47,36 @@ pull_request_rules:
           - tests
 
   - name: label-ci
-    description: Label PRs touching CI/CD config
     conditions:
       - or:
-        - files~=^\.github/
-        - files~=^docker-compose\.yml$
-        - files~=^Makefile$
-        - files~=^\.devcontainer/
+          - files~=^\.github/
+          - files~=^docker-compose\.yml$
+          - files~=^Makefile$
+          - files~=^\.devcontainer/
     actions:
       label:
         add:
           - ci
 
   - name: label-docs
-    description: Label PRs touching documentation
     conditions:
       - or:
-        - files~=^docs/
-        - files~=^README\.md$
-        - files~=^CHANGELOG\.md$
-        - files~=^CONTRIBUTING\.md$
+          - files~=^docs/
+          - files~=^README\.md$
+          - files~=^CHANGELOG\.md$
+          - files~=^CONTRIBUTING\.md$
     actions:
       label:
         add:
           - documentation
 
   - name: label-config
-    description: Label PRs touching project configuration
     conditions:
       - or:
-        - files~=^pyproject\.toml$
-        - files~=^requirements.*\.txt$
-        - files~=^\.pre-commit-config\.yaml$
-        - files~=^\.editorconfig$
+          - files~=^pyproject\.toml$
+          - files~=^requirements.*\.txt$
+          - files~=^\.pre-commit-config\.yaml$
+          - files~=^\.editorconfig$
     actions:
       label:
         add:
@@ -93,7 +85,6 @@ pull_request_rules:
   # ========== Conflict detection ==========
 
   - name: ping-author-on-conflicts
-    description: Notify author when PR has conflicts
     conditions:
       - conflict
     actions:
@@ -104,14 +95,13 @@ pull_request_rules:
         message: |
           @{{author}} This PR has merge conflicts. Please rebase on master to resolve them.
 
-          ```bash
+          \`\`\`bash
           git fetch origin
           git rebase origin/master
           git push --force-with-lease
-          ```
+          \`\`\`
 
   - name: remove-needs-rebase-label
-    description: Remove needs-rebase label when conflicts are resolved
     conditions:
       - -conflict
       - label=needs-rebase
@@ -123,19 +113,17 @@ pull_request_rules:
   # ========== PR hygiene ==========
 
   - name: label-wip
-    description: Label work-in-progress PRs
     conditions:
       - or:
-        - draft
-        - title~=(?i)^\[?WIP\]?
-        - title~=(?i)^WIP:
+          - draft
+          - title~=(?i)^\[?WIP\]?
+          - title~=(?i)^WIP:
     actions:
       label:
         add:
           - work-in-progress
 
   - name: remove-wip-label
-    description: Remove WIP label when PR is ready
     conditions:
       - -draft
       - -title~=(?i)^\[?WIP\]?
@@ -147,43 +135,18 @@ pull_request_rules:
           - work-in-progress
 
   - name: label-copilot
-    description: Label PRs created by Copilot
     conditions:
       - or:
-        - author=github-actions[bot]
-        - head~=^copilot/
+          - author=github-actions[bot]
+          - head~=^copilot/
     actions:
       label:
         add:
           - copilot
 
-  # ========== Size labels ==========
-
-  - name: label-size-small
-    description: Small PR (< 50 lines)
-    conditions:
-      - files<=5
-      - "#files-modified<50"
-    actions:
-      label:
-        add:
-          - size/S
-
-  - name: label-size-large
-    description: Large PR (> 500 lines)
-    conditions:
-      - or:
-        - files>20
-        - "#files-modified>500"
-    actions:
-      label:
-        add:
-          - size/L
-
   # ========== Auto-merge ==========
 
   - name: auto-merge-dependabot
-    description: Auto-merge Dependabot PRs when CI passes
     conditions:
       - author=dependabot[bot]
       - check-success=Backend (ruff + pytest)
@@ -193,14 +156,13 @@ pull_request_rules:
     actions:
       merge:
         method: squash
-      delete_head_branch: {}
+      delete_head_branch:
 
   - name: auto-merge-copilot
-    description: Auto-merge Copilot PRs when approved and CI passes
     conditions:
       - or:
-        - author=github-actions[bot]
-        - head~=^copilot/
+          - author=github-actions[bot]
+          - head~=^copilot/
       - "#approved-reviews-by>=1"
       - check-success=Backend (ruff + pytest)
       - check-success=Pre-commit checks
@@ -211,10 +173,9 @@ pull_request_rules:
     actions:
       merge:
         method: squash
-      delete_head_branch: {}
+      delete_head_branch:
 
   - name: auto-merge-approved
-    description: Auto-merge any PR with automerge label when approved and CI passes
     conditions:
       - label=automerge
       - "#approved-reviews-by>=1"
@@ -227,10 +188,9 @@ pull_request_rules:
     actions:
       merge:
         method: squash
-      delete_head_branch: {}
+      delete_head_branch:
 
   - name: request-review-on-ready
-    description: Request review when PR is ready (not draft, CI passing)
     conditions:
       - -draft
       - check-success=Backend (ruff + pytest)
