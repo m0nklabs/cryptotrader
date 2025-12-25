@@ -175,6 +175,37 @@ CREATE INDEX IF NOT EXISTS idx_indicator_signals_lookup
     ON indicator_signals(indicator_id, coin_id, timeframe, timestamp);
 
 
+-- ========================================
+-- Configurable indicator weights (v2 simple)
+-- ========================================
+-- Simplified weight config without FK constraints for offline/code-first operation
+
+CREATE TABLE IF NOT EXISTS strategy_indicator_weights (
+   id SERIAL PRIMARY KEY,
+   strategy_id VARCHAR(50) DEFAULT 'default',
+   indicator_name VARCHAR(50) NOT NULL,
+   weight DECIMAL(5,4) NOT NULL,
+   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+   CONSTRAINT uq_strategy_indicator_weights UNIQUE(strategy_id, indicator_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_strategy_indicator_weights_strategy
+    ON strategy_indicator_weights(strategy_id);
+
+-- Signal history for backtesting and optimization
+CREATE TABLE IF NOT EXISTS signal_history (
+   id BIGSERIAL PRIMARY KEY,
+   symbol VARCHAR(50) NOT NULL,
+   timeframe VARCHAR(10) NOT NULL,
+   score DECIMAL(5,2) NOT NULL,
+   indicator_contributions JSONB,
+   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_history_symbol_time
+    ON signal_history(symbol, timeframe, created_at DESC);
+
+
 -- =======================
 -- Portfolio / risk basics
 -- =======================
