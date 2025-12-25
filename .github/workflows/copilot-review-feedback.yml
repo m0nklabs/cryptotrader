@@ -1,32 +1,39 @@
 name: Copilot Review Feedback
 
 on:
-  pull_request_review:
-    types: [submitted]
-  pull_request_review_comment:
-    types: [created]
-  # Also check after Copilot reviewer completes (it posts comments after review)
-  check_suite:
+  # Trigger after CI workflow completes - this runs with repo permissions
+  workflow_run:
+    workflows: ["CI"]
     types: [completed]
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to check'
+        required: true
 
 permissions:
   pull-requests: write
+  issues: write
 
 jobs:
   forward-review-to-agent:
     runs-on: ubuntu-latest
+    # Only run if CI passed (or manual trigger)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Get PR info
         id: pr-info
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          # Get PR number from various event types
-          if [ "${{ github.event_name }}" == "pull_request_review" ] || [ "${{ github.event_name }}" == "pull_request_review_comment" ]; then
-            PR_NUMBER="${{ github.event.pull_request.number }}"
-          elif [ "${{ github.event_name }}" == "check_suite" ]; then
-            # Get PR from check suite
-            PR_NUMBER=$(gh api repos/${{ github.repository }}/commits/${{ github.event.check_suite.head_sha }}/pulls --jq '.[0].number // empty')
+          # Get PR number
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          else
+            # Get PR from workflow run
+            HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+            PR_NUMBER=$(gh api repos/${{ github.repository }}/commits/$HEAD_SHA/pulls --jq '.[0].number // empty')
           fi
 
           if [ -z "$PR_NUMBER" ]; then
@@ -41,9 +48,12 @@ jobs:
           # Check if PR is from Copilot
           PR_AUTHOR=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER --jq '.user.login')
           PR_AUTHOR_LOWER=$(echo "$PR_AUTHOR" | tr '[:upper:]' '[:lower:]')
+          HEAD_REF=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER --jq '.head.ref')
           echo "author=$PR_AUTHOR" >> $GITHUB_OUTPUT
+          echo "head_ref=$HEAD_REF" >> $GITHUB_OUTPUT
 
-          if [[ "$PR_AUTHOR_LOWER" == *"copilot"* ]]; then
+          # Check if Copilot PR (by author or branch name)
+          if [[ "$PR_AUTHOR_LOWER" == *"copilot"* ]] || [[ "$HEAD_REF" == copilot/* ]]; then
             echo "is_copilot_pr=true" >> $GITHUB_OUTPUT
           else
             echo "is_copilot_pr=false" >> $GITHUB_OUTPUT
@@ -66,7 +76,7 @@ jobs:
 
           # Check if we already notified about these (avoid spam)
           LAST_COMMENT=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
-            --jq '[.[] | select(.user.login == "m0nk1111") | select(.body | contains("implement these suggestions"))] | last // empty')
+            --jq '[.[] | select(.body | contains("implement these suggestions"))] | last // empty')
 
           if [ -n "$LAST_COMMENT" ] && [ "$COMMENT_COUNT" -gt 0 ]; then
             LAST_NOTIFY=$(echo "$LAST_COMMENT" | jq -r '.created_at // empty')
@@ -101,17 +111,26 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           PR_NUMBER="${{ steps.pr-info.outputs.number }}"
-          COUNT="${{ steps.check-comments.outputs.count }}"
 
-          cat <<EOF > /tmp/comment.md
-          @copilot The Copilot code reviewer left $COUNT suggestions. Please implement these suggestions:
-
-          ${{ steps.check-comments.outputs.formatted }}
-
-          Apply all suggested changes and push a commit.
+          cat <<'COMMENT_EOF' > /tmp/comment.md
+          @copilot The Copilot code reviewer left suggestions. Please implement these code review suggestions and push a commit.
 
           _Auto-forwarded from Copilot code review_
-          EOF
+          COMMENT_EOF
 
           gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body-file /tmp/comment.md
-          echo "Notified Copilot to implement $COUNT suggestions on PR #$PR_NUMBER"
+          echo "Notified Copilot to implement suggestions on PR #$PR_NUMBER"
+
+      - name: Summary
+        run: |
+          echo "### Copilot Review Feedback" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.pr-info.outputs.has_pr }}" != "true" ]; then
+            echo "📭 No PR found for this commit" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.pr-info.outputs.is_copilot_pr }}" != "true" ]; then
+            echo "⏭️ PR #${{ steps.pr-info.outputs.number }} is not a Copilot PR (author: ${{ steps.pr-info.outputs.author }})" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.check-comments.outputs.should_notify }}" == "true" ]; then
+            echo "✅ Forwarded suggestions to Copilot on PR #${{ steps.pr-info.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✨ No new suggestions to forward on PR #${{ steps.pr-info.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+          fi
