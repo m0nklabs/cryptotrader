@@ -1,0 +1,181 @@
+# Mergify configuration
+# https://docs.mergify.com/
+
+pull_request_rules:
+  # ========== Auto-labeling based on files changed ==========
+
+  - name: label-frontend
+    description: Label PRs touching frontend code
+    conditions:
+      - files~=^frontend/
+    actions:
+      label:
+        add:
+          - frontend
+
+  - name: label-backend
+    description: Label PRs touching backend core/api code
+    conditions:
+      - or:
+        - files~=^core/
+        - files~=^api/
+    actions:
+      label:
+        add:
+          - backend
+
+  - name: label-exchange
+    description: Label PRs touching exchange adapters
+    conditions:
+      - files~=^cex/
+    actions:
+      label:
+        add:
+          - exchange
+
+  - name: label-database
+    description: Label PRs touching database code
+    conditions:
+      - files~=^db/
+    actions:
+      label:
+        add:
+          - database
+
+  - name: label-tests
+    description: Label PRs adding or modifying tests
+    conditions:
+      - files~=^tests/
+    actions:
+      label:
+        add:
+          - tests
+
+  - name: label-ci
+    description: Label PRs touching CI/CD config
+    conditions:
+      - or:
+        - files~=^\.github/
+        - files~=^docker-compose\.yml$
+        - files~=^Makefile$
+        - files~=^\.devcontainer/
+    actions:
+      label:
+        add:
+          - ci
+
+  - name: label-docs
+    description: Label PRs touching documentation
+    conditions:
+      - or:
+        - files~=^docs/
+        - files~=^README\.md$
+        - files~=^CHANGELOG\.md$
+        - files~=^CONTRIBUTING\.md$
+    actions:
+      label:
+        add:
+          - documentation
+
+  - name: label-config
+    description: Label PRs touching project configuration
+    conditions:
+      - or:
+        - files~=^pyproject\.toml$
+        - files~=^requirements.*\.txt$
+        - files~=^\.pre-commit-config\.yaml$
+        - files~=^\.editorconfig$
+    actions:
+      label:
+        add:
+          - config
+
+  # ========== Conflict detection ==========
+
+  - name: ping-author-on-conflicts
+    description: Notify author when PR has conflicts
+    conditions:
+      - conflict
+    actions:
+      label:
+        add:
+          - needs-rebase
+      comment:
+        message: |
+          @{{author}} This PR has merge conflicts. Please rebase on master to resolve them.
+
+          ```bash
+          git fetch origin
+          git rebase origin/master
+          git push --force-with-lease
+          ```
+
+  - name: remove-needs-rebase-label
+    description: Remove needs-rebase label when conflicts are resolved
+    conditions:
+      - -conflict
+      - label=needs-rebase
+    actions:
+      label:
+        remove:
+          - needs-rebase
+
+  # ========== PR hygiene ==========
+
+  - name: label-wip
+    description: Label work-in-progress PRs
+    conditions:
+      - or:
+        - draft
+        - title~=(?i)^\[?WIP\]?
+        - title~=(?i)^WIP:
+    actions:
+      label:
+        add:
+          - work-in-progress
+
+  - name: remove-wip-label
+    description: Remove WIP label when PR is ready
+    conditions:
+      - -draft
+      - -title~=(?i)^\[?WIP\]?
+      - -title~=(?i)^WIP:
+      - label=work-in-progress
+    actions:
+      label:
+        remove:
+          - work-in-progress
+
+  - name: label-copilot
+    description: Label PRs created by Copilot
+    conditions:
+      - or:
+        - author=github-actions[bot]
+        - head~=^copilot/
+    actions:
+      label:
+        add:
+          - copilot
+
+  # ========== Size labels ==========
+
+  - name: label-size-small
+    description: Small PR (< 50 lines)
+    conditions:
+      - files<=5
+      - "#files-modified<50"
+    actions:
+      label:
+        add:
+          - size/S
+
+  - name: label-size-large
+    description: Large PR (> 500 lines)
+    conditions:
+      - or:
+        - files>20
+        - "#files-modified>500"
+    actions:
+      label:
+        add:
+          - size/L
