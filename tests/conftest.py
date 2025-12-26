@@ -5,7 +5,6 @@ Provides common test data, mocks, and utilities used across multiple test files.
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -55,17 +54,3 @@ def mock_db_engine() -> Mock:
     mock_engine.begin.return_value.__enter__ = Mock(return_value=mock_conn)
     mock_engine.begin.return_value.__exit__ = Mock(return_value=False)
     return mock_engine
-
-
-@pytest.fixture
-def mock_postgres_stores(mock_db_engine: Mock) -> Any:
-    """Mock PostgresStores with a mocked database engine."""
-    from unittest.mock import patch
-
-    from core.storage.postgres.config import PostgresConfig
-    from core.storage.postgres.stores import PostgresStores
-
-    stores = PostgresStores(config=PostgresConfig(database_url="postgresql://fake"))
-
-    with patch.object(stores, "_get_engine", return_value=mock_db_engine):
-        yield stores

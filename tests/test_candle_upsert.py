@@ -116,26 +116,27 @@ def test_upsert_candles_constructs_correct_payload(sample_candles: list[Candle])
 
     # Verify execute was called with correct payload structure
     assert mock_conn.execute.called
-    # Get the payload from the call - use a defensive approach
-    call_kwargs = mock_conn.execute.call_args.kwargs if mock_conn.execute.call_args.kwargs else {}
-    payload = call_kwargs.get("payload")
-    if not payload and mock_conn.execute.call_args.args and len(mock_conn.execute.call_args.args) > 1:
-        payload = mock_conn.execute.call_args.args[1]
+    
+    # Extract the payload from the execute call: execute(statement, payload)
+    execute_args, execute_kwargs = mock_conn.execute.call_args
+    # We expect parameters to be passed positionally, not via kwargs
+    assert not execute_kwargs
+    assert len(execute_args) >= 2
+    payload = execute_args[1]
 
-    # Verify payload has correct structure if it was extracted
-    if payload:
-        assert len(payload) == len(sample_candles)
-        for i, item in enumerate(payload):
-            assert item["exchange"] == sample_candles[i].exchange
-            assert item["symbol"] == sample_candles[i].symbol
-            assert item["timeframe"] == str(sample_candles[i].timeframe)
-            assert item["open_time"] == sample_candles[i].open_time
-            assert item["close_time"] == sample_candles[i].close_time
-            assert item["open"] == sample_candles[i].open
-            assert item["high"] == sample_candles[i].high
-            assert item["low"] == sample_candles[i].low
-            assert item["close"] == sample_candles[i].close
-            assert item["volume"] == sample_candles[i].volume
+    # Verify payload has correct structure
+    assert len(payload) == len(sample_candles)
+    for i, item in enumerate(payload):
+        assert item["exchange"] == sample_candles[i].exchange
+        assert item["symbol"] == sample_candles[i].symbol
+        assert item["timeframe"] == str(sample_candles[i].timeframe)
+        assert item["open_time"] == sample_candles[i].open_time
+        assert item["close_time"] == sample_candles[i].close_time
+        assert item["open"] == sample_candles[i].open
+        assert item["high"] == sample_candles[i].high
+        assert item["low"] == sample_candles[i].low
+        assert item["close"] == sample_candles[i].close
+        assert item["volume"] == sample_candles[i].volume
 
 
 def test_upsert_candles_handles_conflict_with_update() -> None:
