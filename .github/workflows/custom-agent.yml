@@ -1,0 +1,69 @@
+name: Custom AI Agent
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  agent-response:
+    # Only run if the comment starts with /agent
+    if: startsWith(github.event.comment.body, '/agent')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install openai
+
+      - name: Parse arguments
+        id: args
+        run: |
+          BODY="${{ github.event.comment.body }}"
+          # Default model
+          MODEL="anthropic/claude-3.5-sonnet"
+
+          # Check for model flags
+          if [[ "$BODY" == *"--gpt4"* ]]; then
+            MODEL="openai/gpt-4o"
+          elif [[ "$BODY" == *"--deepseek"* ]]; then
+            MODEL="deepseek/deepseek-coder"
+          elif [[ "$BODY" == *"--llama"* ]]; then
+            MODEL="meta-llama/llama-3.1-405b-instruct"
+          fi
+
+          echo "model=$MODEL" >> $GITHUB_OUTPUT
+
+      - name: Run Agent
+        env:
+          # Use OpenRouter or similar as the proxy/aggregator
+          LLM_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LLM_BASE_URL: "https://openrouter.ai/api/v1"
+          LLM_MODEL: ${{ steps.args.outputs.model }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python3 scripts/custom_agent.py
+
+      - name: Post Response
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if [ -f agent_response.md ]; then
+            gh issue comment "$ISSUE_NUMBER" -F agent_response.md
+          else
+            echo "No response generated"
+          fi
