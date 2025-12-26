@@ -5,13 +5,51 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A v2 trading platform focused on trading opportunities, technical analysis, and API-based execution.
+A v2 trading platform focused on **profitability**, technical analysis, and semi-autonomous execution.
 
-## North Star Goal
+## 🌟 North Star Goal
 
-**A semi-autonomous trading machine focused on Profit (PnL).**
+**Build a semi-autonomous trading machine that generates consistent profit (PnL).**
 
-The system is designed to identify, score, and execute trading opportunities with a primary focus on generating profit, while providing deep observability into the decision-making process.
+- **Semi-auto**: Human supervision for large trades or strategy changes; automated execution for routine trades.
+- **Profit**: Success is measured by PnL, not just features or code quality.
+- **Observability**: Full transparency — follow everything in **real-time** on the frontend.
+- **AI-Enhanced**: LLM-powered scoring and analysis (Ollama + API providers).
+
+## ✅ Key Achievements
+
+| Component | Status | Description |
+|-----------|--------|-------------|
+| **Market Data** | ✅ Complete | Multi-timeframe OHLCV ingestion (REST + WebSocket), gap detection/repair |
+| **Technical Analysis** | ✅ Complete | RSI, MACD, Bollinger Bands, Stochastic, ATR with standardized signals |
+| **Opportunity Scoring** | ✅ Complete | Weighted aggregation (0-100), per-indicator contributions, explainability |
+| **Risk Management** | ✅ Complete | Position sizing (Fixed/Kelly/ATR), exposure limits, drawdown controls |
+| **Paper Trading** | ✅ Complete | Order book simulation, P&L tracking, safety checks |
+| **Market Cap Rankings** | ✅ Complete | Live CoinGecko integration for symbol sorting |
+| **Frontend Dashboard** | ✅ Skeleton | Candlestick charts, order form, positions table |
+
+## 🚧 In Progress
+
+- **Multi-Exchange Support** (Issue #131): Binance/KuCoin adapters
+
+## 📋 Roadmap Highlights
+
+See [docs/ROADMAP_V2.md](docs/ROADMAP_V2.md) for the full epic-based roadmap.
+
+### Critical Path
+1. **Backtesting Framework** (#135) — Validate profitability before live trading
+2. **Live Execution Adapters** — Bitfinex first, then Binance/KuCoin
+
+### AI & LLM Integration
+- **Ollama** (local) and **OpenAI/Anthropic** (API) for qualitative analysis
+- AI-based opportunity scoring with reasoning
+
+### Frontend Observability
+- **Wallet/Portfolio**: Real-time balances, positions, PnL
+- **Opportunity Explorer**: Ranked opportunities, click to visualize
+- **Indicator Overlays**: RSI, MACD, Bollinger on price charts
+- **Visual Projections**: Future price expectations/forecasts
+- **Multi-Timeframe**: Context from multiple timeframes on charts
 
 ## Scope
 
@@ -31,15 +69,17 @@ The system is designed to identify, score, and execute trading opportunities wit
   - Visual indicator overlays & forecast projections
 
 Out of scope for v2:
-
 - DEX / swaps / bridges / tokenomics
 - Arbitrage-specific workflows
 
 ## Documentation
 
-- `docs/README.md` (index)
-- `docs/ARCHITECTURE.md`
-- `docs/DEVELOPMENT.md`
+- [docs/README.md](docs/README.md) — Documentation index
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — System design
+- [docs/FEATURES.md](docs/FEATURES.md) — Feature status & details
+- [docs/ROADMAP_V2.md](docs/ROADMAP_V2.md) — Epic-based roadmap
+- [docs/RISK_MANAGEMENT.md](docs/RISK_MANAGEMENT.md) — Position sizing & limits
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — Development setup
 
 ## Quickstart
 
