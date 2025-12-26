@@ -1,0 +1,72 @@
+name: Auto-fix Code Style
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  autofix:
+    name: Auto-fix whitespace and formatting
+    runs-on: ubuntu-latest
+    # Only run on Copilot PRs
+    if: startsWith(github.head_ref, 'copilot/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: |
+          pip install pre-commit ruff
+
+      - name: Fix trailing whitespace
+        run: |
+          # Fix trailing whitespace in all text files
+          find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.json" \) \
+            -not -path "./.git/*" \
+            -not -path "./node_modules/*" \
+            -not -path "./.venv/*" \
+            -exec sed -i 's/[[:space:]]*$//' {} \;
+
+      - name: Fix end of files (ensure newline)
+        run: |
+          find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.ts" -o -name "*.tsx" \) \
+            -not -path "./.git/*" \
+            -not -path "./node_modules/*" \
+            -not -path "./.venv/*" \
+            -exec sh -c 'tail -c1 "$1" | read -r _ || echo >> "$1"' _ {} \;
+
+      - name: Run ruff fix
+        run: |
+          ruff check --fix . || true
+          ruff format . || true
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            git diff --stat
+          fi
+
+      - name: Commit and push fixes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: auto-fix whitespace and formatting"
+          git push
