@@ -891,6 +891,49 @@ async def get_market_cap() -> dict[str, Any]:
     }
 
 
+@app.get("/api/correlation", tags=["Analysis"])
+async def get_correlation_matrix(
+    symbols: str = Query(..., description="Comma-separated list of symbols (e.g., BTCUSD,ETHUSD,SOLUSD)"),
+    exchange: str = Query("bitfinex", description="Exchange name"),
+    timeframe: str = Query("1d", description="Timeframe (1d recommended)"),
+    lookback: int = Query(30, ge=7, le=365, description="Lookback period in days (7, 30, 90, 365)"),
+):
+    """Calculate correlation matrix between assets.
+    
+    Returns correlation coefficients between -1 (negative correlation) and +1 (positive correlation).
+    Useful for portfolio diversification analysis.
+    """
+    from core.analysis.correlation import calculate_correlation_matrix
+
+    stores = _get_stores()
+    if stores is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    # Parse symbols
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    
+    if len(symbol_list) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Need at least 2 symbols for correlation analysis"
+        )
+
+    try:
+        result = await calculate_correlation_matrix(
+            stores=stores,
+            symbols=symbol_list,
+            exchange=exchange,
+            timeframe=timeframe,
+            lookback_days=lookback,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Correlation calculation failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to calculate correlation matrix")
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(_request, exc):
     """Global exception handler to ensure consistent error responses."""
