@@ -398,8 +398,8 @@ export default function App() {
           (error) => {
             console.error('WebSocket error, falling back to polling:', error)
             setWsConnected(false)
-            // Don't toggle useWebSocket here to avoid re-running this effect
-            // Just set up polling as fallback
+            setUseWebSocket(false) // Disable WebSocket to reflect actual state
+            // Set up polling as fallback (if not already set up at line 410)
             if (!pollInterval) {
               setupPolling()
             }

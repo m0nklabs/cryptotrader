@@ -37,6 +37,7 @@ export class CandleStream {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000; // Start with 1 second
   private maxReconnectDelay = 30000; // Cap at 30 seconds
+  private reconnectTimeoutId: number | null = null;
 
   constructor(
     symbol: string,
@@ -106,7 +107,8 @@ export class CandleStream {
         );
         console.log(`[CandleStream] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
-        setTimeout(() => {
+        this.reconnectTimeoutId = window.setTimeout(() => {
+          this.reconnectTimeoutId = null;
           this.connect();
         }, delay);
       } else {
@@ -125,6 +127,12 @@ export class CandleStream {
    * Disconnect from the SSE stream.
    */
   disconnect(): void {
+    // Clear any pending reconnection timeout
+    if (this.reconnectTimeoutId !== null) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+
     if (this.eventSource) {
       console.log('[CandleStream] Disconnecting');
       this.eventSource.close();
