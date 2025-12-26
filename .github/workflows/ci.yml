@@ -31,19 +31,12 @@ jobs:
 
       - name: Fix style issues
         run: |
-          pip install ruff -q
+          pip install ruff pre-commit -q
 
-          # Fix trailing whitespace
-          find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.ts" -o -name "*.tsx" -o -name "*.json" \) \
-            -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./.venv/*" \
-            -exec sed -i 's/[[:space:]]*$//' {} \;
+          # Run pre-commit autofixes (end-of-file, trailing whitespace, etc.)
+          pre-commit run --all-files || true
 
-          # Fix end-of-file (ensure files end with newline)
-          find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.ts" -o -name "*.tsx" -o -name "*.json" \) \
-            -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./.venv/*" \
-            -exec sed -i -e '$a\' {} \;
-
-          # Ruff fixes
+          # Additional ruff fixes (sometimes pre-commit ruff misses things)
           ruff check --fix . || true
           ruff format . || true
 
