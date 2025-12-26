@@ -15,6 +15,7 @@ import {
   type PlaceOrderRequest,
 } from './api/trading'
 import { fetchMarketCap } from './api/marketCap'
+import { createCandleStream, type CandleUpdate } from './api/candleStream'
 
 type Theme = 'light' | 'dark'
 
@@ -105,6 +106,8 @@ export default function App() {
   >([])
   const [chartError, setChartError] = useState<string | null>(null)
   const [chartLoading, setChartLoading] = useState(false)
+  const [useWebSocket, setUseWebSocket] = useState(true) // Enable WebSocket by default
+  const [wsConnected, setWsConnected] = useState(false)
 
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([])
   const [availableTimeframesBySymbol, setAvailableTimeframesBySymbol] = useState<Record<string, string[]>>({})
@@ -265,14 +268,18 @@ export default function App() {
     return ['1m']
   }, [availableTimeframesBySymbol, chartSymbol])
 
+  // Real-time candle updates via WebSocket/SSE with polling fallback
   useEffect(() => {
     let mounted = true
     let inFlight: AbortController | null = null
+    let candleStream: ReturnType<typeof createCandleStream> | null = null
+    let pollInterval: number | null = null
 
     const exchange = 'bitfinex'
     const timeframe = chartTimeframe
 
-    const load = () => {
+    // Load initial candles from database
+    const loadInitialCandles = () => {
       if (!mounted) return
       if (inFlight) inFlight.abort()
       const controller = new AbortController()
@@ -334,15 +341,96 @@ export default function App() {
         })
     }
 
-    load()
-    const id = window.setInterval(load, 15_000)
+    // Update candle with real-time data
+    const updateCandle = (candleUpdate: CandleUpdate) => {
+      if (!mounted) return
+
+      setChartCandles((prev) => {
+        const newCandle = {
+          t: candleUpdate.t,
+          o: candleUpdate.o,
+          h: candleUpdate.h,
+          l: candleUpdate.l,
+          c: candleUpdate.c,
+          v: candleUpdate.v,
+        }
+
+        // Find existing candle with same timestamp
+        const existingIndex = prev.findIndex((c) => c.t === newCandle.t)
+
+        if (existingIndex >= 0) {
+          // Update existing candle
+          const updated = [...prev]
+          updated[existingIndex] = newCandle
+          return updated
+        } else {
+          // Add new candle
+          const updated = [...prev, newCandle]
+          // Keep only the most recent candles (limit)
+          if (updated.length > chartLimit) {
+            return updated.slice(updated.length - chartLimit)
+          }
+          return updated
+        }
+      })
+    }
+
+    // Setup polling fallback
+    const setupPolling = () => {
+      if (pollInterval) window.clearInterval(pollInterval)
+      // Poll every 15 seconds as fallback
+      pollInterval = window.setInterval(loadInitialCandles, 15_000)
+    }
+
+    // Start with initial load
+    loadInitialCandles()
+
+    // Try to establish WebSocket connection if enabled
+    if (useWebSocket) {
+      try {
+        candleStream = createCandleStream(
+          chartSymbol,
+          timeframe,
+          (candle) => {
+            updateCandle(candle)
+            setWsConnected(true)
+          },
+          (error) => {
+            console.error('WebSocket error, falling back to polling:', error)
+            setWsConnected(false)
+            setUseWebSocket(false) // Disable WebSocket to reflect actual state
+            // Set up polling as fallback (if not already set up at line 410)
+            if (!pollInterval) {
+              setupPolling()
+            }
+          }
+        )
+
+        // Still poll periodically to refill window if needed
+        pollInterval = window.setInterval(loadInitialCandles, 60_000) // Poll every minute for full refresh
+      } catch (err) {
+        console.error('Failed to create WebSocket stream:', err)
+        setUseWebSocket(false)
+        setupPolling()
+      }
+    } else {
+      // Use polling only
+      setupPolling()
+    }
 
     return () => {
       mounted = false
-      window.clearInterval(id)
-      if (inFlight) inFlight.abort()
+      if (candleStream) {
+        candleStream.disconnect()
+      }
+      if (pollInterval) {
+        window.clearInterval(pollInterval)
+      }
+      if (inFlight) {
+        inFlight.abort()
+      }
     }
-  }, [chartSymbol, chartTimeframe, chartLimit])
+  }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket])
 
   useEffect(() => {
     let mounted = true
@@ -980,7 +1068,7 @@ export default function App() {
             </div>
 
             <div className="ct-dock-center flex flex-col gap-3">
-              <Panel title="Chart" subtitle="Price + volume">
+              <Panel title="Chart" subtitle={`Price + volume ${wsConnected ? '(live ⚡)' : '(polling)'}`}>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
                     <div className="flex min-w-0 items-center gap-2">

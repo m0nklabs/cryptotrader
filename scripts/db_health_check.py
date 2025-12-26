@@ -140,7 +140,7 @@ def main() -> int:
                 f"{latest_open_time.isoformat()}"
             )
         else:
-            print(f"⚠️  latest_candle_open_time ({args.exchange}/{args.symbol}/{args.timeframe}): " f"No candles found")
+            print(f"⚠️  latest_candle_open_time ({args.exchange}/{args.symbol}/{args.timeframe}): No candles found")
     except Exception as exc:
         print(
             "⚠️  latest_candle_open_time: Unable to query latest candle",

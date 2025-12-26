@@ -120,7 +120,7 @@ class BalanceManager:
 
         balance = self.get_balance(asset)
         if balance.available < amount:
-            raise ValueError(f"Insufficient available balance for {asset}: " f"have {balance.available}, need {amount}")
+            raise ValueError(f"Insufficient available balance for {asset}: have {balance.available}, need {amount}")
 
         self._balances[asset] = Balance(
             asset=asset,
@@ -148,7 +148,7 @@ class BalanceManager:
         balance = self.get_balance(asset)
         if balance.available < amount:
             raise ValueError(
-                f"Insufficient available balance to reserve for {asset}: " f"have {balance.available}, need {amount}"
+                f"Insufficient available balance to reserve for {asset}: have {balance.available}, need {amount}"
             )
 
         self._balances[asset] = Balance(
@@ -177,7 +177,7 @@ class BalanceManager:
         balance = self.get_balance(asset)
         if balance.reserved < amount:
             raise ValueError(
-                f"Insufficient reserved balance to release for {asset}: " f"have {balance.reserved}, need {amount}"
+                f"Insufficient reserved balance to release for {asset}: have {balance.reserved}, need {amount}"
             )
 
         self._balances[asset] = Balance(
@@ -206,7 +206,7 @@ class BalanceManager:
         balance = self.get_balance(asset)
         if balance.reserved < amount:
             raise ValueError(
-                f"Insufficient reserved balance to settle for {asset}: " f"have {balance.reserved}, need {amount}"
+                f"Insufficient reserved balance to settle for {asset}: have {balance.reserved}, need {amount}"
             )
 
         self._balances[asset] = Balance(

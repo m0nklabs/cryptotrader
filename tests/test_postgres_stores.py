@@ -26,8 +26,9 @@ def test_get_latest_candle_open_time_returns_none_when_no_data() -> None:
     # Mock text function for SQL query
     mock_text = Mock(return_value="mocked_query")
 
-    with patch.object(stores, "_get_engine", return_value=mock_engine), patch.object(
-        stores, "_require_sqlalchemy", return_value=(Mock(), mock_text)
+    with (
+        patch.object(stores, "_get_engine", return_value=mock_engine),
+        patch.object(stores, "_require_sqlalchemy", return_value=(Mock(), mock_text)),
     ):
         result = stores._get_latest_candle_open_time(exchange="bitfinex", symbol="BTCUSD", timeframe="1h")
 
@@ -58,8 +59,9 @@ def test_get_latest_candle_open_time_returns_naive_datetime() -> None:
     # Mock text function for SQL query
     mock_text = Mock(return_value="mocked_query")
 
-    with patch.object(stores, "_get_engine", return_value=mock_engine), patch.object(
-        stores, "_require_sqlalchemy", return_value=(Mock(), mock_text)
+    with (
+        patch.object(stores, "_get_engine", return_value=mock_engine),
+        patch.object(stores, "_require_sqlalchemy", return_value=(Mock(), mock_text)),
     ):
         result = stores._get_latest_candle_open_time(exchange="bitfinex", symbol="BTCUSD", timeframe="1h")
 

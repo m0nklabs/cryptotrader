@@ -52,9 +52,10 @@ def test_build_arg_parser_accepts_custom_backoff_values() -> None:
 
 def test_fetch_bitfinex_candles_page_uses_backoff_params() -> None:
     """Verify that backoff parameters affect the retry logic."""
-    with patch("core.market_data.bitfinex_gap_repair.requests.get") as mock_get, patch(
-        "core.market_data.bitfinex_gap_repair.time.sleep"
-    ) as mock_sleep:
+    with (
+        patch("core.market_data.bitfinex_gap_repair.requests.get") as mock_get,
+        patch("core.market_data.bitfinex_gap_repair.time.sleep") as mock_sleep,
+    ):
         # Simulate rate limiting on first call, then success
         mock_resp_429 = Mock()
         mock_resp_429.status_code = 429
@@ -86,9 +87,10 @@ def test_fetch_bitfinex_candles_page_uses_backoff_params() -> None:
 
 def test_fetch_bitfinex_candles_page_respects_max_backoff() -> None:
     """Verify that backoff doesn't exceed max_backoff_seconds."""
-    with patch("core.market_data.bitfinex_gap_repair.requests.get") as mock_get, patch(
-        "core.market_data.bitfinex_gap_repair.time.sleep"
-    ) as mock_sleep:
+    with (
+        patch("core.market_data.bitfinex_gap_repair.requests.get") as mock_get,
+        patch("core.market_data.bitfinex_gap_repair.time.sleep") as mock_sleep,
+    ):
         # Simulate rate limiting on all calls
         mock_resp_429 = Mock()
         mock_resp_429.status_code = 429
@@ -117,9 +119,11 @@ def test_fetch_bitfinex_candles_page_respects_max_backoff() -> None:
 
 def test_fetch_bitfinex_candles_page_adds_jitter() -> None:
     """Verify that jitter is applied to backoff."""
-    with patch("core.market_data.bitfinex_gap_repair.requests.get") as mock_get, patch(
-        "core.market_data.bitfinex_gap_repair.time.sleep"
-    ) as mock_sleep, patch("core.market_data.bitfinex_gap_repair.random.uniform") as mock_random:
+    with (
+        patch("core.market_data.bitfinex_gap_repair.requests.get") as mock_get,
+        patch("core.market_data.bitfinex_gap_repair.time.sleep") as mock_sleep,
+        patch("core.market_data.bitfinex_gap_repair.random.uniform") as mock_random,
+    ):
         # Simulate rate limiting on first call, then success
         mock_resp_429 = Mock()
         mock_resp_429.status_code = 429

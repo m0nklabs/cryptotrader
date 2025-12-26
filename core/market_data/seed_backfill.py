@@ -166,9 +166,7 @@ def run_seed_backfill(
             )
             raise
 
-    print(
-        f"seed-complete chunks={completed_chunks}/{total_chunks} " f"fetched={total_fetched} upserted={total_upserted}"
-    )
+    print(f"seed-complete chunks={completed_chunks}/{total_chunks} fetched={total_fetched} upserted={total_upserted}")
 
     return {
         "total_chunks": total_chunks,

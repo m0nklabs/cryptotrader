@@ -1,4 +1,5 @@
 """Unit tests for the ingestion status endpoint."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
