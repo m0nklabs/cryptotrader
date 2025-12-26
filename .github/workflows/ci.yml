@@ -34,9 +34,14 @@ jobs:
           pip install ruff -q
 
           # Fix trailing whitespace
-          find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.ts" -o -name "*.tsx" \) \
+          find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.ts" -o -name "*.tsx" -o -name "*.json" \) \
             -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./.venv/*" \
             -exec sed -i 's/[[:space:]]*$//' {} \;
+
+          # Fix end-of-file (ensure files end with newline)
+          find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.ts" -o -name "*.tsx" -o -name "*.json" \) \
+            -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./.venv/*" \
+            -exec sed -i -e '$a\' {} \;
 
           # Ruff fixes
           ruff check --fix . || true
