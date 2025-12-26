@@ -114,6 +114,51 @@ def rerun_workflow(run_id: int) -> bool:
         return False
 
 
+def request_copilot_review(repo: str, pr_number: int) -> bool:
+    """Request Copilot Reviewer for a PR."""
+    try:
+        # Check if Copilot Reviewer already reviewed
+        existing = run_gh(
+            [
+                "api",
+                f"repos/{repo}/pulls/{pr_number}/reviews",
+                "--jq",
+                '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length',
+            ],
+            check=False,
+        )
+
+        if existing and int(existing) > 0:
+            # Already reviewed, request re-review via comment
+            run_gh(
+                [
+                    "pr",
+                    "comment",
+                    str(pr_number),
+                    "--body",
+                    "🔄 @copilot Please re-review this PR - new changes have been pushed.",
+                ]
+            )
+            logger.info(f"🔄 Requested Copilot re-review for PR #{pr_number}")
+        else:
+            # Try to add as reviewer
+            run_gh(
+                [
+                    "api",
+                    f"repos/{repo}/pulls/{pr_number}/requested_reviewers",
+                    "-X",
+                    "POST",
+                    "-f",
+                    "reviewers[]=copilot-pull-request-reviewer[bot]",
+                ],
+                check=False,
+            )
+            logger.info(f"👀 Requested Copilot review for PR #{pr_number}")
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
 def load_state() -> dict:
     """Load state from file."""
     if STATE_FILE.exists():
@@ -149,6 +194,13 @@ def process_comments(repo: str, state: dict) -> int:
         if not branch:
             continue
 
+        # Request Copilot Reviewer for this PR
+        pr_key = f"pr_{pr_number}"
+        if pr_key not in state.get("reviewed_prs", []):
+            request_copilot_review(repo, pr_number)
+            state.setdefault("reviewed_prs", []).append(pr_key)
+
+        # Rerun pending workflows for this branch
         pending = get_pending_runs(repo, branch)
         for run in pending:
             run_id = run["id"]
@@ -161,9 +213,11 @@ def process_comments(repo: str, state: dict) -> int:
 
         state["last_comment_id"] = max(state.get("last_comment_id", 0), comment_id)
 
-    # Keep list manageable
+    # Keep lists manageable
     if len(state.get("rerun_runs", [])) > 1000:
         state["rerun_runs"] = state["rerun_runs"][-500:]
+    if len(state.get("reviewed_prs", [])) > 500:
+        state["reviewed_prs"] = state["reviewed_prs"][-250:]
 
     return total_rerun
 
