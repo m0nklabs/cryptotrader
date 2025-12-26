@@ -32,8 +32,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
 
-      - name: Get failed jobs
+      - name: Check for recent @copilot comments (spam prevention)
         if: steps.pr.outputs.is_copilot == 'true'
+        id: spam_check
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+
+          # Get comments from the last 10 minutes containing @copilot
+          RECENT_COPILOT_COMMENTS=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+            --jq '[.[] | select(.body | contains("@copilot")) | select(.created_at > (now - 600 | strftime("%Y-%m-%dT%H:%M:%SZ")))] | length')
+
+          echo "recent_comments=$RECENT_COPILOT_COMMENTS" >> $GITHUB_OUTPUT
+
+          if [ "$RECENT_COPILOT_COMMENTS" -ge 1 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Skipping - already posted @copilot comment in last 10 minutes"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Get failed jobs
+        if: steps.pr.outputs.is_copilot == 'true' && steps.spam_check.outputs.skip != 'true'
         id: failures
         run: |
           RUN_ID="${{ github.event.workflow_run.id }}"
@@ -50,7 +71,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT }}
 
       - name: Comment on PR to notify Copilot
-        if: steps.pr.outputs.is_copilot == 'true'
+        if: steps.pr.outputs.is_copilot == 'true' && steps.spam_check.outputs.skip != 'true'
         env:
           # Must use PAT - Copilot only responds to user comments, not bot comments
           GH_TOKEN: ${{ secrets.GH_PAT }}
