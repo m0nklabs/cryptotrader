@@ -1736,7 +1736,7 @@ async def get_correlation_matrix(
 
     Returns correlation coefficients between -1 (negative correlation) and +1 (positive correlation).
     Useful for portfolio diversification analysis.
-    
+
     Results are cached for 5 minutes to reduce computational load.
     """
     from core.analysis.correlation import calculate_correlation_matrix
@@ -1753,7 +1753,7 @@ async def get_correlation_matrix(
 
     # Create cache key
     cache_key = f"{','.join(sorted(symbol_list))}:{exchange}:{timeframe}:{lookback}"
-    
+
     # Check cache
     with _correlation_cache_lock:
         if cache_key in _correlation_cache:
@@ -1772,7 +1772,7 @@ async def get_correlation_matrix(
             timeframe=timeframe,
             lookback_days=lookback,
         )
-        
+
         # Update cache
         with _correlation_cache_lock:
             _correlation_cache[cache_key] = (result, time.time())
@@ -1782,7 +1782,7 @@ async def get_correlation_matrix(
                 sorted_items = sorted(_correlation_cache.items(), key=lambda x: x[1][1])
                 _correlation_cache.clear()
                 _correlation_cache.update(dict(sorted_items[-100:]))
-        
+
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
