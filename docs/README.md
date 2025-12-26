@@ -4,6 +4,7 @@ This folder contains the project documentation for `cryptotrader`.
 
 ## Quick Links
 
+- [**Roadmap V2**](ROADMAP_V2.md): Epic-based roadmap toward the North Star goal 🎯
 - [**Features Status**](FEATURES.md): What's implemented and working ✅
 - [Architecture](ARCHITECTURE.md): System scope and high-level design
 - [Development](DEVELOPMENT.md): Local setup and basic commands

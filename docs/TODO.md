@@ -1,28 +1,75 @@
-# TODO (feature list + delegation work packages)
+# TODO (Feature Backlog & Roadmap)
 
-This document tracks the v2 implementation backlog with completion status.
+This document tracks the v2 implementation backlog, priorities, and the path toward the **North Star** goal.
 
 > **See also**: [FEATURES.md](FEATURES.md) for detailed feature documentation.
+> **See also**: [ROADMAP_V2.md](ROADMAP_V2.md) for the comprehensive roadmap organized by epics.
 
-Constraints:
+---
+
+## 🌟 North Star Goal
+
+**Build a semi-autonomous trading machine that generates consistent profit (PnL).**
+
+The primary metric of success is **profitability**, not just features or code quality. Every new feature must contribute to:
+
+1. **Profit Generation**: Signal quality, execution precision, cost minimization.
+2. **Risk Control**: Position sizing, exposure limits, drawdown protection.
+3. **Observability**: Real-time transparency into decisions and performance.
+
+### Key Principles
+
+- **Profit > Features**: Prioritize features that directly impact PnL.
+- **Paper trading by default**: All execution code defaults to `dry_run=True`.
+- **Transparency**: Every decision must be explainable and auditable.
+- **Safety first**: Human supervision for large trades or strategy changes.
+
+---
+
+## Constraints
 
 - Default to paper-trading / dry-run.
 - Keep secrets out of git.
 - DEX/swaps/bridges/tokenomics are out of scope.
 
-## Feature list (with status)
+---
 
-### 🌟 Strategic Goals (North Star)
+## 🎯 Strategic Priorities (Ordered by Impact)
 
-- **Profit-First Focus**: Shift from pure signal detection to PnL-based optimization.
-- **Observability**:
-  - ⏳ Real-time frontend with multi-timeframe visualization.
-  - ⏳ Wallet/Portfolio overview.
-  - ⏳ Indicator overlays & forecast projections.
-- **AI & Forecasting**:
-  - ⏳ Ollama (local LLM) integration for market sentiment/analysis.
-  - ⏳ AI-based opportunity scoring.
-  - ⏳ Visual forecasting on charts.
+### Priority 1: Prove Profitability (Backtesting)
+> Issue #135 — **CRITICAL**
+
+Before going live, we must validate that strategies can generate profit:
+- ⏳ Backtesting framework with historical data replay
+- ⏳ Strategy performance metrics (Sharpe, max drawdown, win rate)
+- ⏳ Walk-forward analysis support
+
+### Priority 2: Live Execution
+
+Enable real trading (with human oversight):
+- ⏳ Bitfinex live adapter (schema ready, implementation pending)
+- ⏳ Multi-exchange support (Issue #131 — Binance/KuCoin adapters)
+- ⏳ Trade confirmation flow (human approval for large trades)
+
+### Priority 3: AI-Enhanced Scoring
+
+Leverage LLMs for qualitative analysis:
+- ⏳ LLM integration (Ollama for local, OpenAI/Anthropic via API)
+- ⏳ AI-based opportunity scoring with reasoning
+- ⏳ Sentiment analysis from LLM context
+
+### Priority 4: Frontend Observability
+
+Real-time transparency into the trading system:
+- ⏳ Wallet/Portfolio overview (balances, positions, PnL)
+- ⏳ Opportunity Explorer (sorted by quality, click to visualize)
+- ⏳ Multi-timeframe visualization on charts
+- ⏳ Indicator overlays (RSI, MACD, Bollinger on price chart)
+- ⏳ Visual price projections/forecasts
+
+---
+
+## Feature List (Status Tracking)
 
 ### ✅ Completed
 
@@ -88,20 +135,49 @@ Constraints:
     - ✅ Orders and trade fills
     - ⏳ Full audit logging persistence
 
+11. **Risk Management**
+    - ✅ Position sizing (Fixed, Kelly, ATR) (`core/risk/sizing.py`)
+    - ✅ Exposure limits (`core/risk/limits.py`)
+    - ✅ Drawdown controls (`core/risk/drawdown.py`)
+    - Documented in `docs/RISK_MANAGEMENT.md`
+
+12. **Market Cap Rankings**
+    - ✅ CoinGecko live integration (`core/market_cap/coingecko.py`)
+    - ✅ Symbol sorting by market cap
+    - Documented in `docs/MARKET_CAP_RANKINGS.md`
+
 ### 🚧 In Progress
 
-- Issue #131: Multi-exchange support (Binance adapter)
+| Work Item | Issue | Status |
+|-----------|-------|--------|
+| Multi-exchange support | #131 | Binance/KuCoin adapters in progress |
 
-### 📋 Planned (GitHub Issues)
+### 📋 Planned (By Priority)
 
-See [GitHub Issues](https://github.com/m0nklabs/cryptotrader/issues) for full backlog:
+See [ROADMAP_V2.md](ROADMAP_V2.md) for the full epic-based roadmap.
+
+**Critical Path (Profitability)**:
+- #135: Backtesting framework (**CRITICAL**)
+- Live execution adapters (Bitfinex, then Binance)
+
+**AI & LLM**:
+- LLM integration (Ollama + API providers)
+- AI-based opportunity scoring
+
+**Frontend & Observability**:
+- #136: Portfolio tracker
+- #107: Technical indicators on chart
+- Opportunity Explorer
+- Multi-timeframe visualization
+- Visual price projections
+
+**Infrastructure**:
 - #132: WebSocket real-time prices
 - #133: Price and indicator alerts
-- #134: Paper trading engine improvements
-- #135: Backtesting framework
-- #136: Portfolio tracker
 - #137: Docker Compose setup
-- #138-#148: Additional features
+- Scheduled jobs for backfill/gap repair
+
+See [GitHub Issues](https://github.com/m0nklabs/cryptotrader/issues) for the full backlog.
 
 ## Work packages (completion status)
 
@@ -188,7 +264,9 @@ See [GitHub Issues](https://github.com/m0nklabs/cryptotrader/issues) for full ba
 
 ## Tracking
 
-- Canonical architecture: `docs/ARCHITECTURE.md`
-- Development setup: `docs/DEVELOPMENT.md`
-- Feature status: `docs/FEATURES.md`
-- GitHub Issues: https://github.com/m0nklabs/cryptotrader/issues
+- **Roadmap**: `docs/ROADMAP_V2.md` (Epic-based roadmap toward North Star)
+- **Architecture**: `docs/ARCHITECTURE.md`
+- **Development setup**: `docs/DEVELOPMENT.md`
+- **Feature status**: `docs/FEATURES.md`
+- **Risk management**: `docs/RISK_MANAGEMENT.md`
+- **GitHub Issues**: https://github.com/m0nklabs/cryptotrader/issues
