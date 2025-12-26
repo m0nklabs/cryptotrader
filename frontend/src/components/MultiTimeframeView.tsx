@@ -69,8 +69,8 @@ export default function MultiTimeframeView({ symbol, fetchCandles }: Props) {
   }
 
   const visibleCharts = charts.filter((c) => c.visible)
-  const gridCols = visibleCharts.length === 2 ? 'grid-cols-2' : 
-                   visibleCharts.length === 3 ? 'grid-cols-3' : 
+  const gridCols = visibleCharts.length === 2 ? 'grid-cols-2' :
+                   visibleCharts.length === 3 ? 'grid-cols-3' :
                    visibleCharts.length >= 4 ? 'grid-cols-2' : 'grid-cols-1'
 
   return (

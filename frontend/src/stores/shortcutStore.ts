@@ -10,7 +10,7 @@ import { DEFAULT_SHORTCUTS, type ShortcutDefinition, type ShortcutAction } from 
 type ShortcutState = {
   shortcuts: ShortcutDefinition[]
   customBindings: Partial<Record<ShortcutAction, string>>
-  
+
   // Actions
   setCustomBinding: (action: ShortcutAction, key: string) => void
   resetToDefaults: () => void

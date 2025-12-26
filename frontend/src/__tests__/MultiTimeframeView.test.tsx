@@ -25,7 +25,7 @@ describe('MultiTimeframeView', () => {
 
   it('renders preset selector buttons', async () => {
     render(<MultiTimeframeView symbol="BTCUSD" fetchCandles={mockFetchCandles} />)
-    
+
     await waitFor(() => {
       expect(screen.getByText('Scalper')).toBeInTheDocument()
       expect(screen.getByText('Swing')).toBeInTheDocument()

@@ -19,7 +19,7 @@ type MultiChartState = {
   charts: ChartConfig[]
   preset: TimeframePreset
   crosshairTime: number | null
-  
+
   // Actions
   setCharts: (charts: ChartConfig[]) => void
   updateChart: (id: string, updates: Partial<ChartConfig>) => void

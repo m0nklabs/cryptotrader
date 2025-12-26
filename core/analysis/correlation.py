@@ -6,10 +6,8 @@ Calculate rolling correlation between crypto assets for portfolio diversificatio
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from core.storage.postgres.stores import PostgresStores
@@ -92,9 +90,9 @@ async def calculate_correlation_matrix(
         # Extract base asset (e.g., BTC from BTCUSD or BTCUSDT)
         # Handle common quote currencies (longest first to avoid partial matches)
         base = symbol
-        for quote in ['USDT', 'USDC', 'USD', 'EUR']:
+        for quote in ["USDT", "USDC", "USD", "EUR"]:
             if symbol.endswith(quote):
-                base = symbol[:-len(quote)]
+                base = symbol[: -len(quote)]
                 break
         # Only if no quote currency matched, it's likely a base pair like 'BTC'
         combined[base] = df["close"]
