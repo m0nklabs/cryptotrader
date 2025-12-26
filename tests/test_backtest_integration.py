@@ -62,6 +62,8 @@ def test_backtest_engine_with_rsi_strategy() -> None:
     assert isinstance(result.max_drawdown, float)
     assert isinstance(result.win_rate, float)
     assert isinstance(result.profit_factor, float)
+    assert isinstance(result.total_pnl, float)
+    assert isinstance(result.total_return, float)
 
     # With trending data, we should have generated some trades
     assert len(result.trades) > 0, "Should generate at least one trade"
@@ -69,6 +71,8 @@ def test_backtest_engine_with_rsi_strategy() -> None:
     # Equity curve should have entries
     assert len(result.equity_curve) > 0, "Should have equity curve"
     assert result.equity_curve[0] == 10000.0, "Should start with initial capital"
+    assert result.total_pnl == result.equity_curve[-1] - 10000.0
+    assert result.total_return == result.total_pnl / 10000.0
 
     # Metrics should be in valid ranges
     assert 0.0 <= result.max_drawdown <= 1.0, "Max drawdown should be 0-100%"
@@ -95,3 +99,30 @@ def test_backtest_engine_with_flat_data() -> None:
     # May generate no trades or very few trades
     assert len(result.trades) >= 0, "Should handle flat data"
     assert result.equity_curve[0] == 10000.0, "Should start with initial capital"
+
+
+def test_compare_strategies_returns_results() -> None:
+    """Compare multiple strategies side-by-side."""
+    prices = (
+        [100.0 + i for i in range(15)]
+        + [115.0 - i for i in range(30)]
+        + [85.0 + i * 0.5 for i in range(20)]
+    )
+    candles = [_make_test_candle(price, i) for i, price in enumerate(prices)]
+
+    class MockCandleStore:
+        def get_candles(self, **kwargs):
+            return candles
+
+    engine = BacktestEngine(candle_store=MockCandleStore(), initial_capital=10000.0)
+    strategies = {
+        "rsi_default": RSIStrategy(oversold=30.0, overbought=70.0),
+        "rsi_tighter": RSIStrategy(oversold=25.0, overbought=75.0),
+    }
+
+    performances = engine.compare_strategies(strategies=strategies, candles=candles)
+
+    assert len(performances) == 2
+    assert performances[0].name == "rsi_default"
+    assert isinstance(performances[0].result, BacktestResult)
+    assert isinstance(performances[0].result.total_pnl, float)

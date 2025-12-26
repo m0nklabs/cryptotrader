@@ -26,10 +26,20 @@ class BacktestResult:
 
     trades: list[Trade]
     equity_curve: list[float]
+    total_pnl: float
+    total_return: float
     sharpe_ratio: float
     max_drawdown: float
     win_rate: float
     profit_factor: float
+
+
+@dataclass
+class StrategyPerformance:
+    """Performance summary for a single strategy."""
+
+    name: str
+    result: BacktestResult
 
 
 class BacktestEngine:
@@ -134,15 +144,30 @@ class BacktestEngine:
         max_dd = calculate_max_drawdown(equity_curve)
         win_rate = calculate_win_rate(trades)
         profit_factor = calculate_profit_factor(trades)
+        final_equity = equity_curve[-1] if equity_curve else self.initial_capital
+        total_pnl = final_equity - self.initial_capital
+        total_return = (total_pnl / self.initial_capital) if self.initial_capital else 0.0
 
         return BacktestResult(
             trades=trades,
             equity_curve=equity_curve,
+            total_pnl=total_pnl,
+            total_return=total_return,
             sharpe_ratio=sharpe,
             max_drawdown=max_dd,
             win_rate=win_rate,
             profit_factor=profit_factor,
         )
+
+    def compare_strategies(
+        self, strategies: dict[str, Strategy], candles: Sequence[Candle]
+    ) -> list[StrategyPerformance]:
+        """Run multiple strategies side-by-side on the same candles."""
+        performances: list[StrategyPerformance] = []
+        for name, strategy in strategies.items():
+            result = self.run(strategy=strategy, candles=candles)
+            performances.append(StrategyPerformance(name=name, result=result))
+        return performances
 
 
 class RSIStrategy:
