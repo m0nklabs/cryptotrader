@@ -112,6 +112,12 @@ def _instances(symbols: Iterable[str], timeframe: str) -> list[Instance]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Bootstrap symbols: initial backfill + enable systemd timers")
     parser.add_argument(
+        "--exchange",
+        default="bitfinex",
+        choices=["bitfinex", "binance"],
+        help="Exchange to use (default: bitfinex)",
+    )
+    parser.add_argument(
         "--symbols",
         default=",".join(DEFAULT_SYMBOLS),
         help="Comma-separated symbols (default: curated top USD pairs)",
@@ -141,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    exchange = str(args.exchange)
     symbols = [s for s in (args.symbols.split(",") if args.symbols else []) if s.strip()]
     tf = str(args.timeframe)
 
@@ -153,11 +160,11 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("DATABASE_URL is not set (set it in environment or /home/flip/cryptotrader/.env)")
 
     # Link template units (safe if already present).
-    _link_user_unit(_REPO_ROOT / "systemd" / "cryptotrader-bitfinex-backfill@.service")
-    _link_user_unit(_REPO_ROOT / "systemd" / "cryptotrader-bitfinex-realtime@.timer")
+    _link_user_unit(_REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-backfill@.service")
+    _link_user_unit(_REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-realtime@.timer")
     if args.enable_gap_repair:
-        _link_user_unit(_REPO_ROOT / "systemd" / "cryptotrader-bitfinex-gap-repair@.service")
-        _link_user_unit(_REPO_ROOT / "systemd" / "cryptotrader-bitfinex-gap-repair@.timer")
+        _link_user_unit(_REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-gap-repair@.service")
+        _link_user_unit(_REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-gap-repair@.timer")
 
     _run(["systemctl", "--user", "daemon-reload"], env=env)
 
@@ -169,20 +176,23 @@ def main(argv: list[str] | None = None) -> int:
     for inst in _instances(symbols, tf):
         instance_name = inst.instance_name
 
-        backfill_env_path = Path.home() / ".config" / "cryptotrader" / f"bitfinex-backfill-{instance_name}.env"
+        backfill_env_path = Path.home() / ".config" / "cryptotrader" / f"{exchange}-backfill-{instance_name}.env"
         _write_instance_env(backfill_env_path, symbol=inst.symbol, timeframe=inst.timeframe)
+
+        # Select the correct backfill module based on exchange
+        backfill_module = f"core.market_data.{exchange}_backfill"
 
         # Initial backfill: for a brand new symbol, --resume would fail.
         cmd = [
             str(_REPO_ROOT / ".venv" / "bin" / "python"),
             "-m",
-            "core.market_data.bitfinex_backfill",
+            backfill_module,
             "--symbol",
             inst.symbol,
             "--timeframe",
             inst.timeframe,
             "--exchange",
-            "bitfinex",
+            exchange,
             "--start",
             _iso_utc(start),
             "--end",
@@ -198,18 +208,18 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         if args.enable_gap_repair:
-            gap_env_path = Path.home() / ".config" / "cryptotrader" / f"bitfinex-gap-repair-{instance_name}.env"
+            gap_env_path = Path.home() / ".config" / "cryptotrader" / f"{exchange}-gap-repair-{instance_name}.env"
             _write_instance_env(gap_env_path, symbol=inst.symbol, timeframe=inst.timeframe)
 
         if args.no_enable_timers:
             continue
 
         _run(
-            ["systemctl", "--user", "enable", "--now", f"cryptotrader-bitfinex-realtime@{instance_name}.timer"], env=env
+            ["systemctl", "--user", "enable", "--now", f"cryptotrader-{exchange}-realtime@{instance_name}.timer"], env=env
         )
         if args.enable_gap_repair:
             _run(
-                ["systemctl", "--user", "enable", "--now", f"cryptotrader-bitfinex-gap-repair@{instance_name}.timer"],
+                ["systemctl", "--user", "enable", "--now", f"cryptotrader-{exchange}-gap-repair@{instance_name}.timer"],
                 env=env,
             )
 
