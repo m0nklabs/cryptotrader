@@ -3,6 +3,8 @@ name: Copilot Branch CI
 # This workflow runs for Copilot branches to bypass the "first-time contributor"
 # approval requirement. It triggers on push (not pull_request) so it runs as the
 # repo owner, not as Copilot.
+#
+# Also handles LLM-based auto-review when Copilot Reviewer has submitted feedback.
 
 on:
   push:
@@ -13,11 +15,14 @@ permissions:
   contents: read
   statuses: write
   checks: write
+  pull-requests: write
 
 jobs:
   ci:
     name: Run CI checks
     runs-on: ubuntu-latest
+    outputs:
+      ci_passed: ${{ steps.result.outputs.passed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,16 +60,24 @@ jobs:
           pytest tests/ -v --tb=short || true
         continue-on-error: true
 
+      - name: Determine result
+        id: result
+        run: |
+          if [ "${{ steps.precommit.outcome }}" == "success" ] && \
+             [ "${{ steps.ruff.outcome }}" == "success" ] && \
+             [ "${{ steps.format.outcome }}" == "success" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Post status check
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           SHA="${{ github.sha }}"
 
-          # Determine overall status
-          if [ "${{ steps.precommit.outcome }}" == "success" ] && \
-             [ "${{ steps.ruff.outcome }}" == "success" ] && \
-             [ "${{ steps.format.outcome }}" == "success" ]; then
+          if [ "${{ steps.result.outputs.passed }}" == "true" ]; then
             STATE="success"
             DESC="All CI checks passed"
           else
@@ -72,11 +85,108 @@ jobs:
             DESC="Some checks failed"
           fi
 
-          # Post commit status
           gh api repos/${{ github.repository }}/statuses/$SHA \
             -f state="$STATE" \
             -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             -f description="$DESC" \
             -f context="Copilot CI"
+
+  auto-review:
+    name: LLM Auto-Review
+    runs-on: ubuntu-latest
+    needs: ci
+    if: needs.ci.outputs.ci_passed == 'true'
+    steps:
+      - name: Find PR for this branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          PR=$(gh api repos/${{ github.repository }}/pulls \
+            --jq ".[] | select(.head.ref == \"$BRANCH\") | .number" | head -1)
+
+          if [ -z "$PR" ]; then
+            echo "No PR found for branch $BRANCH"
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "pr_number=$PR" >> $GITHUB_OUTPUT
+          echo "Found PR #$PR for branch $BRANCH"
+
+      - name: Check for Copilot Reviewer feedback
+        id: review
+        if: steps.pr.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+
+          # Get latest Copilot review
+          REVIEW=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer")] | last')
+
+          if [ -z "$REVIEW" ] || [ "$REVIEW" == "null" ]; then
+            echo "No Copilot review found"
+            echo "has_review=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          REVIEW_BODY=$(echo "$REVIEW" | jq -r '.body // ""')
+          echo "has_review=true" >> $GITHUB_OUTPUT
+          echo "review_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Count review comments
+          COMMENT_COUNT=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer")] | length')
+          echo "comment_count=$COMMENT_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Analyze and decide
+        id: decision
+        if: steps.review.outputs.has_review == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          REVIEW_BODY="${{ steps.review.outputs.review_body }}"
+          COMMENT_COUNT="${{ steps.review.outputs.comment_count }}"
+
+          # Simple rule-based decision (LLM optional)
+          if echo "$REVIEW_BODY" | grep -qi "generated no new comments\|generated 0 comments\|no issues"; then
+            DECISION="approve"
+            REASON="Copilot review found no issues"
+          elif [ "$COMMENT_COUNT" -eq 0 ]; then
+            DECISION="approve"
+            REASON="No review comments from Copilot"
+          else
+            DECISION="skip"
+            REASON="Copilot review has $COMMENT_COUNT comments to address"
+          fi
+
+          echo "decision=$DECISION" >> $GITHUB_OUTPUT
+          echo "reason=$REASON" >> $GITHUB_OUTPUT
+          echo "Decision: $DECISION - $REASON"
+
+      - name: Auto-approve PR
+        if: steps.decision.outputs.decision == 'approve'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+          REASON="${{ steps.decision.outputs.reason }}"
+
+          # Check if already approved
+          EXISTING=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
+            --jq '[.[] | select(.state == "APPROVED")] | length')
+
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "PR already has an approval, skipping"
+            exit 0
+          fi
+
+          echo "Approving PR #$PR_NUMBER"
+          gh pr review "$PR_NUMBER" --approve --body "🤖 Auto-approved: $REASON"
 
           echo "Posted status: $STATE - $DESC"
