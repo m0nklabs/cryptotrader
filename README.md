@@ -7,14 +7,28 @@
 
 A v2 trading platform focused on trading opportunities, technical analysis, and API-based execution.
 
+## North Star Goal
+
+**A semi-autonomous trading machine focused on Profit (PnL).**
+
+The system is designed to identify, score, and execute trading opportunities with a primary focus on generating profit, while providing deep observability into the decision-making process.
+
 ## Scope
 
-- Market data ingestion (OHLCV candles)
-  - REST API backfill for historical data
-  - WebSocket streaming for real-time updates
-- Technical analysis (indicators)
-- Opportunity scoring (signals)
-- Execution with **paper-trading / dry-run by default**
+- **Market Data & Analysis**
+  - Multi-timeframe OHLCV ingestion (REST + WebSocket)
+  - Technical analysis (indicators) & Forecasting
+  - AI-driven opportunity scoring (LLM integration)
+
+- **Execution & Automation**
+  - Semi-autonomous trading engine
+  - **Paper-trading / dry-run by default**
+  - Profit-first execution logic
+
+- **Observability (Frontend)**
+  - Real-time dashboard with multi-timeframe visualization
+  - Wallet & Portfolio overview
+  - Visual indicator overlays & forecast projections
 
 Out of scope for v2:
 
