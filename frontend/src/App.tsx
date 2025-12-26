@@ -14,6 +14,7 @@ import {
   type Position,
   type PlaceOrderRequest,
 } from './api/trading'
+import { fetchMarketCap } from './api/marketCap'
 
 type Theme = 'light' | 'dark'
 
@@ -67,6 +68,7 @@ const GAP_STATS_REFRESH_INTERVAL_MS = 60_000
 const SIGNALS_REFRESH_INTERVAL_MS = 30_000
 const INGESTION_STATUS_REFRESH_INTERVAL_MS = 15_000
 const WALLET_REFRESH_INTERVAL_MS = 30_000
+const MARKET_CAP_REFRESH_INTERVAL_MS = 600_000 // 10 minutes
 
 type Signal = {
   symbol: string
@@ -142,7 +144,8 @@ export default function App() {
   const [positions, setPositions] = useState<Position[]>([])
   const [tradingLoading, setTradingLoading] = useState(false)
 
-  const marketCapRank: Record<string, number> = {
+  // Market cap rankings state
+  const [marketCapRank, setMarketCapRank] = useState<Record<string, number>>({
     BTC: 1,
     ETH: 2,
     XRP: 3,
@@ -153,7 +156,8 @@ export default function App() {
     AVAX: 8,
     LINK: 9,
     DOT: 10,
-  }
+  })
+  const [marketCapSource, setMarketCapSource] = useState<'coingecko' | 'fallback'>('fallback')
 
   const baseAssetOf = (symbol: string) => {
     const s = symbol.toUpperCase().trim()
@@ -652,6 +656,40 @@ export default function App() {
       if (inFlight) inFlight.abort()
     }
   }, [gapStats])
+
+  // Fetch market cap rankings
+  useEffect(() => {
+    let mounted = true
+    let inFlight: AbortController | null = null
+
+    const load = () => {
+      if (!mounted) return
+      if (inFlight) inFlight.abort()
+      const controller = new AbortController()
+      inFlight = controller
+
+      fetchMarketCap()
+        .then((data) => {
+          if (!mounted) return
+          setMarketCapRank(data.rankings)
+          setMarketCapSource(data.source)
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          console.warn('Failed to fetch market cap rankings, using fallback:', err)
+          // Keep existing fallback rankings on error
+        })
+    }
+
+    load()
+    const id = window.setInterval(load, MARKET_CAP_REFRESH_INTERVAL_MS)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+      if (inFlight) inFlight.abort()
+    }
+  }, [])
 
   const onChartWheel = (ev: React.WheelEvent<HTMLDivElement>) => {
     // Wheel zoom: scroll up -> zoom in (fewer candles), scroll down -> zoom out (more candles).
