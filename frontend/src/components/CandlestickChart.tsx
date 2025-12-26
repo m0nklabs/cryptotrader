@@ -95,16 +95,8 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
   const bollingerLower = useRef<ISeriesApi<'Line'> | null>(null)
 
   const [indicators, setIndicators] = useState<IndicatorState>(() => {
-    // Load from localStorage
-    const saved = localStorage.getItem('chart-indicators')
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        // Fall through to defaults
-      }
-    }
-    return {
+    // Default indicator state
+    const defaults: IndicatorState = {
       sma20: false,
       sma50: false,
       ema12: false,
@@ -114,6 +106,20 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
       bollinger: false,
       stochastic: false,
     }
+
+    // Load from localStorage and merge with defaults to ensure all fields exist
+    const saved = localStorage.getItem('chart-indicators')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed && typeof parsed === 'object') {
+          return { ...defaults, ...parsed }
+        }
+      } catch {
+        // Fall through to defaults
+      }
+    }
+    return defaults
   })
 
   const toggleIndicator = (key: keyof IndicatorState) => {
@@ -256,61 +262,49 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
   useEffect(() => {
     if (!sma20Series.current || !sma50Series.current || !ema12Series.current || !ema26Series.current) return
 
-    // Update visibility
-    sma20Series.current.applyOptions({ visible: indicators.sma20 })
-    sma50Series.current.applyOptions({ visible: indicators.sma50 })
-    ema12Series.current.applyOptions({ visible: indicators.ema12 })
-    ema26Series.current.applyOptions({ visible: indicators.ema26 })
+    // Helper function to update indicator data or clear it when disabled
+    const updateIndicator = (
+      series: ISeriesApi<'Line'>,
+      enabled: boolean,
+      calculatorFn: (values: number[], period: number) => number[],
+      period: number
+    ) => {
+      series.applyOptions({ visible: enabled })
+      
+      if (!enabled) {
+        // Clear stale data when indicator is disabled
+        series.setData([])
+        return
+      }
 
-    const closes = candles.map((c) => c.close)
+      if (candles.length < period) return
 
-    // Calculate and update SMA(20)
-    if (indicators.sma20 && candles.length >= 20) {
-      const sma20Values = sma(closes, 20)
-      const sma20Data = candles
+      const closes = candles.map((c) => c.close)
+      const values = calculatorFn(closes, period)
+      const data = candles
         .map((c, i) => ({
           time: c.time as LineData['time'],
-          value: sma20Values[i],
+          value: values[i],
         }))
         .filter((d) => !isNaN(d.value))
-      sma20Series.current.setData(sma20Data)
+      series.setData(data)
     }
 
-    // Calculate and update SMA(50)
-    if (indicators.sma50 && candles.length >= 50) {
-      const sma50Values = sma(closes, 50)
-      const sma50Data = candles
-        .map((c, i) => ({
-          time: c.time as LineData['time'],
-          value: sma50Values[i],
-        }))
-        .filter((d) => !isNaN(d.value))
-      sma50Series.current.setData(sma50Data)
+    // If no moving-average indicators are enabled, skip calculations
+    if (!indicators.sma20 && !indicators.sma50 && !indicators.ema12 && !indicators.ema26) {
+      // Still update visibility to hide any previously shown indicators
+      sma20Series.current.applyOptions({ visible: false })
+      sma50Series.current.applyOptions({ visible: false })
+      ema12Series.current.applyOptions({ visible: false })
+      ema26Series.current.applyOptions({ visible: false })
+      return
     }
 
-    // Calculate and update EMA(12)
-    if (indicators.ema12 && candles.length >= 12) {
-      const ema12Values = ema(closes, 12)
-      const ema12Data = candles
-        .map((c, i) => ({
-          time: c.time as LineData['time'],
-          value: ema12Values[i],
-        }))
-        .filter((d) => !isNaN(d.value))
-      ema12Series.current.setData(ema12Data)
-    }
-
-    // Calculate and update EMA(26)
-    if (indicators.ema26 && candles.length >= 26) {
-      const ema26Values = ema(closes, 26)
-      const ema26Data = candles
-        .map((c, i) => ({
-          time: c.time as LineData['time'],
-          value: ema26Values[i],
-        }))
-        .filter((d) => !isNaN(d.value))
-      ema26Series.current.setData(ema26Data)
-    }
+    // Update each indicator using the helper function
+    updateIndicator(sma20Series.current, indicators.sma20, sma, 20)
+    updateIndicator(sma50Series.current, indicators.sma50, sma, 50)
+    updateIndicator(ema12Series.current, indicators.ema12, ema, 12)
+    updateIndicator(ema26Series.current, indicators.ema26, ema, 26)
   }, [indicators.sma20, indicators.sma50, indicators.ema12, indicators.ema26, candles])
 
   // RSI sub-chart
