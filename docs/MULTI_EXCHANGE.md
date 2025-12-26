@@ -169,17 +169,17 @@ curl "http://localhost:8000/ingestion/status?exchange=binance&symbol=BTCUSDT&tim
 
 1. Verify the backfill completed successfully:
    ```sql
-   SELECT * FROM market_data_jobs 
-   WHERE exchange = 'binance' 
-   ORDER BY created_at DESC 
+   SELECT * FROM market_data_jobs
+   WHERE exchange = 'binance'
+   ORDER BY created_at DESC
    LIMIT 5;
    ```
 
 2. Check for errors in job runs:
    ```sql
-   SELECT * FROM market_data_job_runs 
-   WHERE status = 'failed' 
-   ORDER BY started_at DESC 
+   SELECT * FROM market_data_job_runs
+   WHERE status = 'failed'
+   ORDER BY started_at DESC
    LIMIT 5;
    ```
 

@@ -949,8 +949,8 @@ export default function App() {
                 subtitle={`Symbols / tickers${marketCapSource === 'coingecko' ? ' (live rankings)' : ''}`}
               >
                 <div className="mb-2">
-                  <Kvp 
-                    k="Exchange" 
+                  <Kvp
+                    k="Exchange"
                     v={
                       <select
                         className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"

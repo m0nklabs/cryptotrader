@@ -77,8 +77,8 @@ const [chartExchange, setChartExchange] = useState<string>('bitfinex')
 
 ### Dropdown Component
 ```tsx
-<Kvp 
-  k="Exchange" 
+<Kvp
+  k="Exchange"
   v={
     <select
       className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs ..."

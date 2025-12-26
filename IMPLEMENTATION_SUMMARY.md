@@ -188,7 +188,7 @@ CodeQL security scan completed with **zero vulnerabilities** detected across bot
      --exchange binance
    ```
 
-2. **Verify in Dashboard**: 
+2. **Verify in Dashboard**:
    - Start the API server
    - Open the dashboard
    - Switch to Binance exchange

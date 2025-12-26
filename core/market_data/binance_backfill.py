@@ -294,7 +294,9 @@ def run_backfill(
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Backfill OHLCV candles from Binance into Postgres.")
     parser.add_argument("--symbol", required=True, help="Symbol (e.g., BTCUSDT, BTCUSD)")
-    parser.add_argument("--timeframe", required=True, choices=sorted(_BINANCE_TIMEFRAMES.keys()), help="Candle timeframe")
+    parser.add_argument(
+        "--timeframe", required=True, choices=sorted(_BINANCE_TIMEFRAMES.keys()), help="Candle timeframe"
+    )
     parser.add_argument("--start", help="ISO datetime/date (UTC assumed if no tz)")
     parser.add_argument("--end", help="ISO datetime/date (UTC assumed if no tz). Default: now (UTC)")
     parser.add_argument(

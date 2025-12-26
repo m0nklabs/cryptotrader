@@ -215,7 +215,8 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         _run(
-            ["systemctl", "--user", "enable", "--now", f"cryptotrader-{exchange}-realtime@{instance_name}.timer"], env=env
+            ["systemctl", "--user", "enable", "--now", f"cryptotrader-{exchange}-realtime@{instance_name}.timer"],
+            env=env,
         )
         if args.enable_gap_repair:
             _run(

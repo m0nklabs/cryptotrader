@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
-from unittest.mock import Mock, patch
 
 import pytest
 
@@ -61,13 +60,20 @@ def test_build_arg_parser_accepts_custom_backoff_values() -> None:
     parser = backfill.build_arg_parser()
     args = parser.parse_args(
         [
-            "--symbol", "BTCUSDT",
-            "--timeframe", "1h",
-            "--start", "2024-01-01",
-            "--max-retries", "10",
-            "--initial-backoff-seconds", "1.0",
-            "--max-backoff-seconds", "16.0",
-            "--jitter-seconds", "0.5",
+            "--symbol",
+            "BTCUSDT",
+            "--timeframe",
+            "1h",
+            "--start",
+            "2024-01-01",
+            "--max-retries",
+            "10",
+            "--initial-backoff-seconds",
+            "1.0",
+            "--max-backoff-seconds",
+            "16.0",
+            "--jitter-seconds",
+            "0.5",
         ]
     )
 
