@@ -1,0 +1,161 @@
+name: Copilot CI Feedback
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  actions: read
+
+jobs:
+  notify-copilot:
+    name: Notify Copilot of CI failures
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get PR details
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          HEAD_BRANCH="${{ github.event.workflow_run.head_branch }}"
+          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+          SHORT_SHA="${HEAD_SHA:0:7}"
+
+          echo "head_branch=$HEAD_BRANCH" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+          # Find PR for this branch
+          PR_DATA=$(gh api repos/${{ github.repository }}/pulls \
+            --jq ".[] | select(.head.ref == \"$HEAD_BRANCH\" and .state == \"open\") | {number, author: .user.login}" \
+            | head -1)
+
+          if [ -z "$PR_DATA" ]; then
+            echo "No open PR found for branch $HEAD_BRANCH"
+            echo "found=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          PR_NUMBER=$(echo "$PR_DATA" | jq -r '.number')
+          PR_AUTHOR=$(echo "$PR_DATA" | jq -r '.author')
+
+          echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "author=$PR_AUTHOR" >> $GITHUB_OUTPUT
+          echo "found=true" >> $GITHUB_OUTPUT
+
+          # Check if Copilot PR
+          PR_AUTHOR_LOWER=$(echo "$PR_AUTHOR" | tr '[:upper:]' '[:lower:]')
+          if [[ "$PR_AUTHOR_LOWER" == *"copilot"* ]] || [[ "$HEAD_BRANCH" == copilot/* ]]; then
+            echo "is_copilot=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_copilot=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check loop protection
+        if: steps.pr.outputs.found == 'true' && steps.pr.outputs.is_copilot == 'true'
+        id: loop_check
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          SHORT_SHA="${{ steps.pr.outputs.short_sha }}"
+
+          # Get recent comments
+          COMMENTS=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments --jq '.')
+
+          # Count @copilot fix requests in last 2 hours
+          TWO_HOURS_AGO=$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          RECENT_FIX_REQUESTS=$(echo "$COMMENTS" | jq --arg since "$TWO_HOURS_AGO" '
+            [.[] | select(
+              (.body | contains("@copilot")) and
+              (.body | ascii_downcase | contains("fix") or contains("failed")) and
+              (.created_at > $since)
+            )] | length')
+
+          echo "recent_requests=$RECENT_FIX_REQUESTS" >> $GITHUB_OUTPUT
+
+          # Check if already requested for this SHA
+          ALREADY_REQUESTED=$(echo "$COMMENTS" | jq --arg sha "$SHORT_SHA" '
+            [.[] | select(.body | contains($sha))] | length')
+
+          if [ "$ALREADY_REQUESTED" -gt 0 ]; then
+            echo "Already requested fix for commit $SHORT_SHA"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "reason=sha_duplicate" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          MAX_REQUESTS=3
+          if [ "$RECENT_FIX_REQUESTS" -ge "$MAX_REQUESTS" ]; then
+            echo "Loop protection: $RECENT_FIX_REQUESTS requests in last 2 hours"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "reason=loop_protection" >> $GITHUB_OUTPUT
+            echo "request_count=$RECENT_FIX_REQUESTS" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+          NEXT_REQUEST=$((RECENT_FIX_REQUESTS + 1))
+          echo "request_num=$NEXT_REQUEST" >> $GITHUB_OUTPUT
+
+      - name: Get failed jobs
+        if: steps.pr.outputs.found == 'true' && steps.pr.outputs.is_copilot == 'true' && steps.loop_check.outputs.skip != 'true'
+        id: failures
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          RUN_ID="${{ github.event.workflow_run.id }}"
+
+          FAILED_JOBS=$(gh api repos/${{ github.repository }}/actions/runs/$RUN_ID/jobs \
+            --jq '[.jobs[] | select(.conclusion == "failure") | .name] | join(", ")')
+
+          echo "jobs=$FAILED_JOBS" >> $GITHUB_OUTPUT
+          echo "url=${{ github.event.workflow_run.html_url }}" >> $GITHUB_OUTPUT
+
+      - name: Notify Copilot to fix
+        if: steps.pr.outputs.found == 'true' && steps.pr.outputs.is_copilot == 'true' && steps.loop_check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          SHORT_SHA="${{ steps.pr.outputs.short_sha }}"
+          FAILED_JOBS="${{ steps.failures.outputs.jobs }}"
+          RUN_URL="${{ steps.failures.outputs.url }}"
+          REQUEST_NUM="${{ steps.loop_check.outputs.request_num }}"
+
+          cat <<EOF > /tmp/comment.md
+          @copilot CI failed on commit \`${SHORT_SHA}\`. Please fix the following issues and push again:
+
+          **Failed checks:** ${FAILED_JOBS}
+
+          [View failed run](${RUN_URL})
+
+          _Auto-fix request ${REQUEST_NUM}/3_
+          EOF
+
+          gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md
+          echo "Requested Copilot to fix CI failures on PR #$PR_NUMBER"
+
+      - name: Alert on loop protection triggered
+        if: steps.loop_check.outputs.reason == 'loop_protection'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          REQUEST_COUNT="${{ steps.loop_check.outputs.request_count }}"
+
+          cat <<EOF > /tmp/alert.md
+          ⚠️ **Auto-fix limit reached**
+
+          CI has failed ${REQUEST_COUNT}+ times in the last 2 hours. Manual intervention may be required.
+
+          cc @m0nk1111
+          EOF
+
+          gh pr comment "$PR_NUMBER" --body-file /tmp/alert.md
+          echo "Loop protection alert posted on PR #$PR_NUMBER"
