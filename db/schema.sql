@@ -442,4 +442,25 @@ CREATE TABLE IF NOT EXISTS paper_positions (
 CREATE INDEX IF NOT EXISTS idx_paper_positions_symbol
     ON paper_positions(symbol);
 
+
+-- ============================
+-- Market cap rankings (CoinGecko)
+-- ============================
+
+CREATE TABLE IF NOT EXISTS market_cap_ranks (
+    id SERIAL PRIMARY KEY,
+    coin_id VARCHAR(50) NOT NULL,  -- CoinGecko coin ID (e.g., 'bitcoin')
+    symbol VARCHAR(20) NOT NULL,    -- Trading symbol (e.g., 'BTC')
+    name VARCHAR(100),
+    market_cap_rank INTEGER NOT NULL,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_market_cap_ranks_symbol UNIQUE (symbol)
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_cap_ranks_rank
+    ON market_cap_ranks(market_cap_rank);
+
+CREATE INDEX IF NOT EXISTS idx_market_cap_ranks_updated
+    ON market_cap_ranks(last_updated DESC);
+
 COMMIT;

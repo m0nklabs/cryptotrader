@@ -8,6 +8,7 @@ This module provides a minimal HTTP API service for:
 - GET /orders - List open orders
 - DELETE /orders/{order_id} - Cancel order
 - GET /positions - List open positions
+- GET /market-cap - Current market cap rankings from CoinGecko
 
 Requirements:
 - DATABASE_URL must be set in environment
@@ -16,7 +17,10 @@ Requirements:
 
 from __future__ import annotations
 
+import logging
 import os
+import threading
+import time
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal, Optional
@@ -27,9 +31,12 @@ from pydantic import BaseModel, Field
 
 from core.execution.paper import PaperExecutor, PaperOrder, PaperPosition
 from core.fees.model import FeeModel
+from core.market_cap.coingecko import CoinGeckoClient
 from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
 from core.types import FeeBreakdown
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="CryptoTrader API",
@@ -42,6 +49,38 @@ _stores: PostgresStores | None = None
 
 # Global paper executor instance (in-memory, no DB persistence)
 _paper_executor: PaperExecutor | None = None
+
+# Global CoinGecko client (singleton)
+_coingecko_client: CoinGeckoClient | None = None
+
+# Global market cap cache
+_market_cap_cache: dict[str, int] = {}
+_market_cap_cache_time: float = 0
+_market_cap_cache_source: str = "fallback"  # Track actual source of cached data
+_market_cap_cache_lock = threading.Lock()
+MARKET_CAP_CACHE_TTL = 600  # 10 minutes in seconds
+
+# Static fallback market cap rankings
+FALLBACK_MARKET_CAP_RANK: dict[str, int] = {
+    "BTC": 1,
+    "ETH": 2,
+    "XRP": 3,
+    "SOL": 4,
+    "ADA": 5,
+    "DOGE": 6,
+    "LTC": 7,
+    "AVAX": 8,
+    "LINK": 9,
+    "DOT": 10,
+}
+
+
+def _get_coingecko_client() -> CoinGeckoClient:
+    """Get or initialize the CoinGecko client singleton."""
+    global _coingecko_client
+    if _coingecko_client is None:
+        _coingecko_client = CoinGeckoClient(timeout=10)
+    return _coingecko_client
 
 
 def _get_paper_executor() -> PaperExecutor:
@@ -637,6 +676,91 @@ async def close_position(
     )
 
     return {"success": True, "message": "Position closed", "close_order": _order_to_response(order)}
+
+
+# =============================================================================
+# Market Cap Rankings
+# =============================================================================
+
+
+def _refresh_market_cap_cache() -> dict[str, int]:
+    """Fetch and cache market cap rankings from CoinGecko.
+
+    Returns:
+        Dictionary mapping symbol to market cap rank.
+        Falls back to static rankings on error.
+    """
+    global _market_cap_cache, _market_cap_cache_time, _market_cap_cache_source
+
+    # Check cache validity inside lock to prevent race conditions
+    with _market_cap_cache_lock:
+        current_time = time.time()
+        if _market_cap_cache and (current_time - _market_cap_cache_time) < MARKET_CAP_CACHE_TTL:
+            logger.debug("Using cached market cap data")
+            return _market_cap_cache
+
+    # Fetch fresh data
+    try:
+        logger.info("Fetching market cap data from CoinGecko")
+        client = _get_coingecko_client()
+        market_cap_map = client.get_market_cap_map(limit=100)
+
+        if market_cap_map:
+            with _market_cap_cache_lock:
+                _market_cap_cache = market_cap_map
+                _market_cap_cache_time = time.time()
+                _market_cap_cache_source = "coingecko"
+            logger.info(f"Updated market cap cache with {len(market_cap_map)} coins")
+            return market_cap_map
+        else:
+            logger.warning("CoinGecko returned empty data, using fallback")
+            with _market_cap_cache_lock:
+                _market_cap_cache_source = "fallback"
+            return FALLBACK_MARKET_CAP_RANK
+
+    except Exception as e:
+        logger.error(f"Failed to fetch market cap data: {e}")
+        # Return cached data if available, otherwise fallback
+        with _market_cap_cache_lock:
+            if _market_cap_cache:
+                logger.info("Using stale cache due to API error")
+                return _market_cap_cache
+            _market_cap_cache_source = "fallback"
+        logger.info("Using static fallback rankings")
+        return FALLBACK_MARKET_CAP_RANK
+
+
+@app.get("/market-cap")
+async def get_market_cap() -> dict[str, Any]:
+    """Get current market cap rankings.
+
+    Returns:
+        JSON with market cap rankings and metadata.
+        Example:
+        {
+            "rankings": {"BTC": 1, "ETH": 2, "XRP": 3, ...},
+            "cached": true,
+            "source": "coingecko",
+            "last_updated": 1234567890
+        }
+    """
+    # Get cache timestamp before refresh
+    with _market_cap_cache_lock:
+        cache_time_before = _market_cap_cache_time
+
+    rankings = _refresh_market_cap_cache()
+
+    # If cache timestamp didn't change, data was served from cache
+    with _market_cap_cache_lock:
+        using_cache = (_market_cap_cache_time == cache_time_before) and cache_time_before > 0
+        source = _market_cap_cache_source
+
+    return {
+        "rankings": rankings,
+        "cached": using_cache,
+        "source": source,
+        "last_updated": int(_market_cap_cache_time * 1000) if _market_cap_cache_time > 0 else None,
+    }
 
 
 @app.exception_handler(Exception)
