@@ -254,7 +254,8 @@ jobs:
           fi
 
           echo "Posting fix request to PR #$PR_NUMBER"
-          gh pr comment "$PR_NUMBER" --body "${{ steps.llm.outputs.fix_message }}"
+          echo "${{ steps.llm.outputs.fix_message }}" > fix_request.md
+          gh pr comment "$PR_NUMBER" -F fix_request.md
 
       - name: Auto-approve PR
         if: steps.decision.outputs.decision == 'approve'
