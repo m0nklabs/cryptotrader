@@ -145,7 +145,7 @@ def main() -> None:
         print("-" * len(header))
         for perf in performances:
             res = perf.result
-            final_equity = res.equity_curve[-1] if res.equity_curve else args.capital
+            final_equity = args.capital + res.total_pnl
             print(
                 f"{perf.name:<18}"
                 f"{len(res.trades):>8}"
