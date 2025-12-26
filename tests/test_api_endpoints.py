@@ -19,7 +19,7 @@ if str(ROOT) not in sys.path:
 
 def test_get_candles_latest_uses_default_exchange(api_client) -> None:
     """Verify /candles/latest endpoint uses default exchange when not provided.
-    
+
     The endpoint should accept requests without an exchange parameter and use
     the default value of 'bitfinex'. This test verifies the endpoint doesn't
     return a 422 validation error when exchange is omitted.
