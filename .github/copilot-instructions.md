@@ -12,6 +12,7 @@ These instructions apply to GitHub Copilot in the context of this repository.
 - **Execute, don't ask**: If you can run a command, create a file, or perform an action — do it immediately. Never ask the user to run something you can execute yourself.
 - **Minimize back-and-forth**: Complete tasks in one pass when possible. Don't stop to ask for confirmation on routine operations.
 - **Fix errors yourself**: If a command fails, debug and retry before asking the user for help.
+- **NEVER do manual workarounds when automating**: If we are building automation for something, NEVER fall back to doing it manually "just this once". Fix the automation instead. This includes: manually requesting reviewers, manually approving PRs, manually rerunning workflows, etc.
 - **NEVER approve PRs manually**: Do not run `gh pr review --approve` or any approval command unless the user explicitly requests it. PR approvals must come from automated workflows (LLM Decision, Copilot Reviewer) or explicit user instruction after a real code review.
 - **NEVER rebase Copilot branches manually**: Unless explicitly requested. Let the automated workflows or Copilot handle rebases.
 ## User preferences (skeleton)
