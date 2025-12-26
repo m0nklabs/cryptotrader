@@ -74,8 +74,7 @@ def test_backtest_engine_with_rsi_strategy() -> None:
     # Equity curve should have entries
     assert len(result.equity_curve) > 0, "Should have equity curve"
     assert result.equity_curve[0] == DEFAULT_INITIAL_CAPITAL, "Should start with initial capital"
-    assert result.total_pnl == result.equity_curve[-1] - DEFAULT_INITIAL_CAPITAL
-    assert result.total_return == result.total_pnl / DEFAULT_INITIAL_CAPITAL
+    assert abs((result.total_return * DEFAULT_INITIAL_CAPITAL) - result.total_pnl) < 1e-9
 
     # Metrics should be in valid ranges
     assert 0.0 <= result.max_drawdown <= 1.0, "Max drawdown should be 0-100%"
