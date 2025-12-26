@@ -12,6 +12,18 @@ Constraints:
 
 ## Feature list (with status)
 
+### 🌟 Strategic Goals (North Star)
+
+- **Profit-First Focus**: Shift from pure signal detection to PnL-based optimization.
+- **Observability**:
+  - ⏳ Real-time frontend with multi-timeframe visualization.
+  - ⏳ Wallet/Portfolio overview.
+  - ⏳ Indicator overlays & forecast projections.
+- **AI & Forecasting**:
+  - ⏳ Ollama (local LLM) integration for market sentiment/analysis.
+  - ⏳ AI-based opportunity scoring.
+  - ⏳ Visual forecasting on charts.
+
 ### ✅ Completed
 
 1. **Market data: OHLCV candles**
