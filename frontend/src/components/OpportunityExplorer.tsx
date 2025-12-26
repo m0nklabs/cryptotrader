@@ -74,9 +74,9 @@ export default function OpportunityExplorer({ exchange = 'bitfinex', onSelectOpp
     }
 
     // Sort comparator functions
-    const compareNumbers = (a: number, b: number) => 
+    const compareNumbers = (a: number, b: number) =>
       sortDirection === 'asc' ? a - b : b - a
-    
+
     const compareStrings = (a: string, b: string) =>
       sortDirection === 'asc' ? a.localeCompare(b) : b.localeCompare(a)
 

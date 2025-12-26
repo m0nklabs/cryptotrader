@@ -49,7 +49,7 @@ export default function SignalBreakdown({ signals, isExpanded, onToggle }: Props
                   <span className="text-xs font-semibold text-gray-300">{signal.code}</span>
                   <span className={`text-xs font-medium ${sideColor}`}>{signal.side}</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <div className="flex gap-0.5">
                     {Array.from({ length: 5 }).map((_, i) => (

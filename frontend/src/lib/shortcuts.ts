@@ -138,12 +138,12 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
 
 export function formatShortcut(shortcut: ShortcutDefinition): string {
   const parts: string[] = []
-  
+
   if (shortcut.modifiers) {
     parts.push(...shortcut.modifiers)
   }
   parts.push(shortcut.key)
-  
+
   return parts.join('+')
 }
 

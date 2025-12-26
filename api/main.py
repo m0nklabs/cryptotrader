@@ -1727,7 +1727,7 @@ async def get_correlation_matrix(
     lookback: int = Query(30, ge=7, le=365, description="Lookback period in days (7, 30, 90, 365)"),
 ):
     """Calculate correlation matrix between assets.
-    
+
     Returns correlation coefficients between -1 (negative correlation) and +1 (positive correlation).
     Useful for portfolio diversification analysis.
     """
@@ -1739,12 +1739,9 @@ async def get_correlation_matrix(
 
     # Parse symbols
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-    
+
     if len(symbol_list) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="Need at least 2 symbols for correlation analysis"
-        )
+        raise HTTPException(status_code=400, detail="Need at least 2 symbols for correlation analysis")
 
     try:
         result = await calculate_correlation_matrix(
