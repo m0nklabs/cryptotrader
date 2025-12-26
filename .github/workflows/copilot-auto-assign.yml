@@ -66,17 +66,19 @@ jobs:
           script: |
             // Priority order for EPICs (highest first)
             const epicPriority = {
-              71: 1,  // Trading System (core functionality)
-              70: 2,  // Market Data (data pipeline)
-              69: 3,  // Technical Analysis
-              68: 4,  // Infrastructure
-              76: 5   // Frontend & UI
+              153: 1,  // Backtesting & Validation (Critical)
+              158: 2,  // Execution & Automation (High)
+              164: 3,  // AI & LLM Integration (Medium)
+              170: 4,  // Frontend Observability (Medium)
+              174: 5,  // Portfolio & Wallet (Low)
+              179: 6   // Infrastructure (Low)
             };
 
             // Priority labels (if present, use these)
             const labelPriority = {
               'priority: critical': 0,
               'priority:critical': 0,
+              'copilot-ready': 0.5,     // Treat copilot-ready as very high priority
               'priority: high': 1,
               'priority:high': 1,
               'priority: medium': 2,
@@ -151,8 +153,9 @@ jobs:
                 }
               }
 
-              // Prefer older issues (lower number = older = higher priority)
-              score += issue.number / 1000;
+              // Prefer newer issues (higher number = newer = higher priority)
+              // We subtract a small fraction so that higher numbers result in a lower score
+              score -= issue.number / 100000;
 
               return { issue, score };
             });
