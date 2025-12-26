@@ -14,6 +14,7 @@ from core.types import Candle
 
 
 DEFAULT_INITIAL_CAPITAL = 10000.0
+FLOAT_TOLERANCE = 1e-9
 
 
 def _make_test_candle(close: float, idx: int = 0) -> Candle:
@@ -74,7 +75,7 @@ def test_backtest_engine_with_rsi_strategy() -> None:
     # Equity curve should have entries
     assert len(result.equity_curve) > 0, "Should have equity curve"
     assert result.equity_curve[0] == DEFAULT_INITIAL_CAPITAL, "Should start with initial capital"
-    assert abs((result.total_return * DEFAULT_INITIAL_CAPITAL) - result.total_pnl) < 1e-9
+    assert abs((result.total_return * DEFAULT_INITIAL_CAPITAL) - result.total_pnl) < FLOAT_TOLERANCE
 
     # Metrics should be in valid ranges
     assert 0.0 <= result.max_drawdown <= 1.0, "Max drawdown should be 0-100%"

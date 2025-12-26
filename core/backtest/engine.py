@@ -146,7 +146,8 @@ class BacktestEngine:
         profit_factor = calculate_profit_factor(trades)
         final_equity = equity_curve[-1] if equity_curve else self.initial_capital
         total_pnl = final_equity - self.initial_capital
-        if self.initial_capital == 0:
+        epsilon = 1e-9
+        if abs(self.initial_capital) < epsilon:
             total_return = 0.0
         else:
             total_return = total_pnl / self.initial_capital

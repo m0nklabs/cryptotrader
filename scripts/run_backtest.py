@@ -33,7 +33,7 @@ def _serialize_result(result: BacktestResult) -> dict:
             "profit_factor": result.profit_factor,
             "total_pnl": result.total_pnl,
             "total_return": result.total_return,
-            "final_equity": result.equity_curve[-1] if result.equity_curve else None,
+            "final_equity": result.equity_curve[-1] if len(result.equity_curve) > 0 else None,
         },
         "trades": [
             {
@@ -145,7 +145,7 @@ def main() -> None:
         print("-" * len(header))
         for perf in performances:
             res = perf.result
-            final_equity = res.equity_curve[-1]
+            final_equity = res.equity_curve[-1] if res.equity_curve else args.capital + res.total_pnl
             print(
                 f"{perf.name:<18}"
                 f"{len(res.trades):>8}"
