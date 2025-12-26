@@ -1,0 +1,80 @@
+name: Auto Review
+
+on:
+  workflow_run:
+    workflows: ["LLM Decision"]
+    types: [completed]
+
+jobs:
+  auto-review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    # Only run if the LLM Decision workflow succeeded
+    if: github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Download decision JSON
+        uses: actions/download-artifact@v4
+        with:
+          name: llm-decision
+          path: decision/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GH_PAT }}
+
+      - name: Read decision
+        id: read
+        run: |
+          if [ -f decision/decision.json ]; then
+            DECISION=$(jq -r '.decision' decision/decision.json)
+            REASON=$(jq -r '.reason' decision/decision.json)
+            echo "decision=$DECISION" >> $GITHUB_OUTPUT
+            echo "reason=$REASON" >> $GITHUB_OUTPUT
+            echo "Decision: $DECISION"
+            echo "Reason: $REASON"
+          else
+            echo "No decision.json found"
+            echo "decision=skip" >> $GITHUB_OUTPUT
+            echo "reason=No decision artifact found" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get PR number
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # Get PR number from the workflow run
+          PR_NUMBER=$(echo '${{ toJson(github.event.workflow_run.pull_requests) }}' | jq -r '.[0].number')
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "PR Number: $PR_NUMBER"
+
+      - name: Approve PR
+        if: steps.read.outputs.decision == 'approve' && steps.pr.outputs.pr_number != 'null'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+          REASON="${{ steps.read.outputs.reason }}"
+
+          # Check if already approved
+          EXISTING=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
+            --jq '[.[] | select(.state == "APPROVED")] | length')
+
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "PR already has an approval, skipping"
+            exit 0
+          fi
+
+          echo "Approving PR #$PR_NUMBER"
+          gh pr review "$PR_NUMBER" --approve --body "🤖 Auto-approved by LLM analysis: $REASON"
+
+      - name: Request changes
+        if: steps.read.outputs.decision == 'request_changes' && steps.pr.outputs.pr_number != 'null'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+          REASON="${{ steps.read.outputs.reason }}"
+
+          echo "Requesting changes on PR #$PR_NUMBER"
+          gh pr review "$PR_NUMBER" --request-changes --body "🤖 Changes requested by LLM analysis: $REASON"

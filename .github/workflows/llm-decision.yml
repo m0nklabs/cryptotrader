@@ -1,0 +1,130 @@
+name: LLM Decision
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  pull-requests: read
+  contents: read
+
+jobs:
+  analyze-review:
+    name: Analyze Copilot review with LLM
+    runs-on: ubuntu-latest
+    # Only for Copilot PRs when Copilot reviewer submits a review
+    if: |
+      github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' &&
+      startsWith(github.event.pull_request.head.ref, 'copilot/')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch review details
+        id: review
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REVIEW_BODY="${{ github.event.review.body }}"
+
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+          # Get review comments count
+          COMMENT_COUNT=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length')
+
+          echo "comment_count=$COMMENT_COUNT" >> $GITHUB_OUTPUT
+
+          # Save review body to file for LLM analysis
+          echo "$REVIEW_BODY" > /tmp/review_body.txt
+
+          # Get the review comments if any
+          gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]") | {path: .path, body: .body, line: .line}]' > /tmp/review_comments.json
+
+      - name: Analyze with LLM
+        id: llm
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          REVIEW_BODY=$(cat /tmp/review_body.txt)
+          REVIEW_COMMENTS=$(cat /tmp/review_comments.json)
+          COMMENT_COUNT="${{ steps.review.outputs.comment_count }}"
+
+          # Build prompt for LLM
+          PROMPT=$(cat <<'EOF'
+          You are a code review analyzer. Analyze the following Copilot code review and decide whether to approve the PR or request changes.
+
+          Review Summary:
+          $REVIEW_BODY
+
+          Number of inline comments: $COMMENT_COUNT
+
+          Inline comments (if any):
+          $REVIEW_COMMENTS
+
+          Based on this review, respond with a JSON object:
+          {
+            "decision": "approve" or "request_changes",
+            "reason": "Brief explanation for your decision"
+          }
+
+          Rules:
+          - If review says "generated no new comments" or "generated 0 comments" -> approve
+          - If review has suggestions but they are minor style/documentation -> approve with note
+          - If review has security concerns, bugs, or critical issues -> request_changes
+          - If unsure, lean towards approve for Copilot PRs that passed CI
+
+          Respond ONLY with valid JSON, no markdown or explanation.
+          EOF
+          )
+
+          # Replace variables in prompt
+          PROMPT=$(echo "$PROMPT" | sed "s|\$REVIEW_BODY|$REVIEW_BODY|g")
+          PROMPT=$(echo "$PROMPT" | sed "s|\$COMMENT_COUNT|$COMMENT_COUNT|g")
+          PROMPT=$(echo "$PROMPT" | sed "s|\$REVIEW_COMMENTS|$REVIEW_COMMENTS|g")
+
+          # Call OpenAI API (if key is available)
+          if [ -n "$OPENAI_API_KEY" ]; then
+            RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
+              -d "{
+                \"model\": \"gpt-4o-mini\",
+                \"messages\": [{\"role\": \"user\", \"content\": $(echo "$PROMPT" | jq -Rs .)}],
+                \"temperature\": 0.1
+              }")
+
+            # Extract the decision JSON from response
+            DECISION_JSON=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
+          else
+            # Fallback: simple rule-based decision without LLM
+            echo "No OPENAI_API_KEY, using rule-based decision"
+            if echo "$REVIEW_BODY" | grep -qi "generated no new comments\|generated 0 comments\|no issues"; then
+              DECISION_JSON='{"decision": "approve", "reason": "Copilot review found no issues (rule-based)"}'
+            elif [ "$COMMENT_COUNT" -eq 0 ]; then
+              DECISION_JSON='{"decision": "approve", "reason": "No review comments found (rule-based)"}'
+            else
+              DECISION_JSON='{"decision": "request_changes", "reason": "Copilot review has comments that need addressing (rule-based)"}'
+            fi
+          fi
+
+          echo "LLM Decision: $DECISION_JSON"
+
+          # Validate JSON and save
+          echo "$DECISION_JSON" | jq . > decision.json
+
+          # Also output for next job
+          DECISION=$(echo "$DECISION_JSON" | jq -r '.decision')
+          REASON=$(echo "$DECISION_JSON" | jq -r '.reason')
+          echo "decision=$DECISION" >> $GITHUB_OUTPUT
+          echo "reason=$REASON" >> $GITHUB_OUTPUT
+
+      - name: Upload decision artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-decision
+          path: decision.json
+          retention-days: 1
