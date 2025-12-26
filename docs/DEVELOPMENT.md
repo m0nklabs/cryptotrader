@@ -24,6 +24,27 @@ Run an import smoke test:
 - Install dev deps: `pip install -r requirements-dev.txt`
 - Lint: `ruff check .`
 - Tests: `pytest`
+- Run both: `ruff check . && pytest`
+
+### What's validated
+
+The quality gate ensures:
+- **Code style**: Ruff checks for PEP 8 compliance and common errors (E, F rules)
+- **Correctness**: 495+ unit tests covering:
+  - Technical indicators (RSI, MACD, Bollinger, ATR, Stochastic)
+  - Signal detection and scoring
+  - API endpoints (health, candles, fees)
+  - Market data ingestion and backfill
+  - PostgresStores timezone normalization (critical for --resume)
+  - WebSocket providers
+  - Portfolio and risk management
+  - Paper trading execution
+
+### CI/CD
+
+GitHub Actions runs the quality gate on every push and PR:
+- `.github/workflows/ci.yml` - Ruff + pytest (unit + integration)
+- See workflow runs at: https://github.com/m0nk111/cryptotrader/actions
 
 ## Bitfinex API credentials
 
