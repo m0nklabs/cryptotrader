@@ -22,10 +22,16 @@ import {
   calculateMACD,
   calculateBollingerBands,
   calculateStochastic,
+  sma,
+  ema,
   type OHLCV,
 } from '../utils/indicators'
 
 type IndicatorState = {
+  sma20: boolean
+  sma50: boolean
+  ema12: boolean
+  ema26: boolean
   rsi: boolean
   macd: boolean
   bollinger: boolean
@@ -52,6 +58,10 @@ const CHART_COLORS = {
 }
 
 const INDICATOR_COLORS = {
+  sma20: '#3b82f6',
+  sma50: '#f97316',
+  ema12: '#22c55e',
+  ema26: '#eab308',
   rsi: '#eab308',
   macdLine: '#3b82f6',
   signalLine: '#f97316',
@@ -76,19 +86,48 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
   const stochChart = useRef<IChartApi | null>(null)
 
   const candleSeries = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const sma20Series = useRef<ISeriesApi<'Line'> | null>(null)
+  const sma50Series = useRef<ISeriesApi<'Line'> | null>(null)
+  const ema12Series = useRef<ISeriesApi<'Line'> | null>(null)
+  const ema26Series = useRef<ISeriesApi<'Line'> | null>(null)
   const bollingerUpper = useRef<ISeriesApi<'Line'> | null>(null)
   const bollingerMiddle = useRef<ISeriesApi<'Line'> | null>(null)
   const bollingerLower = useRef<ISeriesApi<'Line'> | null>(null)
 
-  const [indicators, setIndicators] = useState<IndicatorState>({
-    rsi: false,
-    macd: false,
-    bollinger: false,
-    stochastic: false,
+  const [indicators, setIndicators] = useState<IndicatorState>(() => {
+    // Default indicator state
+    const defaults: IndicatorState = {
+      sma20: false,
+      sma50: false,
+      ema12: false,
+      ema26: false,
+      rsi: false,
+      macd: false,
+      bollinger: false,
+      stochastic: false,
+    }
+
+    // Load from localStorage and merge with defaults to ensure all fields exist
+    const saved = localStorage.getItem('chart-indicators')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed && typeof parsed === 'object') {
+          return { ...defaults, ...parsed }
+        }
+      } catch {
+        // Fall through to defaults
+      }
+    }
+    return defaults
   })
 
   const toggleIndicator = (key: keyof IndicatorState) => {
-    setIndicators((prev) => ({ ...prev, [key]: !prev[key] }))
+    setIndicators((prev) => {
+      const next = { ...prev, [key]: !prev[key] }
+      localStorage.setItem('chart-indicators', JSON.stringify(next))
+      return next
+    })
   }
 
   // Create main chart
@@ -131,6 +170,28 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
       wickDownColor: CHART_COLORS.wickDownColor,
     })
     candleSeries.current = series
+
+    // Moving Averages (initially hidden)
+    sma20Series.current = chart.addSeries(LineSeries, {
+      color: INDICATOR_COLORS.sma20,
+      lineWidth: 2,
+      visible: false,
+    })
+    sma50Series.current = chart.addSeries(LineSeries, {
+      color: INDICATOR_COLORS.sma50,
+      lineWidth: 2,
+      visible: false,
+    })
+    ema12Series.current = chart.addSeries(LineSeries, {
+      color: INDICATOR_COLORS.ema12,
+      lineWidth: 2,
+      visible: false,
+    })
+    ema26Series.current = chart.addSeries(LineSeries, {
+      color: INDICATOR_COLORS.ema26,
+      lineWidth: 2,
+      visible: false,
+    })
 
     // Bollinger Bands (initially hidden)
     bollingerUpper.current = chart.addSeries(LineSeries, {
@@ -196,6 +257,45 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
       bollingerLower.current.setData(bb.map((b) => ({ time: b.time as LineData['time'], value: b.lower })))
     }
   }, [indicators.bollinger, candles])
+
+  // Update Moving Averages
+  useEffect(() => {
+    if (!sma20Series.current || !sma50Series.current || !ema12Series.current || !ema26Series.current) return
+
+    // Helper function to update indicator data or clear it when disabled
+    const updateIndicator = (
+      series: ISeriesApi<'Line'>,
+      enabled: boolean,
+      calculatorFn: (values: number[], period: number) => number[],
+      period: number
+    ) => {
+      series.applyOptions({ visible: enabled })
+
+      if (!enabled) {
+        // Clear stale data when indicator is disabled
+        series.setData([])
+        return
+      }
+
+      if (candles.length < period) return
+
+      const closes = candles.map((c) => c.close)
+      const values = calculatorFn(closes, period)
+      const data = candles
+        .map((c, i) => ({
+          time: c.time as LineData['time'],
+          value: values[i],
+        }))
+        .filter((d) => !isNaN(d.value))
+      series.setData(data)
+    }
+
+    // Update each indicator using the helper function
+    updateIndicator(sma20Series.current, indicators.sma20, sma, 20)
+    updateIndicator(sma50Series.current, indicators.sma50, sma, 50)
+    updateIndicator(ema12Series.current, indicators.ema12, ema, 12)
+    updateIndicator(ema26Series.current, indicators.ema26, ema, 26)
+  }, [indicators.sma20, indicators.sma50, indicators.ema12, indicators.ema26, candles])
 
   // RSI sub-chart
   useEffect(() => {
@@ -406,6 +506,30 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
           {symbol} · {timeframe}
         </span>
         <div className="ml-auto flex gap-1">
+          <IndicatorButton
+            label="SMA20"
+            active={indicators.sma20}
+            onClick={() => toggleIndicator('sma20')}
+            color={INDICATOR_COLORS.sma20}
+          />
+          <IndicatorButton
+            label="SMA50"
+            active={indicators.sma50}
+            onClick={() => toggleIndicator('sma50')}
+            color={INDICATOR_COLORS.sma50}
+          />
+          <IndicatorButton
+            label="EMA12"
+            active={indicators.ema12}
+            onClick={() => toggleIndicator('ema12')}
+            color={INDICATOR_COLORS.ema12}
+          />
+          <IndicatorButton
+            label="EMA26"
+            active={indicators.ema26}
+            onClick={() => toggleIndicator('ema26')}
+            color={INDICATOR_COLORS.ema26}
+          />
           <IndicatorButton
             label="BB"
             active={indicators.bollinger}
