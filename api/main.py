@@ -288,7 +288,7 @@ async def get_system_status() -> dict[str, Any]:
 
     Returns:
         JSON with health status for backend, database, and ingestion timers.
-        
+
     Example response:
         {
             "backend": {
