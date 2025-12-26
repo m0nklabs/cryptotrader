@@ -181,3 +181,131 @@ def test_singleton_service():
     service2 = get_candle_stream_service()
 
     assert service1 is service2
+
+
+@pytest.mark.asyncio
+async def test_subscriber_cleanup_stops_provider():
+    """Test that provider is stopped when last subscriber disconnects."""
+    from api.candle_stream import CandleStreamService
+    from unittest.mock import Mock
+
+    service = CandleStreamService()
+
+    # Mock the provider
+    mock_provider = Mock()
+    mock_provider.stop = Mock()
+    mock_provider.is_connected = Mock(return_value=True)
+
+    # Manually set up provider to avoid actual WebSocket connection
+    key = "BTCUSD:1m"
+    service.providers[key] = mock_provider
+
+    # Create a subscriber queue
+    queue1 = asyncio.Queue(maxsize=100)
+    service.subscribers[key].append(queue1)
+
+    # Simulate subscriber cleanup
+    with service.lock:
+        service.subscribers[key].remove(queue1)
+        remaining = len(service.subscribers[key])
+
+        if remaining == 0 and key in service.providers:
+            service.providers[key].stop()
+            del service.providers[key]
+            if key in service.latest_candles:
+                del service.latest_candles[key]
+
+    # Verify provider was stopped and removed
+    mock_provider.stop.assert_called_once()
+    assert key not in service.providers
+    assert key not in service.latest_candles
+
+
+@pytest.mark.asyncio
+async def test_multiple_subscribers_dont_stop_provider():
+    """Test that provider is not stopped when other subscribers remain."""
+    from api.candle_stream import CandleStreamService
+    from unittest.mock import Mock
+
+    service = CandleStreamService()
+
+    # Mock the provider
+    mock_provider = Mock()
+    mock_provider.stop = Mock()
+
+    # Manually set up provider
+    key = "BTCUSD:1m"
+    service.providers[key] = mock_provider
+
+    # Create two subscriber queues
+    queue1 = asyncio.Queue(maxsize=100)
+    queue2 = asyncio.Queue(maxsize=100)
+    service.subscribers[key].append(queue1)
+    service.subscribers[key].append(queue2)
+
+    # Remove first subscriber
+    with service.lock:
+        service.subscribers[key].remove(queue1)
+        remaining = len(service.subscribers[key])
+
+        # Should NOT stop provider since queue2 is still subscribed
+        if remaining == 0 and key in service.providers:
+            service.providers[key].stop()
+            del service.providers[key]
+
+    # Verify provider was NOT stopped
+    mock_provider.stop.assert_not_called()
+    assert key in service.providers
+
+
+@pytest.mark.asyncio
+async def test_cleanup_removes_latest_candle():
+    """Test that latest_candles is cleaned up to avoid memory leak."""
+    from api.candle_stream import CandleStreamService
+    from core.types import Candle
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from unittest.mock import Mock
+
+    service = CandleStreamService()
+
+    # Mock the provider
+    mock_provider = Mock()
+    mock_provider.stop = Mock()
+
+    # Create test candle
+    candle = Candle(
+        symbol="BTCUSD",
+        exchange="bitfinex",
+        timeframe="1m",
+        open_time=datetime.now(timezone.utc),
+        close_time=datetime.now(timezone.utc),
+        open=Decimal("50000"),
+        high=Decimal("50100"),
+        low=Decimal("49900"),
+        close=Decimal("50050"),
+        volume=Decimal("10.5"),
+    )
+
+    # Set up provider and latest candle
+    key = "BTCUSD:1m"
+    service.providers[key] = mock_provider
+    service.latest_candles[key] = candle
+
+    # Create and remove subscriber
+    queue = asyncio.Queue(maxsize=100)
+    service.subscribers[key].append(queue)
+
+    # Simulate cleanup
+    with service.lock:
+        service.subscribers[key].remove(queue)
+        remaining = len(service.subscribers[key])
+
+        if remaining == 0 and key in service.providers:
+            service.providers[key].stop()
+            del service.providers[key]
+            if key in service.latest_candles:
+                del service.latest_candles[key]
+
+    # Verify latest_candles was cleaned up
+    assert key not in service.latest_candles

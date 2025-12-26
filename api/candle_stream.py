@@ -89,11 +89,11 @@ class CandleStreamService:
             key: Subscription key
             candle: New candle data
         """
-        # Update latest candle
-        self.latest_candles[key] = candle
-
-        # Broadcast to all subscribers
+        # Broadcast to all subscribers (thread-safe)
         with self.lock:
+            # Update latest candle inside lock for thread safety
+            self.latest_candles[key] = candle
+
             subscribers = self.subscribers.get(key, [])
             logger.debug(f"Broadcasting candle for {key} to {len(subscribers)} subscribers")
 
@@ -131,7 +131,8 @@ class CandleStreamService:
 
         try:
             # Send latest candle immediately if available
-            latest = self.latest_candles.get(key)
+            with self.lock:
+                latest = self.latest_candles.get(key)
             if latest:
                 yield self._candle_to_dict(latest)
 
@@ -158,6 +159,9 @@ class CandleStreamService:
                         logger.info(f"No more subscribers for {key}, stopping WebSocket")
                         self.providers[key].stop()
                         del self.providers[key]
+                        # Clean up latest candle to avoid memory leak
+                        if key in self.latest_candles:
+                            del self.latest_candles[key]
 
     def _candle_to_dict(self, candle: Candle) -> dict[str, Any]:
         """
