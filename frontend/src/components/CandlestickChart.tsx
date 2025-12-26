@@ -270,7 +270,7 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
       period: number
     ) => {
       series.applyOptions({ visible: enabled })
-      
+
       if (!enabled) {
         // Clear stale data when indicator is disabled
         series.setData([])
