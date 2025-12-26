@@ -1,4 +1,4 @@
-name: Notify Copilot of Review Comments
+name: Notify PR Author of Review Comments
 
 on:
   pull_request_review:
@@ -8,12 +8,11 @@ permissions:
   pull-requests: write
 
 jobs:
-  notify-copilot:
-    name: Ask Copilot to address comments
+  notify-author:
+    name: Ask PR author to address comments
     runs-on: ubuntu-latest
-    # Only for Copilot PRs with COMMENTED reviews (not APPROVED)
+    # Only for COMMENTED reviews (not APPROVED/CHANGES_REQUESTED)
     if: |
-      startsWith(github.event.pull_request.head.ref, 'copilot/') &&
       github.event.review.state == 'commented' &&
       github.event.review.body != ''
     steps:
@@ -33,14 +32,15 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Notify Copilot of review comments
+      - name: Notify PR author of review comments
         if: steps.spam-check.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
+          AUTHOR="${{ github.event.pull_request.user.login }}"
           REVIEWER="${{ github.event.review.user.login }}"
 
           gh pr comment ${{ github.event.pull_request.number }} --body \
-            "@copilot $REVIEWER has reviewed this PR and left comments. Please address the review comments and push the fixes.
+            "@$AUTHOR $REVIEWER has reviewed this PR and left comments. Please address the review comments and push the fixes.
 
           Review: ${{ github.event.review.html_url }}"
