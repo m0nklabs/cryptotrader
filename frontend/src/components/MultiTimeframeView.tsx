@@ -20,12 +20,14 @@ export default function MultiTimeframeView({ symbol, fetchCandles }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Initialize with default preset
+  // Initialize with default preset (only once on mount)
   useEffect(() => {
     if (charts.length === 0) {
       applyPreset('swing', symbol)
     }
-  }, []) // Only run once on mount
+    // Intentionally empty dependency array - we only want to run this once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Fetch candles for all visible charts
   useEffect(() => {
