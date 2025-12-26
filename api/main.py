@@ -289,7 +289,7 @@ async def get_system_status() -> dict[str, Any]:
     Returns:
         JSON with health status for backend, database, and ingestion timers.
 
-    Example response:
+    Example response (JSON representation):
         {
             "backend": {
                 "status": "ok",
@@ -300,8 +300,14 @@ async def get_system_status() -> dict[str, Any]:
                 "connected": true,
                 "latency_ms": 2.34
             },
-            "timestamp": 1234567890
+            "timestamp": 1735232925000
         }
+
+    Notes:
+        - timestamp is in milliseconds since epoch (for JavaScript compatibility)
+        - uptime_seconds is in seconds since application start
+        - latency_ms is in milliseconds, rounded to 2 decimal places
+        - Returns 200 status even on database errors (errors embedded in response)
     """
     status_response: dict[str, Any] = {
         "backend": {"status": "ok", "uptime_seconds": int(time.time() - _app_start_time)},

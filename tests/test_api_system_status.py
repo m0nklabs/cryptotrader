@@ -2,92 +2,99 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
-# Add project root to path
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from fastapi.testclient import TestClient
 
 
-@pytest.mark.asyncio
-async def test_system_status_endpoint_success():
+@pytest.fixture
+def client():
+    """Create a test client."""
+    from api.main import app
+
+    return TestClient(app)
+
+
+def test_system_status_endpoint_success(client):
     """Test system status endpoint with successful database connection."""
-    from api.main import get_system_status
-
     # Mock the stores and database
     with patch("api.main._get_stores") as mock_get_stores:
-        mock_engine = MagicMock()
-        mock_conn = MagicMock()
-        mock_text = MagicMock()
-
-        # Mock the engine and connection
-        mock_stores = MagicMock()
-        mock_stores._get_engine.return_value = mock_engine
-        mock_stores._require_sqlalchemy.return_value = (None, mock_text)
+        mock_stores = Mock()
         mock_get_stores.return_value = mock_stores
 
-        # Mock begin context manager
-        mock_engine.begin.return_value.__enter__.return_value = mock_conn
-        mock_engine.begin.return_value.__exit__.return_value = None
+        # Mock engine and connection
+        mock_engine = Mock()
+        mock_conn = MagicMock()
+        mock_stores._get_engine.return_value = mock_engine
+        mock_engine.begin.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.begin.return_value.__exit__ = Mock(return_value=False)
+
+        # Mock SQLAlchemy text function
+        def text_func(sql):
+            return Mock(text=sql)
+
+        mock_stores._require_sqlalchemy.return_value = (Mock(), text_func)
 
         # Mock the query result
-        mock_conn.execute.return_value.scalar.return_value = 1
+        mock_result = Mock()
+        mock_result.scalar.return_value = 1
+        mock_conn.execute.return_value = mock_result
 
-        # Call the endpoint
-        response = await get_system_status()
+        # Call the endpoint via HTTP
+        response = client.get("/system/status")
+
+        # Verify HTTP response
+        assert response.status_code == 200
+        data = response.json()
 
         # Verify response structure
-        assert "backend" in response
-        assert "database" in response
-        assert "timestamp" in response
+        assert "backend" in data
+        assert "database" in data
+        assert "timestamp" in data
 
         # Verify backend status
-        assert response["backend"]["status"] == "ok"
-        assert "uptime_seconds" in response["backend"]
-        assert isinstance(response["backend"]["uptime_seconds"], int)
+        assert data["backend"]["status"] == "ok"
+        assert "uptime_seconds" in data["backend"]
+        assert isinstance(data["backend"]["uptime_seconds"], int)
 
         # Verify database status
-        assert response["database"]["status"] == "ok"
-        assert response["database"]["connected"] is True
-        assert "latency_ms" in response["database"]
-        assert response["database"]["latency_ms"] is not None
+        assert data["database"]["status"] == "ok"
+        assert data["database"]["connected"] is True
+        assert "latency_ms" in data["database"]
+        assert data["database"]["latency_ms"] is not None
 
 
-@pytest.mark.asyncio
-async def test_system_status_endpoint_database_error():
+def test_system_status_endpoint_database_error(client):
     """Test system status endpoint when database connection fails."""
-    from api.main import get_system_status
-
     # Mock the stores to raise an error
     with patch("api.main._get_stores") as mock_get_stores:
         mock_get_stores.side_effect = RuntimeError("DATABASE_URL environment variable is required")
 
-        # Call the endpoint (should not raise, but return error status)
-        response = await get_system_status()
+        # Call the endpoint via HTTP
+        response = client.get("/system/status")
+
+        # Verify HTTP response
+        assert response.status_code == 200
+        data = response.json()
 
         # Verify response structure
-        assert "backend" in response
-        assert "database" in response
-        assert "timestamp" in response
+        assert "backend" in data
+        assert "database" in data
+        assert "timestamp" in data
 
         # Backend should still be ok
-        assert response["backend"]["status"] == "ok"
+        assert data["backend"]["status"] == "ok"
 
         # Database should show error
-        assert response["database"]["status"] == "error"
-        assert response["database"]["connected"] is False
-        assert response["database"]["latency_ms"] is None
-        assert "error" in response["database"]
+        assert data["database"]["status"] == "error"
+        assert data["database"]["connected"] is False
+        assert data["database"]["latency_ms"] is None
+        assert "error" in data["database"]
 
 
-def test_system_status_endpoint_exists():
+def test_system_status_endpoint_exists(client):
     """Test that the system status endpoint is registered."""
-    from api.main import app
-
-    routes = [route.path for route in app.routes]
-    assert "/system/status" in routes
+    response = client.get("/system/status")
+    # Should return 200 (even with mocked DB errors, endpoint exists)
+    assert response.status_code == 200
