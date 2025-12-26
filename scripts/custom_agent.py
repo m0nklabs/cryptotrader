@@ -2,7 +2,8 @@ import os
 import sys
 import json
 import subprocess
-from openai import OpenAI
+import time
+from openai import OpenAI, RateLimitError, APIError
 
 
 def run_gh_command(command):
@@ -22,11 +23,44 @@ def get_issue_context(issue_number, repo):
     return json.loads(data)
 
 
+def call_llm_with_retry(client, model, messages, max_retries=5):
+    """Calls LLM with exponential backoff for Rate Limits (429)."""
+    base_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            return client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.2,
+            )
+        except RateLimitError as e:
+            if attempt == max_retries - 1:
+                raise e
+
+            delay = base_delay * (2**attempt)
+            print(f"Rate limit hit (429). Retrying in {delay}s... (Attempt {attempt + 1}/{max_retries})")
+            time.sleep(delay)
+        except APIError as e:
+            # Handle 502/503 errors from OpenRouter/Proxy
+            if e.status_code in [502, 503, 504]:
+                if attempt == max_retries - 1:
+                    raise e
+                delay = base_delay * (2**attempt)
+                print(f"API Error ({e.status_code}). Retrying in {delay}s...")
+                time.sleep(delay)
+            else:
+                raise e
+
+    return None
+
+
 def main():
     # Configuration from Environment
     api_key = os.environ.get("LLM_API_KEY")
-    base_url = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")  # Default to OpenRouter
-    model = os.environ.get("LLM_MODEL", "anthropic/claude-3.5-sonnet")  # Default to Claude 3.5 Sonnet
+    # Support for custom proxy URL (e.g. http://localhost:8080/v1 or https://my-proxy.com/v1)
+    base_url = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    model = os.environ.get("LLM_MODEL", "anthropic/claude-3.5-sonnet")
 
     repo = os.environ.get("GITHUB_REPOSITORY")
     issue_number = os.environ.get("ISSUE_NUMBER")
@@ -35,6 +69,8 @@ def main():
     if not api_key:
         print("Error: LLM_API_KEY not set")
         sys.exit(1)
+
+    print(f"Initializing Client with Base URL: {base_url}")
 
     # Initialize Client (OpenAI compatible)
     client = OpenAI(
@@ -70,10 +106,10 @@ def main():
     print(f"Calling LLM ({model})...")
 
     try:
-        response = client.chat.completions.create(
+        response = call_llm_with_retry(
+            client=client,
             model=model,
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": full_prompt}],
-            temperature=0.2,
         )
 
         answer = response.choices[0].message.content
