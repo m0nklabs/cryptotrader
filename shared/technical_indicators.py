@@ -96,7 +96,7 @@ class TechnicalIndicators:
             RSI value (0-100)
         """
         if len(self.df) < period + 1:
-            logger.warning(f"⚠️ Not enough data for RSI({period}): need {period+1}, have {len(self.df)}")
+            logger.warning(f"⚠️ Not enough data for RSI({period}): need {period + 1}, have {len(self.df)}")
             return 50.0  # Return neutral
 
         delta = self.df["close"].diff()

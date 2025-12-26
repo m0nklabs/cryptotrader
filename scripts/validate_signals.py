@@ -114,7 +114,7 @@ def create_sample_candles(*, pattern: str = "oversold") -> list[Candle]:
 
 def display_opportunity(opportunity):
     """Pretty-print an opportunity."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Symbol: {opportunity.symbol}")
     print(f"Timeframe: {opportunity.timeframe}")
     print(f"Side: {opportunity.side}")
@@ -125,7 +125,7 @@ def display_opportunity(opportunity):
         print(f"    Strength: {sig.strength}/100")
         print(f"    Value: {sig.value}")
         print(f"    Reason: {sig.reason}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def main() -> int:
