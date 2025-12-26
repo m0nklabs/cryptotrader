@@ -16,13 +16,18 @@ setup:
   - name: Install Python dependencies
     run: |
       pip install --upgrade pip
+      pip install ruff pytest pytest-asyncio pytest-cov pre-commit
       if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
   - name: Install pre-commit hooks
     run: |
-      pip install pre-commit
       pre-commit install --install-hooks || true
+
+  - name: Verify linting tools
+    run: |
+      ruff --version
+      pytest --version
 
   - name: Install frontend dependencies
     run: |
