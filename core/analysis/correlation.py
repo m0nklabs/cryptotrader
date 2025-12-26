@@ -90,12 +90,13 @@ async def calculate_correlation_matrix(
     combined = pd.DataFrame()
     for symbol, df in all_data.items():
         # Extract base asset (e.g., BTC from BTCUSD or BTCUSDT)
-        # Handle common quote currencies: USD, USDT, USDC, EUR, BTC
+        # Handle common quote currencies (longest first to avoid partial matches)
         base = symbol
-        for quote in ['USDT', 'USDC', 'USD', 'EUR', 'BTC']:
+        for quote in ['USDT', 'USDC', 'USD', 'EUR']:
             if symbol.endswith(quote):
                 base = symbol[:-len(quote)]
                 break
+        # Only if no quote currency matched, it's likely a base pair like 'BTC'
         combined[base] = df["close"]
 
     # Drop NaN values

@@ -4,7 +4,7 @@
  * Grid layout displaying multiple charts with synchronized crosshair
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import SyncedChart from './SyncedChart'
 import { useMultiChartStore, type TimeframePreset } from '../stores/multiChartStore'
 import type { OHLCV } from '../utils/indicators'
@@ -20,12 +20,14 @@ export default function MultiTimeframeView({ symbol, fetchCandles }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Initialize with default preset (only once on mount)
+  // Initialize with default preset (only once on mount with initial symbol)
+  const initialSymbolRef = useRef(symbol)
   useEffect(() => {
     if (charts.length === 0) {
-      applyPreset('swing', symbol)
+      applyPreset('swing', initialSymbolRef.current)
     }
     // Intentionally empty dependency array - we only want to run this once on mount
+    // Symbol changes after mount are handled separately in the candle fetching effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
