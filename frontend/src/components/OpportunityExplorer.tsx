@@ -80,16 +80,18 @@ export default function OpportunityExplorer({ exchange = 'bitfinex', onSelectOpp
     const compareStrings = (a: string, b: string) =>
       sortDirection === 'asc' ? a.localeCompare(b) : b.localeCompare(a)
 
-    // Sort
+    // Sort with type-safe comparisons
     result.sort((a, b) => {
       if (sortKey === 'timestamp') {
         return compareNumbers(a.created_at, b.created_at)
       } else if (sortKey === 'score') {
         return compareNumbers(a.score, b.score)
-      } else {
-        // symbol or timeframe (both strings)
-        return compareStrings(a[sortKey], b[sortKey])
+      } else if (sortKey === 'symbol') {
+        return compareStrings(a.symbol, b.symbol)
+      } else if (sortKey === 'timeframe') {
+        return compareStrings(a.timeframe, b.timeframe)
       }
+      return 0
     })
 
     return result
