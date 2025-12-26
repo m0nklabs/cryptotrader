@@ -28,7 +28,7 @@ _TIMEFRAMES: dict[str, _TimeframeSpec] = {
     "15m": _TimeframeSpec(api="15m", delta=timedelta(minutes=15), step_ms=900_000),
     "1h": _TimeframeSpec(api="1h", delta=timedelta(hours=1), step_ms=3_600_000),
     "4h": _TimeframeSpec(api="4h", delta=timedelta(hours=4), step_ms=14_400_000),
-    "1d": _TimeframeSpec(api="1D", delta=timedelta(days=1), step_ms=86_400_000),
+    "1d": _TimeframeSpec(api="1D", delta=timedelta(days=1), step_ms=86_400_000),  # Bitfinex uses "1D" not "1d"
 }
 
 
