@@ -740,14 +740,15 @@ async def get_market_cap() -> dict[str, Any]:
             "last_updated": 1234567890
         }
     """
-    current_time = time.time()
-    
-    # Check if we're using cached data (not refreshing on this call)
+    # Get cache timestamp before refresh
     with _market_cap_cache_lock:
-        cache_age = current_time - _market_cap_cache_time if _market_cap_cache_time > 0 else float('inf')
-        using_cache = cache_age < MARKET_CAP_CACHE_TTL and _market_cap_cache
+        cache_time_before = _market_cap_cache_time
     
     rankings = _refresh_market_cap_cache()
+    
+    # If cache timestamp didn't change, data was served from cache
+    with _market_cap_cache_lock:
+        using_cache = (_market_cap_cache_time == cache_time_before) and cache_time_before > 0
 
     # Determine source
     source = "coingecko" if rankings != FALLBACK_MARKET_CAP_RANK else "fallback"

@@ -668,7 +668,7 @@ export default function App() {
       const controller = new AbortController()
       inFlight = controller
 
-      fetchMarketCap()
+      fetchMarketCap(controller.signal)
         .then((data) => {
           if (!mounted) return
           setMarketCapRank(data.rankings)
