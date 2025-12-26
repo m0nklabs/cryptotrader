@@ -12,6 +12,7 @@ export default defineConfig({
       '/healthz': 'http://127.0.0.1:8787',
       '/health': 'http://127.0.0.1:8000',
       '/ingestion': 'http://127.0.0.1:8000',
+      '/system': 'http://127.0.0.1:8000',
     },
   },
   preview: {
@@ -20,6 +21,7 @@ export default defineConfig({
       '/healthz': 'http://127.0.0.1:8787',
       '/health': 'http://127.0.0.1:8000',
       '/ingestion': 'http://127.0.0.1:8000',
+      '/system': 'http://127.0.0.1:8000',
     },
   },
 })
