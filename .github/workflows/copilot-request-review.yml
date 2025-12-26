@@ -1,0 +1,92 @@
+name: Copilot Request Review
+
+# This workflow requests a review from the Copilot Reviewer when the Copilot
+# Coding Agent has finished its work.
+# It runs after the CI checks have passed.
+
+on:
+  workflow_run:
+    workflows: ["Copilot Branch CI"]
+    types:
+      - completed
+
+permissions:
+  pull-requests: write
+  issues: write
+  contents: read
+
+jobs:
+  request-review:
+    name: Request Copilot Review
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Find PR for this branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          PR=$(gh api repos/${{ github.repository }}/pulls \
+            --jq ".[] | select(.head.ref == \"$BRANCH\") | .number" | head -1)
+
+          if [ -z "$PR" ]; then
+            echo "No PR found for branch $BRANCH"
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "pr_number=$PR" >> $GITHUB_OUTPUT
+
+      - name: Check if Copilot finished work
+        id: check
+        if: steps.pr.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+
+          # Check for "Copilot finished work" comment
+          FINISHED=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+            --jq '[.[] | select(.body | test("Copilot finished work on behalf of"))] | length')
+
+          if [ "$FINISHED" -eq 0 ]; then
+            echo "Copilot not finished yet"
+            echo "copilot_finished=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "copilot_finished=true" >> $GITHUB_OUTPUT
+
+          # Check if Copilot Reviewer already reviewed
+          EXISTING_REVIEW=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length')
+
+          echo "existing_reviews=$EXISTING_REVIEW" >> $GITHUB_OUTPUT
+
+      - name: Request Copilot review
+        if: steps.check.outputs.copilot_finished == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+          EXISTING="${{ steps.check.outputs.existing_reviews }}"
+
+          if [ "$EXISTING" -eq 0 ]; then
+            echo "Requesting initial Copilot review for PR #$PR_NUMBER"
+            gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/requested_reviewers" \
+              -X POST \
+              -f team_reviewers[]="copilot-pull-request-reviewer" 2>/dev/null || \
+            gh pr edit "$PR_NUMBER" --add-reviewer "@copilot" 2>/dev/null || \
+            echo "Could not add Copilot as reviewer via standard methods"
+          else
+            echo "Copilot already reviewed, requesting re-review for PR #$PR_NUMBER"
+            # Dismiss stale review to trigger re-review
+            REVIEW_ID=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
+              --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last | .id')
+
+            if [ -n "$REVIEW_ID" ] && [ "$REVIEW_ID" != "null" ]; then
+              # Post comment to request re-review from Copilot
+              gh pr comment "$PR_NUMBER" --body "🔄 @copilot Please re-review this PR - new changes have been pushed."
+            fi
+          fi
