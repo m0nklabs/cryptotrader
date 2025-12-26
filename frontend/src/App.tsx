@@ -855,8 +855,8 @@ export default function App() {
         <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-3">
           <div className="ct-dock-grid gap-3">
             <div className="ct-dock-left flex flex-col gap-3">
-              <Panel 
-                title="Market Watch" 
+              <Panel
+                title="Market Watch"
                 subtitle={`Symbols / tickers${marketCapSource === 'coingecko' ? ' (live rankings)' : ''}`}
               >
                 <Kvp k="Primary" v="BTCUSD" />
