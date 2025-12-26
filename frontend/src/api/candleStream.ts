@@ -36,6 +36,7 @@ export class CandleStream {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000; // Start with 1 second
+  private maxReconnectDelay = 30000; // Cap at 30 seconds
 
   constructor(
     symbol: string,
@@ -99,7 +100,10 @@ export class CandleStream {
       // Attempt reconnection with exponential backoff
       if (this.reconnectAttempts < this.maxReconnectAttempts) {
         this.reconnectAttempts++;
-        const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+        const delay = Math.min(
+          this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+          this.maxReconnectDelay
+        );
         console.log(`[CandleStream] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
         setTimeout(() => {

@@ -24,6 +24,13 @@ from core.types import Candle
 
 logger = logging.getLogger(__name__)
 
+# Queue size for candle updates per subscriber
+# This should be large enough to handle bursts of updates but not so large
+# that it consumes excessive memory. 100 candles is sufficient for:
+# - ~1.5 hours of 1m candles
+# - Multiple concurrent candle updates during reconnection
+SUBSCRIBER_QUEUE_SIZE = 100
+
 
 class CandleStreamService:
     """
@@ -114,7 +121,7 @@ class CandleStreamService:
         self.get_or_create_provider(symbol, timeframe)
 
         # Create subscriber queue
-        queue: asyncio.Queue[Candle] = asyncio.Queue(maxsize=100)
+        queue: asyncio.Queue[Candle] = asyncio.Queue(maxsize=SUBSCRIBER_QUEUE_SIZE)
 
         with self.lock:
             self.subscribers[key].append(queue)
