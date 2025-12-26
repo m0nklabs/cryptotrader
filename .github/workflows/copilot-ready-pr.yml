@@ -1,0 +1,38 @@
+name: Mark Copilot PRs Ready
+
+on:
+  # Trigger when CI workflow completes
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+jobs:
+  mark-ready:
+    name: Mark Copilot PR as ready for review
+    runs-on: ubuntu-latest
+    # Only run if CI succeeded and it's from a Copilot branch
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'copilot/')
+    steps:
+      - name: Mark PR ready for review
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          REPO="${{ github.repository }}"
+
+          echo "Looking for draft PR on branch: $BRANCH"
+
+          # Find the PR for this branch
+          PR_NUMBER=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,isDraft --jq '.[] | select(.isDraft == true) | .number')
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No draft PR found for branch $BRANCH (may already be ready or merged)"
+            exit 0
+          fi
+
+          echo "Found draft PR #$PR_NUMBER, marking as ready for review..."
+          gh pr ready "$PR_NUMBER" --repo "$REPO"
+          echo "✅ PR #$PR_NUMBER is now ready for review"
