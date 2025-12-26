@@ -26,9 +26,10 @@ from decimal import Decimal
 from typing import Any, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Path
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from api.candle_stream import get_candle_stream_service
 from core.execution.paper import PaperExecutor, PaperOrder, PaperPosition
 from core.fees.model import FeeModel
 from core.market_cap.coingecko import CoinGeckoClient
@@ -409,6 +410,67 @@ async def get_latest_candles(
                 "message": str(e),
             },
         ) from e
+
+
+@app.get("/candles/stream")
+async def stream_candles(
+    symbol: str = Query(..., description="Trading symbol (e.g., BTCUSD)"),
+    timeframe: str = Query(..., description="Timeframe (e.g., 1m, 5m, 1h)"),
+) -> StreamingResponse:
+    """Stream real-time candle updates via Server-Sent Events (SSE).
+
+    Args:
+        symbol: Trading symbol (e.g., BTCUSD)
+        timeframe: Candle timeframe (e.g., 1m, 5m, 1h)
+
+    Returns:
+        SSE stream with real-time candle updates.
+
+    Example:
+        Connect using EventSource in JavaScript:
+        ```
+        const es = new EventSource('/candles/stream?symbol=BTCUSD&timeframe=1m');
+        es.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log('New candle:', data);
+        };
+        ```
+    """
+    service = get_candle_stream_service()
+
+    async def event_generator():
+        """Generate SSE events."""
+        try:
+            async for candle_data in service.subscribe(symbol, timeframe):
+                # Format as SSE event
+                import json
+                yield f"data: {json.dumps(candle_data)}\n\n"
+        except Exception as e:
+            logger.error(f"Error in SSE stream for {symbol}:{timeframe}: {e}")
+            # Send error event
+            import json
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+@app.get("/candles/stream/status")
+async def get_stream_status() -> dict[str, Any]:
+    """Get status of active candle streams.
+
+    Returns:
+        JSON with stream connection information.
+    """
+    service = get_candle_stream_service()
+    return service.get_connection_status()
 
 
 # =============================================================================
