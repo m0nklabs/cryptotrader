@@ -1,15 +1,26 @@
 # Docs
 
-This folder contains the minimal project documentation for `cryptotrader`.
+This folder contains the project documentation for `cryptotrader`.
 
-- [Architecture](ARCHITECTURE.md): System scope and high-level design.
-- [Development](DEVELOPMENT.md): Local setup and basic commands.
-- [Frontend](FRONTEND.md): Minimal dashboard UI skeleton.
-- [Operations](OPERATIONS.md): Runbook (ports, services).
-- [WebSocket](WEBSOCKET.md): Real-time market data via WebSocket streaming.
-- [TODO](TODO.md): Feature list and implementation work packages.
-- [Orchestration](ORCHESTRATION.md): How we delegate work via Issues/PRs.
+## Quick Links
 
-Repository-wide agent guidance is in `AGENTS.md` at repo root.
+- [**Features Status**](FEATURES.md): What's implemented and working ✅
+- [Architecture](ARCHITECTURE.md): System scope and high-level design
+- [Development](DEVELOPMENT.md): Local setup and basic commands
+- [Frontend](FRONTEND.md): Dashboard UI documentation
+- [Operations](OPERATIONS.md): Runbook (ports, services)
+- [WebSocket](WEBSOCKET.md): Real-time market data streaming
+- [Orchestration](ORCHESTRATION.md): How we delegate work via Issues/PRs
 
-The complete feature list lives in `docs/TODO.md`.
+## Additional Docs
+
+- [Extended Indicators](EXTENDED_INDICATORS_SUMMARY.md): Technical indicator details
+- [Risk Management](RISK_MANAGEMENT.md): Position sizing and limits
+- [Ports Reference](PORTS.md): Service port assignments
+- [Testing Real-time](TESTING_REALTIME.md): WebSocket testing guide
+
+## For Contributors
+
+- Repository-wide agent guidance is in `.github/copilot-instructions.md`
+- Path-specific instructions in `.github/instructions/`
+- The complete feature backlog is tracked in [GitHub Issues](https://github.com/m0nklabs/cryptotrader/issues)
