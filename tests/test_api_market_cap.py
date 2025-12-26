@@ -65,18 +65,26 @@ def test_market_cap_cache_refresh(mock_get_client):
 @patch("api.main._get_coingecko_client")
 def test_market_cap_fallback_on_error(mock_get_client):
     """Test that fallback rankings are used when API fails."""
-    from api.main import _refresh_market_cap_cache, FALLBACK_MARKET_CAP_RANK
-    import api.main
+    import api.main as api_main
 
-    # Clear the cache to ensure clean test
-    api.main._market_cap_cache = {}
-    api.main._market_cap_cache_time = 0
+    # Save original cache state
+    original_cache = api_main._market_cap_cache.copy()
+    original_cache_time = api_main._market_cap_cache_time
 
-    # Mock CoinGecko client to raise an error
-    mock_client = mock_get_client.return_value
-    mock_client.get_market_cap_map.side_effect = Exception("API Error")
+    try:
+        # Clear the cache to ensure clean test
+        api_main._market_cap_cache = {}
+        api_main._market_cap_cache_time = 0
 
-    result = _refresh_market_cap_cache()
+        # Mock CoinGecko client to raise an error
+        mock_client = mock_get_client.return_value
+        mock_client.get_market_cap_map.side_effect = Exception("API Error")
 
-    # Should return fallback rankings
-    assert result == FALLBACK_MARKET_CAP_RANK
+        result = api_main._refresh_market_cap_cache()
+
+        # Should return fallback rankings
+        assert result == api_main.FALLBACK_MARKET_CAP_RANK
+    finally:
+        # Restore original cache state
+        api_main._market_cap_cache = original_cache
+        api_main._market_cap_cache_time = original_cache_time

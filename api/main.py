@@ -56,6 +56,7 @@ _coingecko_client: CoinGeckoClient | None = None
 # Global market cap cache
 _market_cap_cache: dict[str, int] = {}
 _market_cap_cache_time: float = 0
+_market_cap_cache_source: str = "fallback"  # Track actual source of cached data
 _market_cap_cache_lock = threading.Lock()
 MARKET_CAP_CACHE_TTL = 600  # 10 minutes in seconds
 
@@ -689,12 +690,11 @@ def _refresh_market_cap_cache() -> dict[str, int]:
         Dictionary mapping symbol to market cap rank.
         Falls back to static rankings on error.
     """
-    global _market_cap_cache, _market_cap_cache_time
+    global _market_cap_cache, _market_cap_cache_time, _market_cap_cache_source
 
-    current_time = time.time()
-
-    # Return cached data if still valid
+    # Check cache validity inside lock to prevent race conditions
     with _market_cap_cache_lock:
+        current_time = time.time()
         if _market_cap_cache and (current_time - _market_cap_cache_time) < MARKET_CAP_CACHE_TTL:
             logger.debug("Using cached market cap data")
             return _market_cap_cache
@@ -708,11 +708,14 @@ def _refresh_market_cap_cache() -> dict[str, int]:
         if market_cap_map:
             with _market_cap_cache_lock:
                 _market_cap_cache = market_cap_map
-                _market_cap_cache_time = current_time
+                _market_cap_cache_time = time.time()
+                _market_cap_cache_source = "coingecko"
             logger.info(f"Updated market cap cache with {len(market_cap_map)} coins")
             return market_cap_map
         else:
             logger.warning("CoinGecko returned empty data, using fallback")
+            with _market_cap_cache_lock:
+                _market_cap_cache_source = "fallback"
             return FALLBACK_MARKET_CAP_RANK
 
     except Exception as e:
@@ -722,6 +725,7 @@ def _refresh_market_cap_cache() -> dict[str, int]:
             if _market_cap_cache:
                 logger.info("Using stale cache due to API error")
                 return _market_cap_cache
+            _market_cap_cache_source = "fallback"
         logger.info("Using static fallback rankings")
         return FALLBACK_MARKET_CAP_RANK
 
@@ -749,9 +753,7 @@ async def get_market_cap() -> dict[str, Any]:
     # If cache timestamp didn't change, data was served from cache
     with _market_cap_cache_lock:
         using_cache = (_market_cap_cache_time == cache_time_before) and cache_time_before > 0
-
-    # Determine source
-    source = "coingecko" if rankings != FALLBACK_MARKET_CAP_RANK else "fallback"
+        source = _market_cap_cache_source
 
     return {
         "rankings": rankings,
