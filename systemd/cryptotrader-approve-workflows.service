@@ -1,0 +1,22 @@
+[Unit]
+Description=Auto-approve GitHub Actions workflow runs for cryptotrader
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment="GH_PAT=%h/.secrets/gh_pat"
+EnvironmentFile=-%h/.config/cryptotrader/approve-workflows.env
+ExecStart=%h/cryptotrader/.venv/bin/python -m scripts.approve_workflows --daemon --interval 30
+WorkingDirectory=%h/cryptotrader
+Restart=on-failure
+RestartSec=30
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

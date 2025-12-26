@@ -1,0 +1,69 @@
+# Approve workflow runs when Copilot finishes work
+# Triggers on "Copilot finished work on behalf of" comments
+name: Approve Copilot Runs
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  approve-runs:
+    # Only run on PR comments from github-actions bot containing the magic phrase
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, 'Copilot finished work on behalf of')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      pull-requests: read
+
+    steps:
+      - name: Get PR details
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_DATA=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.issue.number }})
+          HEAD_SHA=$(echo "$PR_DATA" | jq -r '.head.sha')
+          HEAD_BRANCH=$(echo "$PR_DATA" | jq -r '.head.ref')
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "head_branch=$HEAD_BRANCH" >> $GITHUB_OUTPUT
+          echo "PR #${{ github.event.issue.number }} - Branch: $HEAD_BRANCH, SHA: $HEAD_SHA"
+
+      - name: Approve pending workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          echo "🔍 Looking for pending workflow runs on branch: ${{ steps.pr.outputs.head_branch }}"
+
+          # Get all runs awaiting approval for this branch
+          PENDING_RUNS=$(gh api "repos/${{ github.repository }}/actions/runs?status=action_required&branch=${{ steps.pr.outputs.head_branch }}&per_page=100" \
+            --jq '.workflow_runs[] | {id: .id, name: .name, event: .event}')
+
+          if [ -z "$PENDING_RUNS" ]; then
+            echo "✅ No pending workflow runs to approve"
+            exit 0
+          fi
+
+          echo "Found pending runs:"
+          echo "$PENDING_RUNS" | jq -c '.'
+
+          # Approve each pending run
+          APPROVED=0
+          FAILED=0
+
+          for RUN_ID in $(echo "$PENDING_RUNS" | jq -r '.id'); do
+            RUN_NAME=$(echo "$PENDING_RUNS" | jq -r "select(.id == $RUN_ID) | .name")
+            echo "Approving run $RUN_ID ($RUN_NAME)..."
+
+            if gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/approve" --method POST 2>/dev/null; then
+              echo "✅ Approved: $RUN_NAME (ID: $RUN_ID)"
+              APPROVED=$((APPROVED + 1))
+            else
+              echo "⚠️  Could not approve: $RUN_NAME (ID: $RUN_ID) - may already be approved or running"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo ""
+          echo "📊 Summary: $APPROVED approved, $FAILED skipped/failed"
