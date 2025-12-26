@@ -6,6 +6,10 @@ on:
     - cron: "*/2 * * * *"
   workflow_dispatch:
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   automatic-approve:
     name: Auto-approve Copilot workflow runs
