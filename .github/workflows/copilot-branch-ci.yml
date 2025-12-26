@@ -123,9 +123,9 @@ jobs:
         run: |
           PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
 
-          # Get latest Copilot review
+          # Get latest Copilot review (API returns "[bot]" suffix)
           REVIEW=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
-            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer")] | last')
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last')
 
           if [ -z "$REVIEW" ] || [ "$REVIEW" == "null" ]; then
             echo "No Copilot review found"
@@ -139,9 +139,9 @@ jobs:
           echo "$REVIEW_BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          # Count review comments
+          # Count review comments (API returns "[bot]" suffix)
           COMMENT_COUNT=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
-            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer")] | length')
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length')
           echo "comment_count=$COMMENT_COUNT" >> $GITHUB_OUTPUT
 
       - name: Analyze and decide
