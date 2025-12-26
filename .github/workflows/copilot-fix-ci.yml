@@ -1,0 +1,154 @@
+name: Auto-fix CI failures (Copilot)
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  issues: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  request-fix:
+    # Only run if CI failed and it's a PR
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate App Token
+        id: generate-token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Check if Copilot PR and request fix
+        id: check-fix
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.generate-token.outputs.token }}
+          script: |
+            const runId = context.payload.workflow_run.id;
+            const headBranch = context.payload.workflow_run.head_branch;
+            const headSha = context.payload.workflow_run.head_sha;
+
+            console.log(`CI failed for branch: ${headBranch}, sha: ${headSha}`);
+
+            // Find the PR for this branch
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${headBranch}`,
+              state: 'open'
+            });
+
+            if (prs.length === 0) {
+              console.log('No open PR found for this branch');
+              return;
+            }
+
+            const pr = prs[0];
+            const prNumber = pr.number;
+            const prAuthor = pr.user.login;
+
+            console.log(`Found PR #${prNumber} by ${prAuthor}`);
+
+            // Only auto-fix for Copilot PRs
+            const isCopilotPR =
+              prAuthor === 'copilot[bot]' ||
+              prAuthor === 'Copilot' ||
+              prAuthor === 'app/copilot-swe-agent' ||
+              prAuthor.toLowerCase().includes('copilot');
+
+            if (!isCopilotPR) {
+              console.log('Not a Copilot PR, skipping auto-fix request');
+              return;
+            }
+
+            // LOOP PROTECTION: Check recent comments to avoid spam
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 20
+            });
+
+            // Count fix requests in last 2 hours
+            const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+            const recentFixRequests = comments.filter(c =>
+              c.body.includes('@copilot') &&
+              c.body.toLowerCase().includes('fix') &&
+              new Date(c.created_at) > twoHoursAgo
+            );
+
+            const MAX_FIX_REQUESTS = 3;
+            if (recentFixRequests.length >= MAX_FIX_REQUESTS) {
+              console.log(`Already ${recentFixRequests.length} fix requests in last 2 hours. Stopping to prevent loop.`);
+
+              // Notify that manual intervention is needed
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `⚠️ **Auto-fix limit reached**\n\nCI has failed ${MAX_FIX_REQUESTS}+ times in the last 2 hours. Manual intervention may be required.\n\ncc @m0nk1111`
+              });
+              return;
+            }
+
+            // Check if the last comment was already a fix request for this SHA
+            const lastFixRequest = recentFixRequests[recentFixRequests.length - 1];
+            if (lastFixRequest && lastFixRequest.body.includes(headSha.substring(0, 7))) {
+              console.log('Already requested fix for this commit, waiting for Copilot response');
+              return;
+            }
+
+            // Get failed jobs info
+            const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId
+            });
+
+            const failedJobs = jobs.jobs.filter(j => j.conclusion === 'failure');
+            const failedJobNames = failedJobs.map(j => j.name).join(', ');
+
+            console.log(`Failed jobs: ${failedJobNames}`);
+
+            // Request Copilot to fix
+            const shortSha = headSha.substring(0, 7);
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+            const requestNum = recentFixRequests.length + 1;
+
+            // Store info for next step (PAT comment)
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('short_sha', shortSha);
+            core.setOutput('failed_jobs', failedJobNames);
+            core.setOutput('run_url', runUrl);
+            core.setOutput('request_num', requestNum);
+            core.setOutput('should_comment', 'true');
+
+            console.log(`Will request Copilot to fix CI failures on PR #${prNumber}`);
+
+      - name: Request Copilot fix (as user)
+        if: steps.check-fix.outputs.should_comment == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.check-fix.outputs.pr_number }}"
+          SHORT_SHA="${{ steps.check-fix.outputs.short_sha }}"
+          FAILED_JOBS="${{ steps.check-fix.outputs.failed_jobs }}"
+          RUN_URL="${{ steps.check-fix.outputs.run_url }}"
+          REQUEST_NUM="${{ steps.check-fix.outputs.request_num }}"
+
+          gh pr comment "$PR_NUMBER" --body "@copilot CI failed on commit \`${SHORT_SHA}\`. Please fix the following issues and push again:
+
+          **Failed checks:** ${FAILED_JOBS}
+
+          [View failed run](${RUN_URL})
+
+          _Auto-fix request ${REQUEST_NUM}/3_"
+
+          echo "Requested Copilot to fix CI failures on PR #${PR_NUMBER}"
