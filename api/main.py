@@ -287,7 +287,7 @@ async def get_system_status() -> dict[str, Any]:
     """Get comprehensive system health status.
 
     Returns:
-        JSON with health status for backend, database, and ingestion timers.
+        JSON with health status for backend and database, plus a timestamp.
 
     Example response (JSON representation):
         {
