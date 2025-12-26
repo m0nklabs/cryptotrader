@@ -11,15 +11,61 @@ permissions:
   contents: read
 
 jobs:
+  autofix:
+    name: Auto-fix style (PRs only)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fix style issues
+        run: |
+          pip install ruff -q
+
+          # Fix trailing whitespace
+          find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.ts" -o -name "*.tsx" \) \
+            -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./.venv/*" \
+            -exec sed -i 's/[[:space:]]*$//' {} \;
+
+          # Ruff fixes
+          ruff check --fix . || true
+          ruff format . || true
+
+      - name: Commit and push fixes
+        run: |
+          if git diff --quiet; then
+            echo "No style fixes needed"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "style: auto-fix whitespace and formatting"
+            git push
+            echo "Style fixes pushed - CI will re-run"
+          fi
+
   pre-commit:
     name: Pre-commit checks
     runs-on: ubuntu-latest
+    needs: [autofix]
+    if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -29,6 +75,8 @@ jobs:
   backend:
     name: Backend (ruff + pytest)
     runs-on: ubuntu-latest
+    needs: [autofix]
+    if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
 
     services:
       postgres:
@@ -53,10 +101,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -91,10 +139,12 @@ jobs:
   frontend:
     name: Frontend (build)
     runs-on: ubuntu-latest
+    needs: [autofix]
+    if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Node
         uses: actions/setup-node@v4
