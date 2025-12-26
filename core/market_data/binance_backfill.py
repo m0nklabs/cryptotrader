@@ -1,40 +1,39 @@
+"""Binance exchange adapter for OHLCV candle backfill.
+
+This module implements the ExchangeAdapter protocol for Binance,
+fetching historical candle data via the Binance public REST API.
+"""
+
 from __future__ import annotations
 
 import argparse
 import os
 import random
 import time
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Iterable, Sequence
 
 import requests
 
+from core.market_data.base import TimeframeSpec
 from core.storage import PostgresConfig, PostgresStores
 from core.types import Candle, MarketDataJob, Timeframe
 
 
-@dataclass(frozen=True)
-class _TimeframeSpec:
-    api: str
-    delta: timedelta
-    step_ms: int
-
-
-_TIMEFRAMES: dict[str, _TimeframeSpec] = {
-    "1m": _TimeframeSpec(api="1m", delta=timedelta(minutes=1), step_ms=60_000),
-    "5m": _TimeframeSpec(api="5m", delta=timedelta(minutes=5), step_ms=300_000),
-    "15m": _TimeframeSpec(api="15m", delta=timedelta(minutes=15), step_ms=900_000),
-    "1h": _TimeframeSpec(api="1h", delta=timedelta(hours=1), step_ms=3_600_000),
-    "4h": _TimeframeSpec(api="4h", delta=timedelta(hours=4), step_ms=14_400_000),
-    "1d": _TimeframeSpec(api="1D", delta=timedelta(days=1), step_ms=86_400_000),  # Bitfinex uses "1D" not "1d"
+# Binance-specific timeframe mappings
+_BINANCE_TIMEFRAMES: dict[str, TimeframeSpec] = {
+    "1m": TimeframeSpec(api="1m", delta=timedelta(minutes=1), step_ms=60_000),
+    "5m": TimeframeSpec(api="5m", delta=timedelta(minutes=5), step_ms=300_000),
+    "15m": TimeframeSpec(api="15m", delta=timedelta(minutes=15), step_ms=900_000),
+    "1h": TimeframeSpec(api="1h", delta=timedelta(hours=1), step_ms=3_600_000),
+    "4h": TimeframeSpec(api="4h", delta=timedelta(hours=4), step_ms=14_400_000),
+    "1d": TimeframeSpec(api="1d", delta=timedelta(days=1), step_ms=86_400_000),
 }
 
 
 def _parse_dt(value: str) -> datetime:
     """Parse ISO date/datetime and return timezone-aware UTC datetime."""
-
     # Accept YYYY-MM-DD
     if len(value) == 10 and value[4] == "-" and value[7] == "-":
         dt = datetime.fromisoformat(value)
@@ -52,40 +51,44 @@ def _to_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
-def _normalize_bitfinex_symbol(symbol: str) -> str:
-    s = symbol.strip()
+def _normalize_binance_symbol(symbol: str) -> str:
+    """Normalize symbol for Binance API.
+
+    Binance uses uppercase symbols without separators (e.g., BTCUSDT).
+    """
+    s = symbol.strip().upper().replace("/", "").replace(":", "")
     if not s:
         raise ValueError("symbol is required")
-    if not s.startswith("t"):
-        s = "t" + s
+    # Convert common variants to Binance format
+    if s.endswith("USD") and not s.endswith("USDT"):
+        s = s[:-3] + "USDT"  # Convert BTCUSD to BTCUSDT
     return s
 
 
-def _fetch_bitfinex_candles_page(
+def _fetch_binance_candles_page(
     *,
     symbol: str,
     timeframe_api: str,
     start_ms: int,
     end_ms: int,
-    limit: int = 10_000,
-    sort: int = 1,
+    limit: int = 1000,
     timeout_s: int = 20,
     max_retries: int = 6,
     initial_backoff_seconds: float = 0.5,
     max_backoff_seconds: float = 8.0,
     jitter_seconds: float = 0.0,
-) -> list[list[object]]:
-    """Fetch one page from Bitfinex candles endpoint.
+) -> list[list]:
+    """Fetch one page from Binance klines endpoint.
 
-    Response format: [[MTS, OPEN, CLOSE, HIGH, LOW, VOLUME], ...]
+    Response format: [[openTime, open, high, low, close, volume, closeTime, ...], ...]
     """
-
-    url = f"https://api-pub.bitfinex.com/v2/candles/trade:{timeframe_api}:{symbol}/hist"
+    url = "https://api.binance.com/api/v3/klines"
     params = {
-        "start": str(start_ms),
-        "end": str(end_ms),
+        "symbol": symbol,
+        "interval": timeframe_api,
+        "startTime": str(start_ms),
+        "endTime": str(end_ms),
         "limit": str(limit),
-        "sort": str(sort),
     }
 
     backoff = initial_backoff_seconds
@@ -95,7 +98,7 @@ def _fetch_bitfinex_candles_page(
         try:
             resp = requests.get(url, params=params, timeout=timeout_s)
             if resp.status_code == 429:
-                last_err = RuntimeError("Bitfinex candle fetch failed: HTTP 429 rate limiting")
+                last_err = RuntimeError("Binance candle fetch failed: HTTP 429 rate limiting")
                 jitter = random.uniform(0, jitter_seconds) if jitter_seconds > 0 else 0
                 time.sleep(backoff + jitter)
                 backoff = min(max_backoff_seconds, backoff * 2)
@@ -112,11 +115,11 @@ def _fetch_bitfinex_candles_page(
             backoff = min(max_backoff_seconds, backoff * 2)
 
     if last_err is None:
-        raise RuntimeError("Bitfinex candle fetch failed: exhausted retries")
-    raise RuntimeError("Bitfinex candle fetch failed") from last_err
+        raise RuntimeError("Binance candle fetch failed: exhausted retries")
+    raise RuntimeError("Binance candle fetch failed") from last_err
 
 
-def _iter_bitfinex_candles(
+def _iter_binance_candles(
     *,
     exchange: str,
     symbol: str,
@@ -128,23 +131,23 @@ def _iter_bitfinex_candles(
     max_backoff_seconds: float = 8.0,
     jitter_seconds: float = 0.0,
 ) -> Iterable[Candle]:
+    """Iterate over Binance candles for the given time range."""
     tf_key = str(timeframe)
-    if tf_key not in _TIMEFRAMES:
-        raise ValueError(f"Unsupported timeframe for backfill: {timeframe}")
+    if tf_key not in _BINANCE_TIMEFRAMES:
+        raise ValueError(f"Unsupported timeframe for Binance backfill: {timeframe}")
 
-    spec = _TIMEFRAMES[tf_key]
+    spec = _BINANCE_TIMEFRAMES[tf_key]
     start_ms = _to_ms(start)
     end_ms = _to_ms(end)
 
     cursor_ms = start_ms
     while cursor_ms <= end_ms:
-        page = _fetch_bitfinex_candles_page(
-            symbol=_normalize_bitfinex_symbol(symbol),
+        page = _fetch_binance_candles_page(
+            symbol=_normalize_binance_symbol(symbol),
             timeframe_api=spec.api,
             start_ms=cursor_ms,
             end_ms=end_ms,
-            limit=10_000,
-            sort=1,
+            limit=1000,  # Binance max is 1000
             max_retries=max_retries,
             initial_backoff_seconds=initial_backoff_seconds,
             max_backoff_seconds=max_backoff_seconds,
@@ -154,12 +157,14 @@ def _iter_bitfinex_candles(
         if not page:
             break
 
-        # Oldest-first when sort=1
         for row in page:
-            # [MTS, OPEN, CLOSE, HIGH, LOW, VOLUME]
-            mts = int(row[0])
-            open_time = datetime.fromtimestamp(mts / 1000, tz=timezone.utc)
-            close_time = open_time + spec.delta
+            # Binance klines format:
+            # [openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, ...]
+            open_time_ms = int(row[0])
+            close_time_ms = int(row[6])
+            open_time = datetime.fromtimestamp(open_time_ms / 1000, tz=timezone.utc)
+            close_time = datetime.fromtimestamp(close_time_ms / 1000, tz=timezone.utc)
+
             yield Candle(
                 exchange=exchange,
                 symbol=symbol,
@@ -167,16 +172,17 @@ def _iter_bitfinex_candles(
                 open_time=open_time,
                 close_time=close_time,
                 open=Decimal(str(row[1])),
-                close=Decimal(str(row[2])),
-                high=Decimal(str(row[3])),
-                low=Decimal(str(row[4])),
+                high=Decimal(str(row[2])),
+                low=Decimal(str(row[3])),
+                close=Decimal(str(row[4])),
                 volume=Decimal(str(row[5])),
             )
 
-        last_ts_ms = int(page[-1][0])
-        next_cursor = last_ts_ms + spec.step_ms
+        # Move to next page
+        last_close_time = int(page[-1][6])
+        next_cursor = last_close_time + 1  # Start from next millisecond
         if next_cursor <= cursor_ms:
-            # Safety against infinite loops if upstream returns duplicates.
+            # Safety against infinite loops
             next_cursor = cursor_ms + spec.step_ms
         cursor_ms = next_cursor
 
@@ -199,13 +205,31 @@ def run_backfill(
     timeframe: Timeframe,
     start: datetime,
     end: datetime,
-    exchange: str = "bitfinex",
+    exchange: str = "binance",
     batch_size: int = 1000,
     max_retries: int = 6,
     initial_backoff_seconds: float = 0.5,
     max_backoff_seconds: float = 8.0,
     jitter_seconds: float = 0.0,
 ) -> dict[str, int]:
+    """Run Binance candle backfill and store in database.
+
+    Args:
+        database_url: PostgreSQL connection string
+        symbol: Trading pair symbol (e.g., BTCUSDT or BTCUSD)
+        timeframe: Candle timeframe
+        start: Start datetime (UTC)
+        end: End datetime (UTC)
+        exchange: Exchange identifier (default: "binance")
+        batch_size: Number of candles to batch for DB upserts
+        max_retries: Maximum retry attempts
+        initial_backoff_seconds: Initial backoff delay
+        max_backoff_seconds: Maximum backoff delay
+        jitter_seconds: Random jitter for backoff
+
+    Returns:
+        Dictionary with job_id, run_id, candles_fetched, candles_upserted
+    """
     stores = PostgresStores(config=PostgresConfig(database_url=database_url))
 
     job_id = stores.create_job(
@@ -225,7 +249,7 @@ def run_backfill(
     candles_upserted = 0
 
     try:
-        candle_iter = _iter_bitfinex_candles(
+        candle_iter = _iter_binance_candles(
             exchange=exchange,
             symbol=symbol,
             timeframe=timeframe,
@@ -268,9 +292,11 @@ def run_backfill(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Backfill OHLCV candles from Bitfinex into Postgres.")
-    parser.add_argument("--symbol", required=True, help="Symbol without prefix, e.g. BTCUSD or BTC:USD")
-    parser.add_argument("--timeframe", required=True, choices=sorted(_TIMEFRAMES.keys()), help="Candle timeframe")
+    parser = argparse.ArgumentParser(description="Backfill OHLCV candles from Binance into Postgres.")
+    parser.add_argument("--symbol", required=True, help="Symbol (e.g., BTCUSDT, BTCUSD)")
+    parser.add_argument(
+        "--timeframe", required=True, choices=sorted(_BINANCE_TIMEFRAMES.keys()), help="Candle timeframe"
+    )
     parser.add_argument("--start", help="ISO datetime/date (UTC assumed if no tz)")
     parser.add_argument("--end", help="ISO datetime/date (UTC assumed if no tz). Default: now (UTC)")
     parser.add_argument(
@@ -278,7 +304,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Resume from the latest candle in DB (start = latest_open_time + timeframe).",
     )
-    parser.add_argument("--exchange", default="bitfinex", help="Exchange code stored in DB")
+    parser.add_argument("--exchange", default="binance", help="Exchange code stored in DB")
     parser.add_argument("--batch-size", type=int, default=1000, help="DB upsert batch size")
     parser.add_argument(
         "--max-retries",
@@ -337,20 +363,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if latest is None:
             raise SystemExit("No existing candles found to resume from; provide --start for the initial backfill")
-        # Postgres stores `TIMESTAMP` without timezone; normalize to UTC-aware to avoid
-        # naive/aware comparison errors.
         if latest.tzinfo is None:
             latest = latest.replace(tzinfo=timezone.utc)
-        start = latest + _TIMEFRAMES[str(args.timeframe)].delta
+        start = latest + _BINANCE_TIMEFRAMES[str(args.timeframe)].delta
     else:
         if not args.start:
             raise SystemExit("--start is required unless --resume is set")
         start = _parse_dt(args.start)
 
     if end <= start:
-        # In --resume mode this can happen near the boundary of the next candle
-        # (e.g. latest candle open_time is the current minute). Treat as a no-op
-        # so systemd timers do not record a failure.
         if args.resume:
             print("backfill-skip start_after_end")
             return 0
@@ -370,7 +391,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         jitter_seconds=args.jitter_seconds,
     )
 
-    # Keep output small and avoid printing DATABASE_URL.
     print(
         f"backfill-ok job_id={result['job_id']} run_id={result['run_id']} "
         f"fetched={result['candles_fetched']} upserted={result['candles_upserted']}"

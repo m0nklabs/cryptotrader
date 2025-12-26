@@ -98,6 +98,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settingsRef = useRef<HTMLDivElement | null>(null)
 
+  const [chartExchange, setChartExchange] = useState<string>('bitfinex')
   const [chartSymbol, setChartSymbol] = useState<string>('BTCUSD')
   const [chartTimeframe, setChartTimeframe] = useState<string>('1m')
   const [chartLimit, setChartLimit] = useState<number>(480)
@@ -203,7 +204,7 @@ export default function App() {
     const controller = new AbortController()
     setAvailableError(null)
 
-    fetch(`/api/candles/available?exchange=${encodeURIComponent('bitfinex')}`, { signal: controller.signal })
+    fetch(`/api/candles/available?exchange=${encodeURIComponent(chartExchange)}`, { signal: controller.signal })
       .then(async (resp) => {
         const bodyText = await resp.text()
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 120)}`)
@@ -260,7 +261,7 @@ export default function App() {
       })
 
     return () => controller.abort()
-  }, [])
+  }, [chartExchange])
 
   const timeframesForChartSymbol = useMemo(() => {
     const tfs = availableTimeframesBySymbol[chartSymbol]
@@ -275,7 +276,7 @@ export default function App() {
     let candleStream: ReturnType<typeof createCandleStream> | null = null
     let pollInterval: number | null = null
 
-    const exchange = 'bitfinex'
+    const exchange = chartExchange
     const timeframe = chartTimeframe
 
     // Load initial candles from database
@@ -430,7 +431,7 @@ export default function App() {
         inFlight.abort()
       }
     }
-  }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket])
+  }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket, chartExchange])
 
   useEffect(() => {
     let mounted = true
@@ -652,7 +653,7 @@ export default function App() {
       setIngestionStatusError(null)
 
       const fallbackToLegacy = async (): Promise<{ apiReachable: boolean; latestTime: number | null }> => {
-        const resp = await fetch('/api/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', {
+        const resp = await fetch(`/api/ingestion/status?exchange=${encodeURIComponent(chartExchange)}&symbol=BTCUSD&timeframe=1m`, {
           signal: controller.signal,
         })
         const bodyText = await resp.text()
@@ -687,7 +688,7 @@ export default function App() {
       }
 
       const fastApiIngestion = async (): Promise<number | null> => {
-        const resp = await fetch('/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', {
+        const resp = await fetch(`/ingestion/status?exchange=${encodeURIComponent(chartExchange)}&symbol=BTCUSD&timeframe=1m`, {
           signal: controller.signal,
         })
         const bodyText = await resp.text()
@@ -743,7 +744,7 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [gapStats])
+  }, [gapStats, chartExchange])
 
   // Fetch market cap rankings
   useEffect(() => {
@@ -947,6 +948,21 @@ export default function App() {
                 title="Market Watch"
                 subtitle={`Symbols / tickers${marketCapSource === 'coingecko' ? ' (live rankings)' : ''}`}
               >
+                <div className="mb-2">
+                  <Kvp
+                    k="Exchange"
+                    v={
+                      <select
+                        className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                        value={chartExchange}
+                        onChange={(ev) => setChartExchange(ev.target.value)}
+                      >
+                        <option value="bitfinex">Bitfinex</option>
+                        <option value="binance">Binance</option>
+                      </select>
+                    }
+                  />
+                </div>
                 <Kvp k="Primary" v="BTCUSD" />
                 <div className="mt-2 space-y-1">
                   {availableError ? (
@@ -977,7 +993,7 @@ export default function App() {
                 </div>
               </Panel>
 
-              <Panel title="Market Data" subtitle="Bitfinex candles (OHLCV)">
+              <Panel title="Market Data" subtitle={`${chartExchange.charAt(0).toUpperCase() + chartExchange.slice(1)} candles (OHLCV)`}>
                 {ingestionStatusError ? (
                   <div className="text-xs text-gray-600 dark:text-gray-400">{ingestionStatusError}</div>
                 ) : (
