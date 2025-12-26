@@ -153,9 +153,9 @@ jobs:
                 }
               }
 
-              // Prefer newer issues (higher number = newer = higher priority)
-              // We subtract a small fraction so that higher numbers result in a lower score
-              score -= issue.number / 100000;
+              // Prefer older issues (lower number = older = higher priority)
+              // We add a small fraction so that higher numbers (newer) result in a higher score (lower priority)
+              score += issue.number / 100000;
 
               return { issue, score };
             });
