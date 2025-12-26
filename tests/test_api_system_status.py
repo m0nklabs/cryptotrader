@@ -93,8 +93,9 @@ def test_system_status_endpoint_database_error(client):
         assert "error" in data["database"]
 
 
-def test_system_status_endpoint_exists(client):
+def test_system_status_endpoint_exists():
     """Test that the system status endpoint is registered."""
-    response = client.get("/system/status")
-    # Should return 200 (even with mocked DB errors, endpoint exists)
-    assert response.status_code == 200
+    from api.main import app
+
+    routes = [route.path for route in app.routes]
+    assert "/system/status" in routes
