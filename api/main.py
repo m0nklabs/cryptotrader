@@ -300,7 +300,7 @@ async def get_system_status() -> dict[str, Any]:
                 "connected": true,
                 "latency_ms": 2.34
             },
-            "timestamp": 1735232925000
+            "timestamp": 1234567890000
         }
 
     Notes:
