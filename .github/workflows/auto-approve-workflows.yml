@@ -1,0 +1,21 @@
+name: Auto-approve Copilot Workflows
+
+on:
+  schedule:
+    # Run every 2 minutes to quickly approve pending workflows
+    - cron: "*/2 * * * *"
+  workflow_dispatch:
+
+jobs:
+  automatic-approve:
+    name: Auto-approve Copilot workflow runs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Automatic Approve
+        uses: mheap/automatic-approve-action@v1
+        with:
+          token: ${{ secrets.GH_PAT }}
+          # Approve CI and related workflows
+          workflows: "ci.yml,codeql.yml,gitleaks.yml"
+          # Don't auto-approve if these files are modified (security)
+          dangerous_files: ".github/workflows"
