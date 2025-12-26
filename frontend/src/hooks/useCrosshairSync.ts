@@ -41,17 +41,6 @@ export function useCrosshairSync(
     }
   }, [chartApi, handleCrosshairMove])
 
-  // Apply crosshair position from other charts
-  // TODO: Future enhancement - When lightweight-charts v5 adds API to programmatically
-  // set crosshair position, implement it here to complete the synchronization.
-  // Currently, synchronization happens through subscribeCrosshairMove callbacks
-  // that all charts share via the crosshairTime state.
-  // This effect is intentionally minimal to avoid unnecessary re-renders.
-  useEffect(() => {
-    // Placeholder for future crosshair positioning API
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   return {
     crosshairTime,
   }

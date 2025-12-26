@@ -1041,7 +1041,7 @@ export default function App() {
       default:
         break
     }
-  }, [timeframesForChartSymbol])
+  }, [timeframesForChartSymbol, setChartTimeframe, setChartLimit])
 
   useKeyboardShortcuts(handleShortcut)
 

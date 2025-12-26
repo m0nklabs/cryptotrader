@@ -20,16 +20,16 @@ export default function MultiTimeframeView({ symbol, fetchCandles }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Initialize with default preset (only once on mount with initial symbol)
-  const initialSymbolRef = useRef(symbol)
+  // Initialize with default preset and update when symbol changes
+  const prevSymbolRef = useRef<string | null>(null)
   useEffect(() => {
-    if (charts.length === 0) {
-      applyPreset('swing', initialSymbolRef.current)
+    if (prevSymbolRef.current === symbol) {
+      return
     }
-    // Intentionally empty dependency array - we only want to run this once on mount
-    // Symbol changes after mount are handled separately in the candle fetching effect
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+
+    applyPreset('swing', symbol)
+    prevSymbolRef.current = symbol
+  }, [symbol, applyPreset])
 
   // Fetch candles for all visible charts
   useEffect(() => {

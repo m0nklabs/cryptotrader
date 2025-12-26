@@ -147,6 +147,9 @@ export function formatShortcut(shortcut: ShortcutDefinition): string {
   return parts.join('+')
 }
 
+// Keys that implicitly require shift (e.g., ? is Shift+/)
+const IMPLICIT_SHIFT_KEYS = ['?', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '+', '_']
+
 export function matchesShortcut(
   event: KeyboardEvent,
   shortcut: ShortcutDefinition
@@ -164,13 +167,13 @@ export function matchesShortcut(
   const needsAlt = shortcut.modifiers?.includes('Alt') || false
 
   // For special keys that implicitly require shift (like ? which is Shift+/),
-  // we don't check shift modifier unless explicitly specified
-  const implicitShiftKeys = ['?', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '+', '_']
-  const ignoreShift = implicitShiftKeys.includes(shortcut.key) && !needsShift
+  // we don't check shift modifier unless explicitly specified in the shortcut definition
+  const shouldIgnoreShift = IMPLICIT_SHIFT_KEYS.includes(shortcut.key) && !needsShift
 
   if (needsCtrl !== hasCtrl) return false
-  if (!ignoreShift && needsShift !== hasShift) return false
   if (needsAlt !== hasAlt) return false
+  // Only check shift if we're not ignoring it for implicit shift keys
+  if (!shouldIgnoreShift && needsShift !== hasShift) return false
 
   return true
 }

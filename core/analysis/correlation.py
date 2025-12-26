@@ -87,15 +87,26 @@ async def calculate_correlation_matrix(
     # Align all dataframes by time (inner join)
     combined = pd.DataFrame()
     for symbol, df in all_data.items():
-        # Extract base asset (e.g., BTC from BTCUSD or BTCUSDT)
+        # Extract base asset name for column labeling (e.g., BTC from BTCUSD or BTCUSDT)
         # Handle common quote currencies (longest first to avoid partial matches)
         base = symbol
         for quote in ["USDT", "USDC", "USD", "EUR"]:
             if symbol.endswith(quote):
                 base = symbol[: -len(quote)]
                 break
-        # Only if no quote currency matched, it's likely a base pair like 'BTC'
-        combined[base] = df["close"]
+        # If multiple symbols map to the same base (e.g., BTCUSD, BTCEUR -> BTC),
+        # avoid silently overwriting by falling back to the full symbol name.
+        col_name = base
+        if base in combined.columns and symbol != base:
+            logger.warning(
+                "Multiple symbols share base '%s' (existing columns: %s); "
+                "using full symbol '%s' as column name to avoid overwriting.",
+                base,
+                list(combined.columns),
+                symbol,
+            )
+            col_name = symbol
+        combined[col_name] = df["close"]
 
     # Drop NaN values
     combined = combined.dropna()

@@ -19,14 +19,19 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Suppress known async errors from lightweight-charts in jsdom
 // These errors occur during chart cleanup and don't affect test results
+// Note: In development mode, consider disabling this to see all errors
 beforeAll(() => {
   const originalError = console.error
+  const isDevelopment = import.meta.env.DEV
+
   console.error = (...args: any[]) => {
     const message = args[0]?.toString() || ''
-    // Ignore lightweight-charts async errors
-    if (message.includes('Value is null') ||
-        message.includes('ensureNotNull') ||
-        message.includes('lightweight-charts')) {
+    // Only suppress lightweight-charts specific errors
+    const isLightweightChartsError =
+      message.includes('Value is null') &&
+      (message.includes('ensureNotNull') || message.includes('PriceAxisWidget'))
+
+    if (isLightweightChartsError && !isDevelopment) {
       return
     }
     originalError.apply(console, args)

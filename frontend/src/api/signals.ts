@@ -32,22 +32,31 @@ export type SignalHistory = {
  */
 export async function fetchSignal(
   symbol: string,
-  exchange: string = 'bitfinex'
+  exchange: string = 'bitfinex',
+  timeoutMs: number = 10000
 ): Promise<OpportunitySignal | null> {
-  const response = await fetch(
-    `/api/signals?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}&limit=1`
-  )
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch signal: ${response.status}`)
+  try {
+    const response = await fetch(
+      `/api/signals?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}&limit=1`,
+      { signal: controller.signal }
+    )
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch signal: ${response.status}`)
+    }
+
+    const data = await response.json()
+    if (!data.signals || !Array.isArray(data.signals) || data.signals.length === 0) {
+      return null
+    }
+
+    return data.signals[0]
+  } finally {
+    clearTimeout(timeoutId)
   }
-
-  const data = await response.json()
-  if (!data.signals || !Array.isArray(data.signals) || data.signals.length === 0) {
-    return null
-  }
-
-  return data.signals[0]
 }
 
 /**
@@ -56,24 +65,33 @@ export async function fetchSignal(
 export async function fetchSignalHistory(
   symbol: string,
   exchange: string = 'bitfinex',
-  limit: number = 24
+  limit: number = 24,
+  timeoutMs: number = 10000
 ): Promise<SignalHistory[]> {
-  const response = await fetch(
-    `/api/signals?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}&limit=${limit}`
-  )
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch signal history: ${response.status}`)
+  try {
+    const response = await fetch(
+      `/api/signals?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}&limit=${limit}`,
+      { signal: controller.signal }
+    )
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch signal history: ${response.status}`)
+    }
+
+    const data = await response.json()
+    if (!data.signals || !Array.isArray(data.signals)) {
+      return []
+    }
+
+    return data.signals.map((sig: OpportunitySignal) => ({
+      timestamp: sig.created_at,
+      score: sig.score,
+      side: sig.side,
+    }))
+  } finally {
+    clearTimeout(timeoutId)
   }
-
-  const data = await response.json()
-  if (!data.signals || !Array.isArray(data.signals)) {
-    return []
-  }
-
-  return data.signals.map((sig: OpportunitySignal) => ({
-    timestamp: sig.created_at,
-    score: sig.score,
-    side: sig.side,
-  }))
 }
