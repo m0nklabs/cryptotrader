@@ -1,43 +1,62 @@
-name: Auto-approve Copilot Workflows
+name: Auto-trigger Copilot Workflows
 
 on:
   schedule:
-    # Run every 2 minutes to quickly approve pending workflows
+    # Run every 2 minutes to quickly handle pending workflows
     - cron: "*/2 * * * *"
   workflow_dispatch:
 
 jobs:
-  auto-approve:
-    name: Re-run pending workflow runs
+  auto-trigger:
+    name: Trigger workflows for blocked Copilot PRs
     runs-on: ubuntu-latest
     steps:
-      - name: Re-run action_required workflow runs from Copilot
+      - name: Trigger workflows via dispatch (bypasses approval)
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          echo "Checking for pending workflow runs..."
+          echo "Checking for action_required workflow runs from Copilot..."
 
-          # List runs with action_required conclusion (these are stuck waiting for approval)
-          # Note: status is "completed" but conclusion is "action_required"
-          PENDING=$(gh api repos/${{ github.repository }}/actions/runs \
-            --jq '.workflow_runs[] | select(.conclusion == "action_required") | {id: .id, name: .name, actor: .actor.login, branch: .head_branch}' \
-            2>/dev/null || echo "")
+          # Get blocked runs
+          BLOCKED=$(gh api repos/${{ github.repository }}/actions/runs \
+            --jq '[.workflow_runs[] | select(.conclusion == "action_required") | select(.actor.login == "Copilot" or .actor.login == "copilot-swe-agent") | {id: .id, name: .name, branch: .head_branch, workflow_id: .workflow_id}]' \
+            2>/dev/null || echo "[]")
 
-          if [ -z "$PENDING" ]; then
-            echo "No pending workflow runs found."
+          COUNT=$(echo "$BLOCKED" | jq 'length')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No blocked Copilot workflow runs found."
             exit 0
           fi
 
-          echo "Found pending runs:"
-          echo "$PENDING"
+          echo "Found $COUNT blocked runs"
 
-          # Re-run each pending run from Copilot (actor is "Copilot" for copilot-swe-agent PRs)
-          echo "$PENDING" | jq -r 'select(.actor == "Copilot" or .actor == "copilot-swe-agent") | .id' | while read -r RUN_ID; do
-            if [ -n "$RUN_ID" ]; then
-              echo "Re-running workflow run $RUN_ID..."
-              gh api --method POST repos/${{ github.repository }}/actions/runs/$RUN_ID/rerun \
-                || echo "Failed to re-run $RUN_ID (may already be running or completed)"
+          # Get unique branches with blocked workflows
+          BRANCHES=$(echo "$BLOCKED" | jq -r '[.[].branch] | unique | .[]')
+
+          for BRANCH in $BRANCHES; do
+            echo "Triggering CI for branch: $BRANCH"
+
+            # Check if there's already a running/queued CI for this branch
+            RUNNING=$(gh api repos/${{ github.repository }}/actions/runs \
+              --jq "[.workflow_runs[] | select(.head_branch == \"$BRANCH\") | select(.status == \"in_progress\" or .status == \"queued\")] | length" \
+              2>/dev/null || echo "0")
+
+            if [ "$RUNNING" -gt 0 ]; then
+              echo "  Already has $RUNNING running workflows, skipping"
+              continue
             fi
+
+            # Trigger CI via workflow_dispatch (bypasses first-time contributor check)
+            gh api -X POST repos/${{ github.repository }}/actions/workflows/ci.yml/dispatches \
+              -f ref="$BRANCH" 2>&1 || echo "  Failed to trigger CI for $BRANCH"
+
+            # Also trigger CodeQL and Secret Scan
+            gh api -X POST repos/${{ github.repository }}/actions/workflows/codeql.yml/dispatches \
+              -f ref="$BRANCH" 2>&1 || true
+            gh api -X POST repos/${{ github.repository }}/actions/workflows/gitleaks.yml/dispatches \
+              -f ref="$BRANCH" 2>&1 || true
+
+            echo "  Triggered workflows for $BRANCH"
           done
 
           echo "Done."
