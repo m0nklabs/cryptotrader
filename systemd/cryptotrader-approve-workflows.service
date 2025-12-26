@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/cryptotrader/.venv/bin/python -m scripts.approve_workflows --daemon --interval 30
+ExecStart=%h/cryptotrader/.venv/bin/python -m scripts.approve_workflows --daemon --interval 120
 WorkingDirectory=%h/cryptotrader
 Restart=on-failure
 RestartSec=30

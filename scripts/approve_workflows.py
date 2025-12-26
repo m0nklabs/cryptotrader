@@ -13,7 +13,7 @@ Usage:
     # Rerun all pending runs immediately
     python -m scripts.approve_workflows --approve-all
 
-    # Daemon mode: watch for new comments every 30s
+    # Daemon mode: watch for new comments every 2 mins
     python -m scripts.approve_workflows --daemon
 
 Requirements:
@@ -187,7 +187,7 @@ def rerun_all_pending(repo: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Auto-rerun Copilot workflow runs")
     parser.add_argument("--daemon", action="store_true", help="Run continuously")
-    parser.add_argument("--interval", type=int, default=30, help="Check interval (default: 30s)")
+    parser.add_argument("--interval", type=int, default=120, help="Check interval (default: 120s)")
     parser.add_argument("--repo", default=DEFAULT_REPO, help="Repository")
     parser.add_argument("--approve-all", action="store_true", help="Rerun all pending now")
     parser.add_argument("-v", "--verbose", action="store_true", help="Debug logging")

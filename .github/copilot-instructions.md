@@ -75,6 +75,20 @@ These instructions apply to GitHub Copilot in the context of this repository.
 - **If no PR exists yet**, post the `@copilot` comment in the issue to start fresh.
 - Example: "@copilot please continue implementing the missing tests."
 
+## Workflow Approval (ALREADY CONFIGURED)
+
+**DO NOT suggest changing GitHub Actions settings for first-time contributor approval.**
+
+The repo already has:
+- Settings → Actions → General → "Require approval for first-time contributors" configured
+- A local daemon (`scripts/approve_workflows.py`) that automatically reruns pending workflows when Copilot finishes
+
+If workflows are stuck in "action_required" status, the local daemon handles it via `gh run rerun`.
+Do NOT suggest:
+- Changing repo settings for fork pull request workflows
+- Adding Copilot as a collaborator
+- Manual approval via the GitHub UI
+
 ## Technical Stack Reference
 
 When implementing features, use these technologies:
