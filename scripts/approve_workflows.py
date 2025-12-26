@@ -246,11 +246,9 @@ def process_copilot_prs(repo: str, state: dict) -> int:
         branch = pr["branch"]
         pr_key = f"pr_{pr_number}"
 
-        # Skip if we already processed this PR in this session
-        if pr_key in state.get("processed_prs", []):
-            continue
-
-        logger.info(f"🔔 Copilot finished on PR #{pr_number} ({branch})")
+        # Log only if we haven't seen this PR recently
+        if pr_key not in state.get("processed_prs", []):
+            logger.info(f"🔔 Copilot finished on PR #{pr_number} ({branch})")
 
         # Request Copilot Reviewer for this PR
         if pr_key not in state.get("reviewed_prs", []):
