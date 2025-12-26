@@ -36,13 +36,24 @@ jobs:
           for BRANCH in $BRANCHES; do
             echo "Triggering CI for branch: $BRANCH"
 
-            # Check if there's already a running/queued CI for this branch
+            # Check if there's already a REAL running/queued CI for this branch
+            # Exclude action_required (those are blocked and won't run)
             RUNNING=$(gh api repos/${{ github.repository }}/actions/runs \
-              --jq "[.workflow_runs[] | select(.head_branch == \"$BRANCH\") | select(.status == \"in_progress\" or .status == \"queued\")] | length" \
+              --jq "[.workflow_runs[] | select(.head_branch == \"$BRANCH\") | select(.status == \"in_progress\" or .status == \"queued\") | select(.conclusion != \"action_required\")] | length" \
               2>/dev/null || echo "0")
 
             if [ "$RUNNING" -gt 0 ]; then
               echo "  Already has $RUNNING running workflows, skipping"
+              continue
+            fi
+
+            # Also check for recently triggered dispatch runs (within last 5 min)
+            RECENT=$(gh api repos/${{ github.repository }}/actions/runs \
+              --jq "[.workflow_runs[] | select(.head_branch == \"$BRANCH\") | select(.event == \"workflow_dispatch\") | select(.conclusion == \"success\" or .status == \"in_progress\" or .status == \"queued\")] | .[0:1] | length" \
+              2>/dev/null || echo "0")
+
+            if [ "$RECENT" -gt 0 ]; then
+              echo "  Recent dispatch run exists, skipping"
               continue
             fi
 
