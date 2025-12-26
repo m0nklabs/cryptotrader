@@ -21,7 +21,7 @@ This document defines the comprehensive roadmap for cryptotrader v2, organized b
 
 ## Epic 1: Backtesting & Validation
 
-**Priority**: 🔴 Critical  
+**Priority**: 🔴 Critical
 **Goal**: Validate that strategies can generate profit using historical data before risking real capital.
 
 > **Why Critical?** Without backtesting, we cannot prove the "profit" goal. This is the foundation for all live trading decisions.
@@ -53,7 +53,7 @@ This document defines the comprehensive roadmap for cryptotrader v2, organized b
 
 ## Epic 2: Execution & Automation
 
-**Priority**: 🟠 High  
+**Priority**: 🟠 High
 **Goal**: Enable live trading with human oversight, supporting multiple exchanges.
 
 ### Issues
@@ -85,7 +85,7 @@ This document defines the comprehensive roadmap for cryptotrader v2, organized b
 
 ## Epic 3: AI & LLM Integration
 
-**Priority**: 🟡 Medium  
+**Priority**: 🟡 Medium
 **Goal**: Leverage LLMs for qualitative analysis and opportunity scoring.
 
 ### Issues
@@ -125,7 +125,7 @@ This document defines the comprehensive roadmap for cryptotrader v2, organized b
 
 ## Epic 4: Frontend Observability
 
-**Priority**: 🟡 Medium  
+**Priority**: 🟡 Medium
 **Goal**: Provide real-time transparency into the trading system through the dashboard.
 
 ### Issues
@@ -183,7 +183,7 @@ This document defines the comprehensive roadmap for cryptotrader v2, organized b
 
 ## Epic 5: Portfolio & Wallet
 
-**Priority**: 🟡 Medium  
+**Priority**: 🟡 Medium
 **Goal**: Comprehensive overview of portfolio performance and real-time PnL.
 
 ### Issues
@@ -215,7 +215,7 @@ This document defines the comprehensive roadmap for cryptotrader v2, organized b
 
 ## Epic 6: Infrastructure & Operations
 
-**Priority**: 🟢 Low (ongoing)  
+**Priority**: 🟢 Low (ongoing)
 **Goal**: Improve reliability, monitoring, and developer experience.
 
 ### Issues
