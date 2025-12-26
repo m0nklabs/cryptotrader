@@ -78,7 +78,7 @@ def test_get_candles_latest_requires_timeframe_parameter() -> None:
 )
 def test_get_candles_latest_rejects_invalid_timeframes(invalid_timeframe: str) -> None:
     """Verify /candles/latest endpoint handles invalid timeframe values.
-    
+
     Note: The API does not enforce timeframe validation, so it returns 404 (no data)
     or 500 (DB error) for invalid timeframes rather than 422 (validation error).
     """

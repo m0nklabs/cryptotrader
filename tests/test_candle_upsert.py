@@ -116,7 +116,7 @@ def test_upsert_candles_constructs_correct_payload(sample_candles: list[Candle])
 
     # Verify execute was called with correct payload structure
     assert mock_conn.execute.called
-    
+
     # Extract the payload from the execute call: execute(statement, payload)
     execute_args, execute_kwargs = mock_conn.execute.call_args
     # We expect parameters to be passed positionally, not via kwargs
