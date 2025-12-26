@@ -148,8 +148,8 @@ Real-time transparency into the trading system:
 
 ### 🚧 In Progress
 
-| Feature | Issue | Status |
-|---------|-------|--------|
+| Work Item | Issue | Status |
+|-----------|-------|--------|
 | Multi-exchange support | #131 | Binance/KuCoin adapters in progress |
 
 ### 📋 Planned (By Priority)

@@ -258,7 +258,7 @@ Epic 4 (Frontend) ←──── Epic 5 (Portfolio)
 Epic 6 (Infrastructure) — ongoing
 ```
 
-**Critical Path**: Epic 1 → Epic 2 → Epic 3 → Epic 4
+**Critical Path**: Backtesting & Validation → Execution & Automation → AI & LLM Integration → Frontend Observability
 
 ---
 
