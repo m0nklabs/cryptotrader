@@ -19,7 +19,7 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Suppress known async errors from lightweight-charts in jsdom
 // These errors occur during chart cleanup and don't affect test results
-// Note: In development mode, consider disabling this to see all errors
+// Note: Errors are only suppressed in non-development environments; in development (import.meta.env.DEV), all errors are shown.
 beforeAll(() => {
   const originalError = console.error
   const isDevelopment = import.meta.env.DEV

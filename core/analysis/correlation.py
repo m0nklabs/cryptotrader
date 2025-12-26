@@ -96,11 +96,13 @@ async def calculate_correlation_matrix(
                 break
         # If multiple symbols map to the same base (e.g., BTCUSD, BTCEUR -> BTC),
         # avoid silently overwriting by falling back to the full symbol name.
+        # Suggestion: Use distinct quote currencies or full symbol names in requests.
         col_name = base
         if base in combined.columns and symbol != base:
             logger.warning(
                 "Multiple symbols share base '%s' (existing columns: %s); "
-                "using full symbol '%s' as column name to avoid overwriting.",
+                "using full symbol '%s' as column name to avoid overwriting. "
+                "Consider using symbols with distinct quote currencies or full symbol names.",
                 base,
                 list(combined.columns),
                 symbol,

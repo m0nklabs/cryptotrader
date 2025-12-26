@@ -52,7 +52,7 @@ export default function VisualProjections({ projections, onAdd, onRemove, onUpda
               onClick={() => {
                 if (onAdd) {
                   onAdd({
-                    id: `proj-${Date.now()}`,
+                    id: crypto.randomUUID(),
                     type: 'linear',
                     startTime: Date.now(),
                     startPrice: 0,
@@ -71,7 +71,7 @@ export default function VisualProjections({ projections, onAdd, onRemove, onUpda
               onClick={() => {
                 if (onAdd) {
                   onAdd({
-                    id: `proj-${Date.now()}`,
+                    id: crypto.randomUUID(),
                     type: 'exponential',
                     startTime: Date.now(),
                     startPrice: 0,
@@ -90,7 +90,7 @@ export default function VisualProjections({ projections, onAdd, onRemove, onUpda
               onClick={() => {
                 if (onAdd) {
                   onAdd({
-                    id: `proj-${Date.now()}`,
+                    id: crypto.randomUUID(),
                     type: 'fibonacci',
                     startTime: Date.now(),
                     startPrice: 0,

@@ -11,7 +11,7 @@ import { useShortcutStore } from '../stores/shortcutStore'
 type ShortcutHandler = (action: ShortcutAction) => void
 
 export function useKeyboardShortcuts(handler: ShortcutHandler) {
-  const { shortcuts, loadFromStorage } = useShortcutStore()
+  const { customBindings, loadFromStorage } = useShortcutStore()
 
   // Load custom bindings on mount
   useEffect(() => {
@@ -30,8 +30,11 @@ export function useKeyboardShortcuts(handler: ShortcutHandler) {
         return
       }
 
-      // Use custom shortcuts if available, otherwise use defaults
-      const activeShortcuts = shortcuts.length > 0 ? shortcuts : DEFAULT_SHORTCUTS
+      // Merge custom bindings with defaults
+      const activeShortcuts = DEFAULT_SHORTCUTS.map((shortcut) => {
+        const customKey = customBindings[shortcut.action]
+        return customKey ? { ...shortcut, key: customKey } : shortcut
+      })
 
       // Check all shortcuts for a match
       for (const shortcut of activeShortcuts) {
@@ -42,7 +45,7 @@ export function useKeyboardShortcuts(handler: ShortcutHandler) {
         }
       }
     },
-    [handler, shortcuts]
+    [handler, customBindings]
   )
 
   useEffect(() => {

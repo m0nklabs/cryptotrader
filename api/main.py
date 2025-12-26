@@ -1776,12 +1776,12 @@ async def get_correlation_matrix(
         # Update cache
         with _correlation_cache_lock:
             _correlation_cache[cache_key] = (result, time.time())
-            # Limit cache size to prevent memory issues (keep last 100 entries)
+            # Limit cache size to prevent memory issues (keep last 50 entries to provide headroom)
             if len(_correlation_cache) > 100:
-                # Remove oldest entries
+                # Remove oldest entries, keep only the most recent 50
                 sorted_items = sorted(_correlation_cache.items(), key=lambda x: x[1][1])
                 _correlation_cache.clear()
-                _correlation_cache.update(dict(sorted_items[-100:]))
+                _correlation_cache.update(dict(sorted_items[-50:]))
 
         return result
     except ValueError as e:

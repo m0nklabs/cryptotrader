@@ -59,6 +59,12 @@ export function useCorrelation(
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
+          console.debug('Correlation fetch aborted', {
+            symbols,
+            exchange,
+            timeframe,
+            lookbackDays,
+          })
           return
         }
         if (mounted) {
