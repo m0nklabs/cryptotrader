@@ -51,11 +51,7 @@ def _serialize_result(result: BacktestResult) -> dict:
 def export_results_json(result: BacktestResult | list[StrategyPerformance], filename: str) -> None:
     """Export backtest results (single or comparison) to JSON file."""
     if isinstance(result, list):
-        output = {
-            "strategies": [
-                {"name": perf.name, **_serialize_result(perf.result)} for perf in result
-            ]
-        }
+        output = {"strategies": [{"name": perf.name, **_serialize_result(perf.result)} for perf in result]}
     else:
         output = _serialize_result(result)
 
@@ -140,7 +136,9 @@ def main() -> None:
         print(f"\n{'=' * 80}")
         print("STRATEGY COMPARISON")
         print(f"{'=' * 80}")
-        header = f"{'Strategy':<18}{'Trades':>8}{'Sharpe':>10}{'MaxDD%':>10}{'Win%':>10}{'PF':>8}{'PnL':>12}{'Return%':>12}"
+        header = (
+            f"{'Strategy':<18}{'Trades':>8}{'Sharpe':>10}{'MaxDD%':>10}{'Win%':>10}{'PF':>8}{'PnL':>12}{'Return%':>12}"
+        )
         print(header)
         print("-" * len(header))
         for perf in performances:

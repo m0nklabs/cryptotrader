@@ -106,11 +106,7 @@ def test_backtest_engine_with_flat_data() -> None:
 
 def test_compare_strategies_returns_results() -> None:
     """Compare multiple strategies side-by-side."""
-    prices = (
-        [100.0 + i for i in range(15)]
-        + [115.0 - i for i in range(30)]
-        + [85.0 + i * 0.5 for i in range(20)]
-    )
+    prices = [100.0 + i for i in range(15)] + [115.0 - i for i in range(30)] + [85.0 + i * 0.5 for i in range(20)]
     candles = [_make_test_candle(price, i) for i, price in enumerate(prices)]
 
     class MockCandleStore:
