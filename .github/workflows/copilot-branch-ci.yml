@@ -193,9 +193,8 @@ jobs:
         if: steps.decision.outputs.decision == 'request_fixes'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          COMMENTS_JSON: ${{ steps.comments.outputs.comments_json }}
         run: |
-          COMMENTS_JSON='${{ steps.comments.outputs.comments_json }}'
-
           # Build structured prompt for better Copilot fix requests
           PROMPT="You are converting GitHub Copilot Reviewer feedback into actionable fix requests.
 
