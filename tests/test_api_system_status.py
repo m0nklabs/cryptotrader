@@ -90,4 +90,4 @@ def test_system_status_endpoint_exists():
     from api.main import app
 
     routes = [route.path for route in app.routes]
-    assert "/api/system/status" in routes
+    assert "/system/status" in routes

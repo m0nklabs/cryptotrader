@@ -21,7 +21,7 @@ export interface SystemStatus {
  * Fetch comprehensive system health status.
  */
 export async function fetchSystemStatus(signal?: AbortSignal): Promise<SystemStatus> {
-  const response = await fetch('/api/system/status', { signal });
+  const response = await fetch('/system/status', { signal });
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);

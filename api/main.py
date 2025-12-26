@@ -282,7 +282,7 @@ async def get_ingestion_status(
     }
 
 
-@app.get("/api/system/status")
+@app.get("/system/status")
 async def get_system_status() -> dict[str, Any]:
     """Get comprehensive system health status.
 
