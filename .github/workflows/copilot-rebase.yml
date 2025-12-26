@@ -1,11 +1,11 @@
 name: Copilot Rebase Helper
 
 # This workflow helps Copilot PRs stay up-to-date with master
-# by automatically rebasing when master changes
+# Disabled auto-trigger to prevent CI loops - use workflow_dispatch manually
 
 on:
-  push:
-    branches: [master]
+  # push:
+  #   branches: [master]  # Disabled - causes CI loops
   workflow_dispatch:
     inputs:
       pr_number:
