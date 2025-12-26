@@ -1,0 +1,46 @@
+name: Notify Copilot of Review Comments
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  notify-copilot:
+    name: Ask Copilot to address comments
+    runs-on: ubuntu-latest
+    # Only for Copilot PRs with COMMENTED reviews (not APPROVED)
+    if: |
+      startsWith(github.event.pull_request.head.ref, 'copilot/') &&
+      github.event.review.state == 'commented' &&
+      github.event.review.body != ''
+    steps:
+      - name: Check for recent notifications
+        id: spam-check
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # Check if we already notified in the last 10 minutes
+          RECENT=$(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            --jq '[.[] | select(.body | contains("please address the review comments")) | select(.created_at > (now - 600 | todate))] | length')
+
+          if [ "$RECENT" -gt "0" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Already notified recently, skipping"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify Copilot of review comments
+        if: steps.spam-check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          REVIEWER="${{ github.event.review.user.login }}"
+
+          gh pr comment ${{ github.event.pull_request.number }} --body \
+            "@copilot $REVIEWER has reviewed this PR and left comments. Please address the review comments and push the fixes.
+
+          Review: ${{ github.event.review.html_url }}"
