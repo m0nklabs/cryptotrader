@@ -298,7 +298,7 @@ async def get_system_status() -> dict[str, Any]:
             "database": {
                 "status": "ok",
                 "connected": true,
-                "latency_ms": 2.5
+                "latency_ms": 2.34
             },
             "timestamp": 1234567890
         }
