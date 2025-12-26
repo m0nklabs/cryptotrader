@@ -28,19 +28,6 @@ export function getCorrelationColor(correlation: number): string {
 }
 
 /**
- * Get heatmap color scale (for legends)
- */
-export function getCorrelationColorScale(): Array<{ value: number; color: string }> {
-  return [
-    { value: -1.0, color: getCorrelationColor(-1.0) },
-    { value: -0.5, color: getCorrelationColor(-0.5) },
-    { value: 0.0, color: getCorrelationColor(0.0) },
-    { value: 0.5, color: getCorrelationColor(0.5) },
-    { value: 1.0, color: getCorrelationColor(1.0) },
-  ]
-}
-
-/**
  * Format correlation value for display
  */
 export function formatCorrelation(value: number): string {

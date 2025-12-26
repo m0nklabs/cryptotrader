@@ -30,8 +30,11 @@ export function useKeyboardShortcuts(handler: ShortcutHandler) {
         return
       }
 
+      // Use custom shortcuts if available, otherwise use defaults
+      const activeShortcuts = shortcuts.length > 0 ? shortcuts : DEFAULT_SHORTCUTS
+
       // Check all shortcuts for a match
-      for (const shortcut of DEFAULT_SHORTCUTS) {
+      for (const shortcut of activeShortcuts) {
         if (matchesShortcut(event, shortcut)) {
           event.preventDefault()
           handler(shortcut.action)
@@ -39,7 +42,7 @@ export function useKeyboardShortcuts(handler: ShortcutHandler) {
         }
       }
     },
-    [handler]
+    [handler, shortcuts]
   )
 
   useEffect(() => {
