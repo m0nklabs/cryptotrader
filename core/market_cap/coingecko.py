@@ -34,6 +34,20 @@ class CoinGeckoClient:
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
 
+    def close(self):
+        """Close the HTTP session."""
+        if self.session:
+            self.session.close()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - close session."""
+        self.close()
+        return False
+
     def fetch_top_coins_by_market_cap(
         self,
         limit: int = 100,

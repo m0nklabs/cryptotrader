@@ -45,13 +45,13 @@ def test_market_cap_endpoint_response(mock_refresh):
     assert data["rankings"] == {"BTC": 1, "ETH": 2, "XRP": 3}
 
 
-@patch("api.main.CoinGeckoClient")
-def test_market_cap_cache_refresh(mock_client_class):
+@patch("api.main._get_coingecko_client")
+def test_market_cap_cache_refresh(mock_get_client):
     """Test that market cap cache refresh works correctly."""
     from api.main import _refresh_market_cap_cache
 
     # Mock CoinGecko client
-    mock_client = mock_client_class.return_value
+    mock_client = mock_get_client.return_value
     mock_client.get_market_cap_map.return_value = {
         "BTC": 1,
         "ETH": 2,
@@ -64,8 +64,8 @@ def test_market_cap_cache_refresh(mock_client_class):
     mock_client.get_market_cap_map.assert_called_once()
 
 
-@patch("api.main.CoinGeckoClient")
-def test_market_cap_fallback_on_error(mock_client_class):
+@patch("api.main._get_coingecko_client")
+def test_market_cap_fallback_on_error(mock_get_client):
     """Test that fallback rankings are used when API fails."""
     from api.main import _refresh_market_cap_cache, FALLBACK_MARKET_CAP_RANK
     import api.main
@@ -75,7 +75,7 @@ def test_market_cap_fallback_on_error(mock_client_class):
     api.main._market_cap_cache_time = 0
 
     # Mock CoinGecko client to raise an error
-    mock_client = mock_client_class.return_value
+    mock_client = mock_get_client.return_value
     mock_client.get_market_cap_map.side_effect = Exception("API Error")
 
     result = _refresh_market_cap_cache()

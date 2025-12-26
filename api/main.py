@@ -50,6 +50,9 @@ _stores: PostgresStores | None = None
 # Global paper executor instance (in-memory, no DB persistence)
 _paper_executor: PaperExecutor | None = None
 
+# Global CoinGecko client (singleton)
+_coingecko_client: CoinGeckoClient | None = None
+
 # Global market cap cache
 _market_cap_cache: dict[str, int] = {}
 _market_cap_cache_time: float = 0
@@ -69,6 +72,14 @@ FALLBACK_MARKET_CAP_RANK: dict[str, int] = {
     "LINK": 9,
     "DOT": 10,
 }
+
+
+def _get_coingecko_client() -> CoinGeckoClient:
+    """Get or initialize the CoinGecko client singleton."""
+    global _coingecko_client
+    if _coingecko_client is None:
+        _coingecko_client = CoinGeckoClient(timeout=10)
+    return _coingecko_client
 
 
 def _get_paper_executor() -> PaperExecutor:
@@ -691,7 +702,7 @@ def _refresh_market_cap_cache() -> dict[str, int]:
     # Fetch fresh data
     try:
         logger.info("Fetching market cap data from CoinGecko")
-        client = CoinGeckoClient(timeout=10)
+        client = _get_coingecko_client()
         market_cap_map = client.get_market_cap_map(limit=100)
 
         if market_cap_map:
@@ -729,16 +740,21 @@ async def get_market_cap() -> dict[str, Any]:
             "last_updated": 1234567890
         }
     """
+    current_time = time.time()
+    
+    # Check if we're using cached data (not refreshing on this call)
+    with _market_cap_cache_lock:
+        cache_age = current_time - _market_cap_cache_time if _market_cap_cache_time > 0 else float('inf')
+        using_cache = cache_age < MARKET_CAP_CACHE_TTL and _market_cap_cache
+    
     rankings = _refresh_market_cap_cache()
 
-    # Determine if we're using cached vs fresh data
-    current_time = time.time()
-    is_cached = (current_time - _market_cap_cache_time) < MARKET_CAP_CACHE_TTL
+    # Determine source
     source = "coingecko" if rankings != FALLBACK_MARKET_CAP_RANK else "fallback"
 
     return {
         "rankings": rankings,
-        "cached": is_cached,
+        "cached": using_cache,
         "source": source,
         "last_updated": int(_market_cap_cache_time * 1000) if _market_cap_cache_time > 0 else None,
     }
