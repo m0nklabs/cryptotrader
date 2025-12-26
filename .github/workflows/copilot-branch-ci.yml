@@ -169,9 +169,8 @@ jobs:
         if: steps.review.outputs.has_review == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          REVIEW_BODY: ${{ steps.review.outputs.review_body }}
         run: |
-          REVIEW_BODY="${{ steps.review.outputs.review_body }}"
-
           # Check if review indicates no issues
           if echo "$REVIEW_BODY" | grep -qi "generated no new comments\|generated 0 comments\|no issues"; then
             echo "decision=approve" >> $GITHUB_OUTPUT
