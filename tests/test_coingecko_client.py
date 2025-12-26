@@ -48,15 +48,15 @@ def test_fetch_top_coins_success(mock_session_class):
             "current_price": 3000,
         },
     ]
-    
+
     # Mock session
     mock_session = MagicMock()
     mock_session.get.return_value = mock_response
     mock_session_class.return_value = mock_session
-    
+
     client = CoinGeckoClient()
     coins = client.fetch_top_coins_by_market_cap(limit=10)
-    
+
     assert len(coins) == 2
     assert coins[0]["symbol"] == "btc"
     assert coins[0]["market_cap_rank"] == 1
@@ -90,15 +90,15 @@ def test_get_market_cap_map_success(mock_session_class):
             "market_cap_rank": 3,
         },
     ]
-    
+
     # Mock session
     mock_session = MagicMock()
     mock_session.get.return_value = mock_response
     mock_session_class.return_value = mock_session
-    
+
     client = CoinGeckoClient()
     market_cap_map = client.get_market_cap_map(limit=10)
-    
+
     assert market_cap_map == {"BTC": 1, "ETH": 2, "XRP": 3}
 
 
@@ -108,14 +108,14 @@ def test_fetch_handles_api_error(mock_session_class):
     # Mock error response
     mock_response = MagicMock()
     mock_response.raise_for_status.side_effect = Exception("API Error")
-    
+
     # Mock session
     mock_session = MagicMock()
     mock_session.get.return_value = mock_response
     mock_session_class.return_value = mock_session
-    
+
     client = CoinGeckoClient()
-    
+
     with pytest.raises(Exception):
         client.fetch_top_coins_by_market_cap()
 
@@ -127,14 +127,14 @@ def test_fetch_handles_invalid_response(mock_session_class):
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"error": "something went wrong"}
-    
+
     # Mock session
     mock_session = MagicMock()
     mock_session.get.return_value = mock_response
     mock_session_class.return_value = mock_session
-    
+
     client = CoinGeckoClient()
     coins = client.fetch_top_coins_by_market_cap()
-    
+
     # Should return empty list for invalid format
     assert coins == []

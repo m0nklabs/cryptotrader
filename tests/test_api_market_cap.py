@@ -6,8 +6,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

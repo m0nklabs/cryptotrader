@@ -743,9 +743,9 @@ async def get_market_cap() -> dict[str, Any]:
     # Get cache timestamp before refresh
     with _market_cap_cache_lock:
         cache_time_before = _market_cap_cache_time
-    
+
     rankings = _refresh_market_cap_cache()
-    
+
     # If cache timestamp didn't change, data was served from cache
     with _market_cap_cache_lock:
         using_cache = (_market_cap_cache_time == cache_time_before) and cache_time_before > 0
