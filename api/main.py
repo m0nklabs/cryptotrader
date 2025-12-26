@@ -67,6 +67,12 @@ _signal_analysis_cache: dict[str, dict[str, Any]] = {}
 _signal_analysis_cache_lock = threading.Lock()
 ANALYSIS_CACHE_TTL = 300  # 5 minutes
 
+# Global correlation cache
+# Key format: "symbols:exchange:timeframe:lookback" -> (result, timestamp)
+_correlation_cache: dict[str, tuple[dict[str, Any], float]] = {}
+_correlation_cache_lock = threading.Lock()
+CORRELATION_CACHE_TTL = 300  # 5 minutes in seconds (correlations change slowly)
+
 # Track application start time for uptime calculation
 _app_start_time: float = time.time()
 
@@ -1730,6 +1736,8 @@ async def get_correlation_matrix(
 
     Returns correlation coefficients between -1 (negative correlation) and +1 (positive correlation).
     Useful for portfolio diversification analysis.
+    
+    Results are cached for 5 minutes to reduce computational load.
     """
     from core.analysis.correlation import calculate_correlation_matrix
 
@@ -1743,6 +1751,19 @@ async def get_correlation_matrix(
     if len(symbol_list) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 symbols for correlation analysis")
 
+    # Create cache key
+    cache_key = f"{','.join(sorted(symbol_list))}:{exchange}:{timeframe}:{lookback}"
+    
+    # Check cache
+    with _correlation_cache_lock:
+        if cache_key in _correlation_cache:
+            cached_result, cached_time = _correlation_cache[cache_key]
+            age = time.time() - cached_time
+            if age < CORRELATION_CACHE_TTL:
+                logger.debug(f"Returning cached correlation result (age: {age:.1f}s)")
+                return cached_result
+
+    # Calculate correlation (cache miss or expired)
     try:
         result = await calculate_correlation_matrix(
             stores=stores,
@@ -1751,6 +1772,17 @@ async def get_correlation_matrix(
             timeframe=timeframe,
             lookback_days=lookback,
         )
+        
+        # Update cache
+        with _correlation_cache_lock:
+            _correlation_cache[cache_key] = (result, time.time())
+            # Limit cache size to prevent memory issues (keep last 100 entries)
+            if len(_correlation_cache) > 100:
+                # Remove oldest entries
+                sorted_items = sorted(_correlation_cache.items(), key=lambda x: x[1][1])
+                _correlation_cache.clear()
+                _correlation_cache.update(dict(sorted_items[-100:]))
+        
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
