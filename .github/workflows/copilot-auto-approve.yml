@@ -1,0 +1,70 @@
+name: Auto-approve Copilot PRs
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  auto-approve:
+    name: Auto-approve if Copilot review is clean
+    runs-on: ubuntu-latest
+    # Only for Copilot PRs when Copilot reviewer submits a review
+    if: |
+      github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' &&
+      startsWith(github.event.pull_request.head.ref, 'copilot/')
+    steps:
+      - name: Analyze Copilot review
+        id: analyze
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REVIEW_BODY="${{ github.event.review.body }}"
+
+          echo "Analyzing Copilot review for PR #$PR_NUMBER"
+          echo "Review body: $REVIEW_BODY"
+
+          # Check if review body indicates no issues
+          # Copilot says things like "Copilot reviewed X files" or "No issues found"
+          if echo "$REVIEW_BODY" | grep -qi "generated 0 comments\|no issues\|looks good\|no suggestions"; then
+            echo "decision=approve" >> $GITHUB_OUTPUT
+            echo "Copilot found no issues - will approve"
+          else
+            # Check for actual review comments on this PR
+            COMMENT_COUNT=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+              --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length')
+
+            echo "Found $COMMENT_COUNT review comments from Copilot"
+
+            if [ "$COMMENT_COUNT" -eq 0 ]; then
+              echo "decision=approve" >> $GITHUB_OUTPUT
+              echo "No review comments - will approve"
+            else
+              echo "decision=skip" >> $GITHUB_OUTPUT
+              echo "Has review comments - not approving"
+            fi
+          fi
+
+      - name: Approve PR
+        if: steps.analyze.outputs.decision == 'approve'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          # Check if already approved
+          EXISTING_APPROVAL=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
+            --jq '[.[] | select(.state == "APPROVED")] | length')
+
+          if [ "$EXISTING_APPROVAL" -gt 0 ]; then
+            echo "PR already has an approval, skipping"
+            exit 0
+          fi
+
+          echo "Approving PR #$PR_NUMBER"
+          gh pr review "$PR_NUMBER" --approve --body "Auto-approved: Copilot review found no issues. _This approval was automated based on Copilot's code review._"
+
+          echo "PR #$PR_NUMBER approved!"
