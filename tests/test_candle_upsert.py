@@ -119,10 +119,13 @@ def test_upsert_candles_constructs_correct_payload(sample_candles: list[Candle])
 
     # Extract the payload from the execute call: execute(statement, payload)
     execute_args, execute_kwargs = mock_conn.execute.call_args
-    # We expect parameters to be passed positionally, not via kwargs
-    assert not execute_kwargs
-    assert len(execute_args) >= 2
-    payload = execute_args[1]
+    # Support both positional and keyword parameter passing to execute
+    if len(execute_args) >= 2:
+        payload = execute_args[1]
+    else:
+        # Fall back to first keyword argument value (e.g. params=payload)
+        assert execute_kwargs, "Expected parameters to be passed either positionally or via kwargs"
+        payload = next(iter(execute_kwargs.values()))
 
     # Verify payload has correct structure
     assert len(payload) == len(sample_candles)

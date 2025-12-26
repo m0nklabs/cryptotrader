@@ -5,7 +5,6 @@ Provides common test data, mocks, and utilities used across multiple test files.
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import Mock
 
 import pytest
 
@@ -42,15 +41,9 @@ def sample_candles() -> list[Candle]:
 
 
 @pytest.fixture
-def mock_db_engine() -> Mock:
-    """Mock SQLAlchemy engine for testing database operations."""
-    mock_engine = Mock()
-    mock_conn = Mock()
-    mock_result = Mock()
-    mock_result.rowcount = 1
-    mock_result.fetchone.return_value = None
-    mock_result.fetchall.return_value = []
-    mock_conn.execute.return_value = mock_result
-    mock_engine.begin.return_value.__enter__ = Mock(return_value=mock_conn)
-    mock_engine.begin.return_value.__exit__ = Mock(return_value=False)
-    return mock_engine
+def api_client():
+    """Provide a TestClient for API endpoint testing."""
+    from fastapi.testclient import TestClient
+    from api.main import app
+
+    return TestClient(app)

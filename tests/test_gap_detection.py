@@ -211,16 +211,10 @@ def test_find_missing_open_times_uses_correct_step_for_timeframe() -> None:
 
     # Verify the execute was called with correct step_seconds for 4h timeframe
     assert mock_conn.execute.called
-    call = mock_conn.execute.call_args
-    # Prefer keyword arguments if used, fall back to positional parameter dict
-    if call.kwargs and "params" in call.kwargs:
-        params = call.kwargs["params"]
-    elif call.kwargs and "parameters" in call.kwargs:
-        params = call.kwargs["parameters"]
-    else:
-        # Expect the second positional argument to be the parameters dictionary
-        assert len(call.args) >= 2
-        params = call.args[1]
+    args, _kwargs = mock_conn.execute.call_args
+    # Expect the second positional argument to be the parameters dictionary
+    assert len(args) >= 2
+    params = args[1]
     assert params["step_seconds"] == 14400  # 4 hours in seconds
 
 

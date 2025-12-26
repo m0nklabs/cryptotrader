@@ -17,13 +17,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def test_get_candles_latest_uses_default_exchange() -> None:
+def test_get_candles_latest_uses_default_exchange(api_client) -> None:
     """Verify /candles/latest endpoint uses default exchange when not provided."""
-    from fastapi.testclient import TestClient
-    from api.main import app
-
-    client = TestClient(app)
-    response = client.get(
+    response = api_client.get(
         "/candles/latest",
         params={
             # exchange has default value "bitfinex"
@@ -36,13 +32,9 @@ def test_get_candles_latest_uses_default_exchange() -> None:
     assert response.status_code in [404, 500]
 
 
-def test_get_candles_latest_requires_symbol_parameter() -> None:
+def test_get_candles_latest_requires_symbol_parameter(api_client) -> None:
     """Verify /candles/latest endpoint requires symbol parameter."""
-    from fastapi.testclient import TestClient
-    from api.main import app
-
-    client = TestClient(app)
-    response = client.get(
+    response = api_client.get(
         "/candles/latest",
         params={
             "exchange": "bitfinex",
@@ -54,13 +46,9 @@ def test_get_candles_latest_requires_symbol_parameter() -> None:
     assert response.status_code == 422  # Validation error
 
 
-def test_get_candles_latest_requires_timeframe_parameter() -> None:
+def test_get_candles_latest_requires_timeframe_parameter(api_client) -> None:
     """Verify /candles/latest endpoint requires timeframe parameter."""
-    from fastapi.testclient import TestClient
-    from api.main import app
-
-    client = TestClient(app)
-    response = client.get(
+    response = api_client.get(
         "/candles/latest",
         params={
             "exchange": "bitfinex",
@@ -76,17 +64,13 @@ def test_get_candles_latest_requires_timeframe_parameter() -> None:
     "invalid_timeframe",
     ["2h", "30m", "invalid", "1w"],
 )
-def test_get_candles_latest_rejects_invalid_timeframes(invalid_timeframe: str) -> None:
+def test_get_candles_latest_rejects_invalid_timeframes(api_client, invalid_timeframe: str) -> None:
     """Verify /candles/latest endpoint handles invalid timeframe values.
 
     Note: The API does not enforce timeframe validation, so it returns 404 (no data)
     or 500 (DB error) for invalid timeframes rather than 422 (validation error).
     """
-    from fastapi.testclient import TestClient
-    from api.main import app
-
-    client = TestClient(app)
-    response = client.get(
+    response = api_client.get(
         "/candles/latest",
         params={
             "exchange": "bitfinex",
