@@ -19,7 +19,6 @@ def sample_candles() -> list[Candle]:
 
     Returns a list of 5 consecutive 1h candles for BTCUSD on bitfinex.
     """
-    base_time = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     candles = []
 
     for i in range(5):
