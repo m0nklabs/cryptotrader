@@ -290,16 +290,6 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
       series.setData(data)
     }
 
-    // If no moving-average indicators are enabled, skip calculations
-    if (!indicators.sma20 && !indicators.sma50 && !indicators.ema12 && !indicators.ema26) {
-      // Still update visibility to hide any previously shown indicators
-      sma20Series.current.applyOptions({ visible: false })
-      sma50Series.current.applyOptions({ visible: false })
-      ema12Series.current.applyOptions({ visible: false })
-      ema26Series.current.applyOptions({ visible: false })
-      return
-    }
-
     // Update each indicator using the helper function
     updateIndicator(sma20Series.current, indicators.sma20, sma, 20)
     updateIndicator(sma50Series.current, indicators.sma50, sma, 50)
