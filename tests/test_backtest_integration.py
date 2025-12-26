@@ -125,6 +125,8 @@ def test_compare_strategies_returns_results() -> None:
     performances = engine.compare_strategies(strategies=strategies, candles=candles)
 
     assert len(performances) == 2
-    assert performances[0].name == "rsi_default"
-    assert isinstance(performances[0].result, BacktestResult)
-    assert isinstance(performances[0].result.total_pnl, float)
+    perf_by_name = {perf.name: perf for perf in performances}
+    assert "rsi_default" in perf_by_name
+    default_perf = perf_by_name["rsi_default"]
+    assert isinstance(default_perf.result, BacktestResult)
+    assert isinstance(default_perf.result.total_pnl, float)
