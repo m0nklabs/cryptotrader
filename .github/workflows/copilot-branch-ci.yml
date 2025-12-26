@@ -144,6 +144,26 @@ jobs:
             --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length')
           echo "comment_count=$COMMENT_COUNT" >> $GITHUB_OUTPUT
 
+          # Get the review ID for fetching comments
+          REVIEW_ID=$(echo "$REVIEW" | jq -r '.id')
+          echo "review_id=$REVIEW_ID" >> $GITHUB_OUTPUT
+
+      - name: Get review comments
+        id: comments
+        if: steps.review.outputs.has_review == 'true' && steps.review.outputs.review_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+          REVIEW_ID="${{ steps.review.outputs.review_id }}"
+
+          COMMENTS=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews/$REVIEW_ID/comments" \
+            --jq '[.[] | {path: .path, body: .body}]')
+
+          echo "comments_json<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMENTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Analyze and decide
         id: decision
         if: steps.review.outputs.has_review == 'true'
@@ -151,23 +171,85 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           REVIEW_BODY="${{ steps.review.outputs.review_body }}"
-          COMMENT_COUNT="${{ steps.review.outputs.comment_count }}"
 
-          # Simple rule-based decision (LLM optional)
+          # Check if review indicates no issues
           if echo "$REVIEW_BODY" | grep -qi "generated no new comments\|generated 0 comments\|no issues"; then
-            DECISION="approve"
-            REASON="Copilot review found no issues"
-          elif [ "$COMMENT_COUNT" -eq 0 ]; then
-            DECISION="approve"
-            REASON="No review comments from Copilot"
-          else
-            DECISION="skip"
-            REASON="Copilot review has $COMMENT_COUNT comments to address"
+            echo "decision=approve" >> $GITHUB_OUTPUT
+            echo "reason=Copilot review found no issues" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
-          echo "decision=$DECISION" >> $GITHUB_OUTPUT
-          echo "reason=$REASON" >> $GITHUB_OUTPUT
-          echo "Decision: $DECISION - $REASON"
+          # Check comment count from review body (e.g., "generated 4 comments")
+          COMMENT_NUM=$(echo "$REVIEW_BODY" | grep -oP 'generated \K\d+(?= comment)' || echo "0")
+          if [ "$COMMENT_NUM" -eq 0 ]; then
+            echo "decision=approve" >> $GITHUB_OUTPUT
+            echo "reason=No review comments from Copilot" >> $GITHUB_OUTPUT
+          else
+            echo "decision=request_fixes" >> $GITHUB_OUTPUT
+            echo "reason=Copilot review has $COMMENT_NUM comments to address" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate fix request with LLM
+        id: llm
+        if: steps.decision.outputs.decision == 'request_fixes'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          COMMENTS_JSON='${{ steps.comments.outputs.comments_json }}'
+
+          # Build prompt
+          cat > /tmp/prompt.txt << 'PROMPT_END'
+          You are analyzing code review comments from GitHub Copilot Reviewer.
+          Create a concise fix request for @copilot to address these issues.
+          Start with "@copilot Please address the following review feedback:" then list each fix.
+          Be specific about files and what changes are needed. Keep it actionable.
+          PROMPT_END
+
+          echo "" >> /tmp/prompt.txt
+          echo "Review comments:" >> /tmp/prompt.txt
+          echo "$COMMENTS_JSON" >> /tmp/prompt.txt
+
+          PROMPT=$(cat /tmp/prompt.txt)
+
+          # Call OpenAI
+          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -d "$(jq -n --arg p "$PROMPT" '{model:"gpt-4o-mini",messages:[{role:"user",content:$p}],max_tokens:1000,temperature:0.3}')")
+
+          FIX_MSG=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+
+          if [ -z "$FIX_MSG" ]; then
+            echo "LLM response empty"
+            echo "fix_message=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "fix_message<<EOF" >> $GITHUB_OUTPUT
+          echo "$FIX_MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post fix request to Copilot
+        if: steps.llm.outputs.fix_message != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+
+          # Spam protection: check if we posted recently
+          RECENT=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+            --jq '[.[] | select(.body | startswith("@copilot Please address"))] | last | .created_at // empty')
+
+          if [ -n "$RECENT" ]; then
+            AGE=$(( $(date +%s) - $(date -d "$RECENT" +%s) ))
+            if [ "$AGE" -lt 3600 ]; then
+              echo "Already posted fix request within last hour, skipping"
+              exit 0
+            fi
+          fi
+
+          echo "Posting fix request to PR #$PR_NUMBER"
+          gh pr comment "$PR_NUMBER" --body "${{ steps.llm.outputs.fix_message }}"
 
       - name: Auto-approve PR
         if: steps.decision.outputs.decision == 'approve'
@@ -188,5 +270,3 @@ jobs:
 
           echo "Approving PR #$PR_NUMBER"
           gh pr review "$PR_NUMBER" --approve --body "🤖 Auto-approved: $REASON"
-
-          echo "Posted status: $STATE - $DESC"
