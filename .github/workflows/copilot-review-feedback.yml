@@ -67,6 +67,16 @@ jobs:
         run: |
           PR_NUMBER="${{ steps.pr-info.outputs.number }}"
 
+          # Check if Copilot already said "addressed" or "No further action"
+          COPILOT_RESPONSE=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+            --jq '[.[] | select(.user.login | test("copilot"; "i")) | select(.body | test("addressed|no further action|complete"; "i"))] | last // empty')
+
+          if [ -n "$COPILOT_RESPONSE" ]; then
+            echo "Copilot already addressed all suggestions"
+            echo "should_notify=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           # Get review comments from Copilot reviewer that have suggestions
           COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
             --jq '[.[] | select(.user.login | test("copilot"; "i")) | select(.body | contains("suggestion")) | {path: .path, line: .line, body: .body}]')
