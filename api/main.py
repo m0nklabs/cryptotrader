@@ -62,6 +62,9 @@ _market_cap_cache_source: str = "fallback"  # Track actual source of cached data
 _market_cap_cache_lock = threading.Lock()
 MARKET_CAP_CACHE_TTL = 600  # 10 minutes in seconds
 
+# Track application start time for uptime calculation
+_app_start_time: float = time.time()
+
 # Static fallback market cap rankings
 FALLBACK_MARKET_CAP_RANK: dict[str, int] = {
     "BTC": 1,
@@ -277,6 +280,66 @@ async def get_ingestion_status(
         "schema_ok": schema_ok,
         "db_ok": db_ok,
     }
+
+
+@app.get("/api/system/status")
+async def get_system_status() -> dict[str, Any]:
+    """Get comprehensive system health status.
+
+    Returns:
+        JSON with health status for backend, database, and ingestion timers.
+        
+    Example response:
+        {
+            "backend": {
+                "status": "ok",
+                "uptime_seconds": 12345
+            },
+            "database": {
+                "status": "ok",
+                "connected": true,
+                "latency_ms": 2.5
+            },
+            "timestamp": 1234567890
+        }
+    """
+    import time as time_module
+
+    status_response: dict[str, Any] = {
+        "backend": {"status": "ok", "uptime_seconds": int(time_module.time() - _app_start_time)},
+        "database": {"status": "error", "connected": False, "latency_ms": None},
+        "timestamp": int(time_module.time() * 1000),
+    }
+
+    # Check database connectivity and measure latency
+    try:
+        stores = _get_stores()
+        engine = stores._get_engine()  # noqa: SLF001
+        _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+        # Measure query latency
+        start_time = time_module.perf_counter()
+        with engine.begin() as conn:
+            # Simple query to check connectivity
+            conn.execute(text("SELECT 1")).scalar()
+        latency_ms = (time_module.perf_counter() - start_time) * 1000
+
+        status_response["database"] = {
+            "status": "ok",
+            "connected": True,
+            "latency_ms": round(latency_ms, 2),
+        }
+
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        status_response["database"] = {
+            "status": "error",
+            "connected": False,
+            "latency_ms": None,
+            "error": str(e),
+        }
+
+    return status_response
 
 
 @app.post("/fees/estimate", response_model=FeesEstimateResponse)

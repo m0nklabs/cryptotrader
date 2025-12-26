@@ -16,6 +16,7 @@ import {
 } from './api/trading'
 import { fetchMarketCap } from './api/marketCap'
 import { createCandleStream, type CandleUpdate } from './api/candleStream'
+import { fetchSystemStatus, type SystemStatus } from './api/systemStatus'
 
 type Theme = 'light' | 'dark'
 
@@ -70,6 +71,7 @@ const SIGNALS_REFRESH_INTERVAL_MS = 30_000
 const INGESTION_STATUS_REFRESH_INTERVAL_MS = 15_000
 const WALLET_REFRESH_INTERVAL_MS = 30_000
 const MARKET_CAP_REFRESH_INTERVAL_MS = 600_000 // 10 minutes
+const SYSTEM_STATUS_REFRESH_INTERVAL_MS = 10_000 // 10 seconds
 
 type Signal = {
   symbol: string
@@ -161,6 +163,10 @@ export default function App() {
     DOT: 10,
   })
   const [marketCapSource, setMarketCapSource] = useState<'coingecko' | 'fallback'>('fallback')
+
+  // System status state
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null)
+  const [systemStatusError, setSystemStatusError] = useState<string | null>(null)
 
   const baseAssetOf = (symbol: string) => {
     const s = symbol.toUpperCase().trim()
@@ -779,6 +785,42 @@ export default function App() {
     }
   }, [])
 
+  // Fetch system status
+  useEffect(() => {
+    let mounted = true
+    let inFlight: AbortController | null = null
+
+    const load = () => {
+      if (!mounted) return
+      if (inFlight) inFlight.abort()
+      const controller = new AbortController()
+      inFlight = controller
+
+      setSystemStatusError(null)
+
+      fetchSystemStatus(controller.signal)
+        .then((data) => {
+          if (!mounted) return
+          setSystemStatus(data)
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          setSystemStatusError(`Unable to fetch system status (${message})`)
+          setSystemStatus(null)
+        })
+    }
+
+    load()
+    const id = window.setInterval(load, SYSTEM_STATUS_REFRESH_INTERVAL_MS)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+      if (inFlight) inFlight.abort()
+    }
+  }, [])
+
   const onChartWheel = (ev: React.WheelEvent<HTMLDivElement>) => {
     // Wheel zoom: scroll up -> zoom in (fewer candles), scroll down -> zoom out (more candles).
     // Keep it simple: adjust the fetched window size.
@@ -1251,10 +1293,51 @@ export default function App() {
               </Panel>
 
               <Panel title="System" subtitle="Health">
-                <Kvp k="Backend" v="—" />
-                <div className="mt-2">
-                  <Kvp k="Database" v="—" />
-                </div>
+                {systemStatusError ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">{systemStatusError}</div>
+                ) : systemStatus ? (
+                  <>
+                    <Kvp
+                      k="Backend"
+                      v={
+                        <span
+                          className={
+                            systemStatus.backend.status === 'ok'
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-red-600 dark:text-red-400'
+                          }
+                        >
+                          {systemStatus.backend.status === 'ok' ? '✓ OK' : '✗ Error'}
+                        </span>
+                      }
+                    />
+                    <div className="mt-2">
+                      <Kvp
+                        k="Database"
+                        v={
+                          <span
+                            className={
+                              systemStatus.database.status === 'ok'
+                                ? 'text-green-600 dark:text-green-400'
+                                : 'text-red-600 dark:text-red-400'
+                            }
+                          >
+                            {systemStatus.database.status === 'ok'
+                              ? `✓ ${systemStatus.database.latency_ms}ms`
+                              : '✗ Error'}
+                          </span>
+                        }
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Kvp k="Backend" v="—" />
+                    <div className="mt-2">
+                      <Kvp k="Database" v="—" />
+                    </div>
+                  </>
+                )}
               </Panel>
             </div>
           </div>
