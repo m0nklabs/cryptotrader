@@ -44,8 +44,8 @@ describe('App Component', () => {
   })
 
   it('renders without crashing', () => {
-    render(<App />)
-    expect(document.body).toBeTruthy()
+    const { container } = render(<App />)
+    expect(container.firstChild).toBeTruthy()
   })
 
   it('renders the main application layout', () => {
