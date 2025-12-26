@@ -8,18 +8,19 @@ on:
 
 jobs:
   auto-approve:
-    name: Auto-approve pending workflow runs
+    name: Re-run pending workflow runs
     runs-on: ubuntu-latest
     steps:
-      - name: Approve pending workflow runs from copilot-swe-agent
+      - name: Re-run action_required workflow runs from Copilot
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           echo "Checking for pending workflow runs..."
 
-          # List runs with action_required status
+          # List runs with action_required conclusion (these are stuck waiting for approval)
+          # Note: status is "completed" but conclusion is "action_required"
           PENDING=$(gh api repos/${{ github.repository }}/actions/runs \
-            --jq '.workflow_runs[] | select(.status == "action_required") | {id: .id, name: .name, actor: .actor.login}' \
+            --jq '.workflow_runs[] | select(.conclusion == "action_required") | {id: .id, name: .name, actor: .actor.login, branch: .head_branch}' \
             2>/dev/null || echo "")
 
           if [ -z "$PENDING" ]; then
@@ -30,12 +31,12 @@ jobs:
           echo "Found pending runs:"
           echo "$PENDING"
 
-          # Approve each pending run from copilot-swe-agent
-          echo "$PENDING" | jq -r 'select(.actor == "copilot-swe-agent") | .id' | while read -r RUN_ID; do
+          # Re-run each pending run from Copilot (actor is "Copilot" for copilot-swe-agent PRs)
+          echo "$PENDING" | jq -r 'select(.actor == "Copilot" or .actor == "copilot-swe-agent") | .id' | while read -r RUN_ID; do
             if [ -n "$RUN_ID" ]; then
-              echo "Approving run $RUN_ID..."
-              gh api --method POST repos/${{ github.repository }}/actions/runs/$RUN_ID/approve \
-                || echo "Failed to approve run $RUN_ID (may already be approved or completed)"
+              echo "Re-running workflow run $RUN_ID..."
+              gh api --method POST repos/${{ github.repository }}/actions/runs/$RUN_ID/rerun \
+                || echo "Failed to re-run $RUN_ID (may already be running or completed)"
             fi
           done
 
