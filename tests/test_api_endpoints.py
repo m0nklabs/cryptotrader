@@ -18,7 +18,12 @@ if str(ROOT) not in sys.path:
 
 
 def test_get_candles_latest_uses_default_exchange(api_client) -> None:
-    """Verify /candles/latest endpoint uses default exchange when not provided."""
+    """Verify /candles/latest endpoint uses default exchange when not provided.
+    
+    The endpoint should accept requests without an exchange parameter and use
+    the default value of 'bitfinex'. This test verifies the endpoint doesn't
+    return a 422 validation error when exchange is omitted.
+    """
     response = api_client.get(
         "/candles/latest",
         params={
@@ -67,8 +72,10 @@ def test_get_candles_latest_requires_timeframe_parameter(api_client) -> None:
 def test_get_candles_latest_rejects_invalid_timeframes(api_client, invalid_timeframe: str) -> None:
     """Verify /candles/latest endpoint handles invalid timeframe values.
 
-    Note: The API does not enforce timeframe validation, so it returns 404 (no data)
-    or 500 (DB error) for invalid timeframes rather than 422 (validation error).
+    Note: The API does not enforce timeframe validation at the endpoint level.
+    When an invalid timeframe is used, the database query returns no results,
+    leading to a 404 status. In case of database errors, a 500 may be returned.
+    This test accepts either status code as both are valid error responses.
     """
     response = api_client.get(
         "/candles/latest",

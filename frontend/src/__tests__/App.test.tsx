@@ -50,13 +50,15 @@ describe('App Component', () => {
 
   it('renders the main application layout', () => {
     render(<App />)
-    // Check that the app container exists
-    const appElement = document.querySelector('.min-h-screen')
+    // Check that the app container exists with a more specific selector
+    const appElement = document.querySelector('[class*="min-h-screen"]')
     expect(appElement).toBeInTheDocument()
   })
 
   it('applies dark mode by default', () => {
-    render(<App />)
+    const { container } = render(<App />)
+    // Verify the component is rendered and dark mode class is applied
+    expect(container.firstChild).toBeTruthy()
     expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 })

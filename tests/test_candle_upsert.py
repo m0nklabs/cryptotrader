@@ -123,9 +123,18 @@ def test_upsert_candles_constructs_correct_payload(sample_candles: list[Candle])
     if len(execute_args) >= 2:
         payload = execute_args[1]
     else:
-        # Fall back to first keyword argument value (e.g. params=payload)
+        # Look for a known keyword argument carrying the parameters/payload
         assert execute_kwargs, "Expected parameters to be passed either positionally or via kwargs"
-        payload = next(iter(execute_kwargs.values()))
+        payload = None
+        for key in ("parameters", "params"):
+            if key in execute_kwargs:
+                payload = execute_kwargs[key]
+                break
+        if payload is None:
+            pytest.fail(
+                f"Could not determine payload from execute kwargs; expected one of "
+                f"'parameters' or 'params', got keys: {list(execute_kwargs.keys())}"
+            )
 
     # Verify payload has correct structure
     assert len(payload) == len(sample_candles)
