@@ -4,7 +4,6 @@ Tests the gap detection logic that identifies missing candles in time series dat
 """
 
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 from pathlib import Path
 import sys
 from unittest.mock import Mock, patch
