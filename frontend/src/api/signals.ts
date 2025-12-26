@@ -55,6 +55,7 @@ export async function fetchSignal(
 
     return data.signals[0]
   } finally {
+    // Cleanup timeout to ensure no lingering timers
     clearTimeout(timeoutId)
   }
 }

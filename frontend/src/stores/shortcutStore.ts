@@ -8,7 +8,6 @@ import { create } from 'zustand'
 import { DEFAULT_SHORTCUTS, type ShortcutDefinition, type ShortcutAction } from '../lib/shortcuts'
 
 type ShortcutState = {
-  shortcuts: ShortcutDefinition[]
   customBindings: Partial<Record<ShortcutAction, string>>
 
   // Actions
@@ -21,7 +20,6 @@ type ShortcutState = {
 const STORAGE_KEY = 'keyboard-shortcuts'
 
 export const useShortcutStore = create<ShortcutState>((set, get) => ({
-  shortcuts: DEFAULT_SHORTCUTS,
   customBindings: {},
 
   setCustomBinding: (action, key) => {
