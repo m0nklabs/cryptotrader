@@ -32,3 +32,4 @@ data/postgres.*
 # OS/Editor
 .DS_Store
 .vscode/
+.workflow-approver-state.json
