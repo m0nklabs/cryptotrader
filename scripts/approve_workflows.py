@@ -39,7 +39,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_REPO = "m0nklabs/cryptotrader"
 STATE_FILE = Path(__file__).parent.parent / ".workflow-approver-state.json"
-COPILOT_TRIGGER = "Copilot finished work on behalf of"
 
 
 def run_gh(args: list[str], check: bool = True) -> str:
@@ -55,23 +54,42 @@ def run_gh(args: list[str], check: bool = True) -> str:
         return ""
 
 
-def get_recent_comments(repo: str, since_id: int = 0) -> list[dict]:
-    """Get recent issue comments containing Copilot trigger phrase."""
+def get_copilot_prs_with_finished_work(repo: str) -> list[dict]:
+    """Get open PRs on copilot/* branches that have copilot_work_finished events."""
     try:
-        output = run_gh(
+        # Get all open PRs on copilot branches
+        prs_output = run_gh(
             [
                 "api",
-                f"repos/{repo}/issues/comments",
-                "--paginate",
+                f"repos/{repo}/pulls",
                 "--jq",
-                f'[.[] | select(.id > {since_id} and (.body | contains("{COPILOT_TRIGGER}")))]',
+                '[.[] | select(.head.ref | startswith("copilot/")) | {number: .number, branch: .head.ref}]',
             ],
             check=False,
         )
-        if not output or output == "[]":
+        if not prs_output or prs_output == "[]":
             return []
-        return json.loads(output)
-    except json.JSONDecodeError:
+
+        prs = json.loads(prs_output)
+        finished_prs = []
+
+        for pr in prs:
+            pr_number = pr["number"]
+            # Check timeline for copilot_work_finished event
+            timeline = run_gh(
+                [
+                    "api",
+                    f"repos/{repo}/issues/{pr_number}/timeline",
+                    "--jq",
+                    '[.[] | select(.event == "copilot_work_finished")] | length',
+                ],
+                check=False,
+            )
+            if timeline and int(timeline) > 0:
+                finished_prs.append(pr)
+
+        return finished_prs
+    except (json.JSONDecodeError, ValueError):
         return []
 
 
@@ -166,7 +184,49 @@ def load_state() -> dict:
             return json.loads(STATE_FILE.read_text())
         except json.JSONDecodeError:
             pass
-    return {"last_comment_id": 0, "rerun_runs": []}
+    return {"last_comment_id": 0, "rerun_runs": [], "reviewed_prs": []}
+
+
+def get_copilot_prs(repo: str) -> list[dict]:
+    """Get open PRs from copilot/* branches."""
+    try:
+        output = run_gh(
+            [
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--state",
+                "open",
+                "--json",
+                "number,headRefName,statusCheckRollup",
+                "--jq",
+                '[.[] | select(.headRefName | startswith("copilot/"))]',
+            ],
+            check=False,
+        )
+        if not output or output == "[]":
+            return []
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return []
+
+
+def pr_checks_passed(pr: dict) -> bool:
+    """Check if all CI checks passed for a PR."""
+    checks = pr.get("statusCheckRollup", [])
+    if not checks:
+        return False
+    for check in checks:
+        status = check.get("status", "")
+        conclusion = check.get("conclusion", "")
+        # Skip pending checks
+        if status not in ("COMPLETED", "completed"):
+            return False
+        # Check conclusion
+        if conclusion not in ("SUCCESS", "success", "NEUTRAL", "neutral", "SKIPPED", "skipped"):
+            return False
+    return True
 
 
 def save_state(state: dict) -> None:
@@ -174,28 +234,25 @@ def save_state(state: dict) -> None:
     STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
-def process_comments(repo: str, state: dict) -> int:
-    """Process new Copilot comments and rerun pending workflows. Returns rerun count."""
-    comments = get_recent_comments(repo, state.get("last_comment_id", 0))
-    if not comments:
+def process_copilot_prs(repo: str, state: dict) -> int:
+    """Process PRs where Copilot has finished work. Returns rerun count."""
+    finished_prs = get_copilot_prs_with_finished_work(repo)
+    if not finished_prs:
         return 0
 
     total_rerun = 0
-    for comment in comments:
-        comment_id = comment["id"]
-        issue_url = comment.get("issue_url", "")
-        try:
-            pr_number = int(issue_url.split("/")[-1])
-        except (ValueError, IndexError):
+    for pr in finished_prs:
+        pr_number = pr["number"]
+        branch = pr["branch"]
+        pr_key = f"pr_{pr_number}"
+
+        # Skip if we already processed this PR in this session
+        if pr_key in state.get("processed_prs", []):
             continue
 
-        logger.info(f"🔔 Copilot finished on PR #{pr_number}")
-        branch = get_pr_branch(repo, pr_number)
-        if not branch:
-            continue
+        logger.info(f"🔔 Copilot finished on PR #{pr_number} ({branch})")
 
         # Request Copilot Reviewer for this PR
-        pr_key = f"pr_{pr_number}"
         if pr_key not in state.get("reviewed_prs", []):
             request_copilot_review(repo, pr_number)
             state.setdefault("reviewed_prs", []).append(pr_key)
@@ -211,13 +268,16 @@ def process_comments(repo: str, state: dict) -> int:
                 state.setdefault("rerun_runs", []).append(run_id)
                 total_rerun += 1
 
-        state["last_comment_id"] = max(state.get("last_comment_id", 0), comment_id)
+        # Mark PR as processed for this session
+        state.setdefault("processed_prs", []).append(pr_key)
 
     # Keep lists manageable
     if len(state.get("rerun_runs", [])) > 1000:
         state["rerun_runs"] = state["rerun_runs"][-500:]
     if len(state.get("reviewed_prs", [])) > 500:
         state["reviewed_prs"] = state["reviewed_prs"][-250:]
+    if len(state.get("processed_prs", [])) > 200:
+        state["processed_prs"] = state["processed_prs"][-100:]
 
     return total_rerun
 
@@ -262,11 +322,11 @@ def main() -> int:
         return 0
 
     if args.daemon:
-        logger.info(f"Daemon mode: watching for '{COPILOT_TRIGGER}' (interval={args.interval}s)")
+        logger.info(f"Daemon mode: watching for copilot_work_finished events (interval={args.interval}s)")
         try:
             while True:
                 state = load_state()
-                n = process_comments(args.repo, state)
+                n = process_copilot_prs(args.repo, state)
                 save_state(state)
                 if n:
                     logger.info(f"Reran {n} run(s)")
@@ -275,7 +335,7 @@ def main() -> int:
             logger.info("Stopped")
     else:
         state = load_state()
-        n = process_comments(args.repo, state)
+        n = process_copilot_prs(args.repo, state)
         save_state(state)
         logger.info(f"Reran {n} run(s)" if n else "No new runs to rerun")
 
