@@ -73,28 +73,23 @@ export default function OpportunityExplorer({ exchange = 'bitfinex', onSelectOpp
       result = result.filter((opp) => opp.side === filter)
     }
 
+    // Sort comparator functions
+    const compareNumbers = (a: number, b: number) => 
+      sortDirection === 'asc' ? a - b : b - a
+    
+    const compareStrings = (a: string, b: string) =>
+      sortDirection === 'asc' ? a.localeCompare(b) : b.localeCompare(a)
+
     // Sort
     result.sort((a, b) => {
-      let aVal: number | string
-      let bVal: number | string
-
       if (sortKey === 'timestamp') {
-        aVal = a.created_at
-        bVal = b.created_at
+        return compareNumbers(a.created_at, b.created_at)
+      } else if (sortKey === 'score') {
+        return compareNumbers(a.score, b.score)
       } else {
-        aVal = a[sortKey]
-        bVal = b[sortKey]
+        // symbol or timeframe (both strings)
+        return compareStrings(a[sortKey], b[sortKey])
       }
-
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return sortDirection === 'asc' 
-          ? aVal.localeCompare(bVal) 
-          : bVal.localeCompare(aVal)
-      }
-
-      const aNum = typeof aVal === 'number' ? aVal : 0
-      const bNum = typeof bVal === 'number' ? bVal : 0
-      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum
     })
 
     return result

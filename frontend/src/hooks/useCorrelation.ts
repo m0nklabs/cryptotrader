@@ -4,7 +4,7 @@
  * React Query hook for fetching asset correlation data
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 
 export type CorrelationData = {
   symbols: string[]
@@ -24,6 +24,9 @@ export function useCorrelation(
   const [data, setData] = useState<CorrelationData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Stable symbol key for dependency tracking
+  const symbolKey = useMemo(() => symbols.slice().sort().join(','), [symbols])
 
   useEffect(() => {
     if (symbols.length < 2) {
@@ -74,7 +77,7 @@ export function useCorrelation(
       mounted = false
       controller.abort()
     }
-  }, [symbols.join(','), exchange, timeframe, lookbackDays])
+  }, [symbolKey, exchange, timeframe, lookbackDays])
 
   return { data, loading, error }
 }

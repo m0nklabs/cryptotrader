@@ -8,6 +8,9 @@ import { useState } from 'react'
 import { useCorrelation } from '../hooks/useCorrelation'
 import { getCorrelationColor, formatCorrelation } from '../lib/colors'
 
+// Tailwind gray-700 equivalent for diagonal cells
+const DIAGONAL_CELL_BG = '#374151'
+
 type Props = {
   symbols: string[]
   exchange?: string
@@ -121,7 +124,7 @@ export default function CorrelationMatrix({
                       key={`${rowSymbol}-${colSymbol}`}
                       className="p-2 text-center"
                       style={{
-                        backgroundColor: isDiagonal ? '#374151' : color + '40', // Add transparency
+                        backgroundColor: isDiagonal ? DIAGONAL_CELL_BG : color + '40', // Add transparency
                       }}
                       title={`${rowSymbol} vs ${colSymbol}: ${formatCorrelation(value)}`}
                     >

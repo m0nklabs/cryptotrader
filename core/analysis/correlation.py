@@ -89,8 +89,13 @@ async def calculate_correlation_matrix(
     # Align all dataframes by time (inner join)
     combined = pd.DataFrame()
     for symbol, df in all_data.items():
-        # Extract base asset (e.g., BTC from BTCUSD)
-        base = symbol.rstrip("USD").rstrip("USDT")
+        # Extract base asset (e.g., BTC from BTCUSD or BTCUSDT)
+        # Handle common quote currencies: USD, USDT, USDC, EUR, BTC
+        base = symbol
+        for quote in ['USDT', 'USDC', 'USD', 'EUR', 'BTC']:
+            if symbol.endswith(quote):
+                base = symbol[:-len(quote)]
+                break
         combined[base] = df["close"]
 
     # Drop NaN values

@@ -45,9 +45,10 @@ export function useCrosshairSync(
   useEffect(() => {
     if (!chartApi || crosshairTime === null) return
 
-    // Set crosshair to the synchronized time
-    // Note: lightweight-charts doesn't have direct API to set crosshair position
-    // We rely on the chart's own crosshair move to trigger sync
+    // Note: lightweight-charts v5 doesn't have a direct API to programmatically
+    // set crosshair position. The synchronization happens through the shared
+    // crosshairTime state that all charts subscribe to via subscribeCrosshairMove.
+    // Future enhancement: When lightweight-charts adds this API, implement it here.
   }, [chartApi, crosshairTime])
 
   return {
