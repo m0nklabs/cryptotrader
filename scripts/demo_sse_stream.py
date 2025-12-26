@@ -16,7 +16,6 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import sys
 import time
 from pathlib import Path
@@ -65,7 +64,9 @@ def demo_websocket_provider():
 
             # Show connection status
             if int(time.time() - start_time) % 10 == 0:
-                print(f"... waiting ({int(time.time() - start_time)}s elapsed, {len(candles_received)} candles received)")
+                print(
+                    f"... waiting ({int(time.time() - start_time)}s elapsed, {len(candles_received)} candles received)"
+                )
 
         if candles_received:
             print(f"\n✓ Successfully received {len(candles_received)} candle(s)")
@@ -97,7 +98,8 @@ def demo_sse_integration():
     print("\n" + "=" * 60)
     print("SSE Integration Architecture")
     print("=" * 60)
-    print("""
+    print(
+        """
 How real-time streaming works:
 
 1. Frontend client:
@@ -122,7 +124,8 @@ How real-time streaming works:
    - If SSE fails, frontend automatically falls back to polling
    - Chart stays updated even if WebSocket is unavailable
    - Visual indicator shows connection status (⚡ when live)
-    """)
+    """
+    )
 
 
 def main() -> int:
