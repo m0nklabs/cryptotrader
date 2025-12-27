@@ -163,6 +163,53 @@ openai>=1.10.0
 """
         )
 
+    # 10. Clean Copilot Instructions
+    with open(os.path.join(REPO_DIR, ".github", "copilot-instructions.md"), "w") as f:
+        f.write(
+            """# Repository custom instructions (Copilot)
+
+These instructions apply to GitHub Copilot in the context of this repository.
+
+## Primary goals
+
+- Make the smallest correct change that satisfies the request.
+- Keep the repo buildable/testable; don’t break CI.
+- Prefer clarity and correctness over cleverness.
+
+## Agent behavior
+
+- **Execute, don't ask**: If you can run a command, create a file, or perform an action — do it immediately.
+- **Minimize back-and-forth**: Complete tasks in one pass when possible.
+- **Fix errors yourself**: If a command fails, debug and retry before asking the user for help.
+- **NEVER do manual workarounds when automating**: Fix the automation instead.
+
+## Engineering rules
+
+- Follow existing patterns in the repo.
+- Avoid adding dependencies unless they are clearly justified.
+- Don’t introduce new features beyond what is requested.
+- Keep changes focused.
+
+## Technical Stack Reference
+
+### Backend (Python)
+- **Python**: 3.12+
+- **Linting/Formatting**: ruff
+- **Type checking**: pylance
+- **Testing**: pytest, pytest-asyncio
+- **Database**: PostgreSQL 16 via asyncpg / SQLAlchemy 2.0
+
+### Frontend
+- **Framework**: React 18+ with TypeScript
+- **Build**: Vite
+- **Styling**: Tailwind CSS
+
+### Infrastructure
+- **Container**: Docker, docker-compose
+- **CI**: GitHub Actions
+"""
+        )
+
     print("Cleanup complete!")
 
 

@@ -59,7 +59,13 @@ def main():
     print("   ⚙️  Generalizing configuration...")
 
     # Replace 'cryptotrader' with 'agentic-project' in key files
-    files_to_scrub = ["pyproject.toml", "docker-compose.yml", ".devcontainer/devcontainer.json", "package.json"]
+    files_to_scrub = [
+        "pyproject.toml",
+        "docker-compose.yml",
+        ".devcontainer/devcontainer.json",
+        "package.json",
+        "Makefile",
+    ]
 
     for rel_path in files_to_scrub:
         file_path = os.path.join(DEST_DIR, rel_path)
