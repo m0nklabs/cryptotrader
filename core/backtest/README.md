@@ -72,6 +72,8 @@ The `BacktestResult` contains:
 print(f"Trades: {len(result.trades)}")
 print(f"Win Rate: {result.win_rate * 100:.2f}%")
 print(f"Profit Factor: {result.profit_factor:.2f}")
+print(f"Total PnL: ${result.total_pnl:,.2f}")
+print(f"Total Return: {result.total_return * 100:.2f}%")
 
 # Risk metrics
 print(f"Sharpe Ratio: {result.sharpe_ratio:.2f}")
@@ -93,6 +95,9 @@ output = {
         "max_drawdown": result.max_drawdown,
         "win_rate": result.win_rate,
         "profit_factor": result.profit_factor,
+        "total_pnl": result.total_pnl,
+        "total_return": result.total_return,
+        "final_equity": result.equity_curve[-1] if result.equity_curve else None,
     },
     "trades": [
         {
@@ -135,12 +140,15 @@ python scripts/run_backtest.py --help
 - `--exchange EXCHANGE`: Exchange (default: bitfinex)
 - `--timeframe TIMEFRAME`: Timeframe (default: 1h)
 - `--days DAYS`: Number of days to backtest (default: 30)
+- `--compare`: Run multiple strategy variants side-by-side
 
 The script will:
 - Load historical candles for the specified date range
-- Run the built-in RSI strategy
-- Display performance metrics
+- Run the built-in RSI strategy (and optional variants)
+- Display performance metrics including PnL/returns
 - Export results to `backtest_results.json`
+
+When `--compare` is provided, a comparison table is printed and results are exported to `backtest_comparison.json`.
 
 ## Performance Metrics
 

@@ -13,19 +13,27 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.backtest.engine import BacktestEngine, RSIStrategy
+from core.backtest.engine import (
+    BacktestEngine,
+    BacktestResult,
+    RSIStrategy,
+    StrategyPerformance,
+)
 from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
 
 
-def export_results_json(result, filename: str) -> None:
-    """Export backtest results to JSON file."""
-    output = {
+def _serialize_result(result: BacktestResult) -> dict:
+    """Serialize a BacktestResult to a dictionary for export."""
+    return {
         "metrics": {
             "sharpe_ratio": result.sharpe_ratio,
             "max_drawdown": result.max_drawdown,
             "win_rate": result.win_rate,
             "profit_factor": result.profit_factor,
+            "total_pnl": result.total_pnl,
+            "total_return": result.total_return,
+            "final_equity": result.equity_curve[-1] if len(result.equity_curve) > 0 else None,
         },
         "trades": [
             {
@@ -38,6 +46,14 @@ def export_results_json(result, filename: str) -> None:
         ],
         "equity_curve": result.equity_curve,
     }
+
+
+def export_results_json(result: BacktestResult | list[StrategyPerformance], filename: str) -> None:
+    """Export backtest results (single or comparison) to JSON file."""
+    if isinstance(result, list):
+        output = {"strategies": [{"name": perf.name, **_serialize_result(perf.result)} for perf in result]}
+    else:
+        output = _serialize_result(result)
 
     with open(filename, "w") as f:
         json.dump(output, f, indent=2)
@@ -54,6 +70,11 @@ def main() -> None:
     parser.add_argument("--exchange", type=str, default="bitfinex", help="Exchange (default: bitfinex)")
     parser.add_argument("--timeframe", type=str, default="1h", help="Timeframe (default: 1h)")
     parser.add_argument("--days", type=int, default=30, help="Number of days to backtest (default: 30)")
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Run multiple strategy variants side-by-side for comparison",
+    )
     args = parser.parse_args()
 
     # Setup database connection
@@ -102,29 +123,64 @@ def main() -> None:
 
     # Run backtest
     print("\nRunning backtest with RSI strategy...")
-    strategy = RSIStrategy(oversold=30.0, overbought=70.0)
-    result = engine.run(strategy=strategy, candles=candles)
+    base_strategy = RSIStrategy(oversold=30.0, overbought=70.0)
 
-    # Display results
-    print(f"\n{'=' * 50}")
-    print("BACKTEST RESULTS")
-    print(f"{'=' * 50}")
-    print(f"Trades: {len(result.trades)}")
-    print(f"Sharpe Ratio: {result.sharpe_ratio:.2f}")
-    print(f"Max Drawdown: {result.max_drawdown * 100:.2f}%")
-    print(f"Win Rate: {result.win_rate * 100:.2f}%")
-    print(f"Profit Factor: {result.profit_factor:.2f}")
+    if args.compare:
+        strategies = {
+            "rsi_default": base_strategy,
+            "rsi_tighter": RSIStrategy(oversold=25.0, overbought=75.0),
+            "rsi_conservative": RSIStrategy(oversold=35.0, overbought=65.0),
+        }
+        performances = engine.compare_strategies(strategies=strategies, candles=candles)
 
-    if result.equity_curve:
-        final_equity = result.equity_curve[-1]
-        total_return = ((final_equity - args.capital) / args.capital) * 100
-        print(f"Initial Capital: ${args.capital:,.2f}")
-        print(f"Final Equity: ${final_equity:,.2f}")
-        print(f"Total Return: {total_return:.2f}%")
+        print(f"\n{'=' * 80}")
+        print("STRATEGY COMPARISON")
+        print(f"{'=' * 80}")
+        header = (
+            f"{'Strategy':<18}{'Trades':>8}{'Sharpe':>10}{'MaxDD%':>10}{'Win%':>10}{'PF':>8}{'PnL':>12}{'Return%':>12}"
+        )
+        print(header)
+        print("-" * len(header))
+        for perf in performances:
+            res = perf.result
+            final_equity = res.equity_curve[-1] if res.equity_curve else args.capital + res.total_pnl
+            print(
+                f"{perf.name:<18}"
+                f"{len(res.trades):>8}"
+                f"{res.sharpe_ratio:>10.2f}"
+                f"{(res.max_drawdown * 100):>10.2f}"
+                f"{(res.win_rate * 100):>10.2f}"
+                f"{res.profit_factor:>8.2f}"
+                f"{res.total_pnl:>12.2f}"
+                f"{(res.total_return * 100):>12.2f}"
+            )
+            print(f"   Final Equity: ${final_equity:,.2f}")
 
-    # Export to JSON
-    output_file = "backtest_results.json"
-    export_results_json(result, output_file)
+        output_file = "backtest_comparison.json"
+        export_results_json(performances, output_file)
+    else:
+        result = engine.run(strategy=base_strategy, candles=candles)
+
+        # Display results
+        print(f"\n{'=' * 50}")
+        print("BACKTEST RESULTS")
+        print(f"{'=' * 50}")
+        print(f"Trades: {len(result.trades)}")
+        print(f"Sharpe Ratio: {result.sharpe_ratio:.2f}")
+        print(f"Max Drawdown: {result.max_drawdown * 100:.2f}%")
+        print(f"Win Rate: {result.win_rate * 100:.2f}%")
+        print(f"Profit Factor: {result.profit_factor:.2f}")
+        print(f"Total PnL: ${result.total_pnl:,.2f}")
+        print(f"Total Return: {result.total_return * 100:.2f}%")
+
+        if result.equity_curve:
+            final_equity = result.equity_curve[-1]
+            print(f"Initial Capital: ${args.capital:,.2f}")
+            print(f"Final Equity: ${final_equity:,.2f}")
+
+        # Export to JSON
+        output_file = "backtest_results.json"
+        export_results_json(result, output_file)
 
     print(f"\n{'=' * 50}")
 

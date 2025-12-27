@@ -13,6 +13,10 @@ from core.backtest.engine import BacktestEngine, BacktestResult, RSIStrategy
 from core.types import Candle
 
 
+DEFAULT_INITIAL_CAPITAL = 10000.0
+FLOAT_TOLERANCE = 1e-9
+
+
 def _make_test_candle(close: float, idx: int = 0) -> Candle:
     """Helper to create a candle with minimal required fields."""
     base_time = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
@@ -49,7 +53,7 @@ def test_backtest_engine_with_rsi_strategy() -> None:
         def get_candles(self, **kwargs):
             return candles
 
-    engine = BacktestEngine(candle_store=MockCandleStore(), initial_capital=10000.0)
+    engine = BacktestEngine(candle_store=MockCandleStore(), initial_capital=DEFAULT_INITIAL_CAPITAL)
     strategy = RSIStrategy(oversold=30.0, overbought=70.0)
 
     result = engine.run(strategy=strategy, candles=candles)
@@ -62,13 +66,16 @@ def test_backtest_engine_with_rsi_strategy() -> None:
     assert isinstance(result.max_drawdown, float)
     assert isinstance(result.win_rate, float)
     assert isinstance(result.profit_factor, float)
+    assert isinstance(result.total_pnl, float)
+    assert isinstance(result.total_return, float)
 
     # With trending data, we should have generated some trades
     assert len(result.trades) > 0, "Should generate at least one trade"
 
     # Equity curve should have entries
     assert len(result.equity_curve) > 0, "Should have equity curve"
-    assert result.equity_curve[0] == 10000.0, "Should start with initial capital"
+    assert result.equity_curve[0] == DEFAULT_INITIAL_CAPITAL, "Should start with initial capital"
+    assert abs((result.total_return * DEFAULT_INITIAL_CAPITAL) - result.total_pnl) < FLOAT_TOLERANCE
 
     # Metrics should be in valid ranges
     assert 0.0 <= result.max_drawdown <= 1.0, "Max drawdown should be 0-100%"
@@ -86,7 +93,7 @@ def test_backtest_engine_with_flat_data() -> None:
         def get_candles(self, **kwargs):
             return candles
 
-    engine = BacktestEngine(candle_store=MockCandleStore(), initial_capital=10000.0)
+    engine = BacktestEngine(candle_store=MockCandleStore(), initial_capital=DEFAULT_INITIAL_CAPITAL)
     strategy = RSIStrategy(oversold=30.0, overbought=70.0)
 
     result = engine.run(strategy=strategy, candles=candles)
@@ -94,4 +101,32 @@ def test_backtest_engine_with_flat_data() -> None:
     # With flat data, RSI should stay neutral (no extreme values)
     # May generate no trades or very few trades
     assert len(result.trades) >= 0, "Should handle flat data"
-    assert result.equity_curve[0] == 10000.0, "Should start with initial capital"
+    assert result.equity_curve[0] == DEFAULT_INITIAL_CAPITAL, "Should start with initial capital"
+
+
+def test_compare_strategies_returns_results() -> None:
+    """Compare multiple strategies side-by-side."""
+    uptrend = [100.0 + i for i in range(15)]
+    downtrend = [115.0 - i for i in range(30)]
+    recovery = [85.0 + i * 0.5 for i in range(20)]
+    prices = uptrend + downtrend + recovery
+    candles = [_make_test_candle(price, i) for i, price in enumerate(prices)]
+
+    class MockCandleStore:
+        def get_candles(self, **kwargs):
+            return candles
+
+    engine = BacktestEngine(candle_store=MockCandleStore(), initial_capital=DEFAULT_INITIAL_CAPITAL)
+    strategies = {
+        "rsi_default": RSIStrategy(oversold=30.0, overbought=70.0),
+        "rsi_tighter": RSIStrategy(oversold=25.0, overbought=75.0),
+    }
+
+    performances = engine.compare_strategies(strategies=strategies, candles=candles)
+
+    assert len(performances) == 2
+    perf_by_name = {perf.name: perf for perf in performances}
+    assert "rsi_default" in perf_by_name
+    default_perf = perf_by_name["rsi_default"]
+    assert isinstance(default_perf.result, BacktestResult)
+    assert isinstance(default_perf.result.total_pnl, float)
