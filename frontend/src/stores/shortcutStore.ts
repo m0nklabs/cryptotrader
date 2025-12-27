@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand'
-import { DEFAULT_SHORTCUTS, type ShortcutDefinition, type ShortcutAction } from '../lib/shortcuts'
+import { type ShortcutDefinition, type ShortcutAction } from '../lib/shortcuts'
 
 type ShortcutState = {
   customBindings: Partial<Record<ShortcutAction, string>>

@@ -127,14 +127,14 @@ export default function OpportunityScore({ symbol, exchange = 'bitfinex' }: Prop
         <div className="rounded border border-gray-800 bg-gray-900 p-2">
           <div className="mb-1 text-xs text-gray-400">Score History (24 points)</div>
           <div className="flex h-12 items-end gap-0.5">
-            {history.slice().reverse().map((h) => {
+            {history.slice().reverse().map((h, idx) => {
               const height = (h.score / 100) * 100
               const color =
                 h.score >= 61 ? 'bg-green-500' : h.score >= 31 ? 'bg-yellow-500' : 'bg-red-500'
 
               return (
                 <div
-                  key={h.timestamp}
+                  key={`${h.timestamp}-${idx}`}
                   className={`flex-1 rounded-sm ${color} opacity-70 hover:opacity-100`}
                   style={{ height: `${height}%` }}
                   title={`Score: ${h.score}, Side: ${h.side}`}
