@@ -1750,11 +1750,11 @@ async def get_correlation_matrix(
 
     # Validate symbols contain only alphanumeric characters and allowed separators
     import re
+
     for sym in symbol_list:
-        if not re.match(r'^[A-Z0-9]+$', sym):
+        if not re.match(r"^[A-Z0-9]+$", sym):
             raise HTTPException(
-                status_code=400,
-                detail=f"Invalid symbol '{sym}': symbols must contain only alphanumeric characters"
+                status_code=400, detail=f"Invalid symbol '{sym}': symbols must contain only alphanumeric characters"
             )
 
     if len(symbol_list) < 2:
