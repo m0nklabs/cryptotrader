@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -59,6 +60,33 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/healthz":
             return _json_response(self, status=200, payload={"ok": True})
+
+        if parsed.path == "/system/status":
+            try:
+                # Check database connection
+                stores = self.server.stores
+                engine = stores._get_engine()  # noqa: SLF001
+                with engine.connect() as conn:
+                    conn.execute(stores._require_sqlalchemy()[1]("SELECT 1"))  # noqa: SLF001
+                db_status = "ok"
+                db_connected = True
+            except Exception:  # noqa: BLE001
+                db_status = "error"
+                db_connected = False
+
+            return _json_response(
+                self,
+                status=200,
+                payload={
+                    "backend": {"status": "ok", "uptime_seconds": 0},
+                    "database": {
+                        "status": db_status,
+                        "connected": db_connected,
+                        "latency_ms": None,
+                    },
+                    "timestamp": int(time.time() * 1000),
+                },
+            )
 
         if parsed.path == "/api/candles/available":
             qs = parse_qs(parsed.query)
