@@ -69,9 +69,15 @@ export default function MultiTimeframeView({ symbol, fetchCandles }: Props) {
   }
 
   const visibleCharts = charts.filter((c) => c.visible)
-  const gridCols = visibleCharts.length === 2 ? 'grid-cols-2' :
-                   visibleCharts.length === 3 ? 'grid-cols-3' :
-                   visibleCharts.length >= 4 ? 'grid-cols-2' : 'grid-cols-1'
+  // Calculate grid columns: 1 chart = 1 col, 2 charts = 2 cols, 3 charts = 3 cols, 4+ charts = 2 cols for readability
+  const gridCols = (() => {
+    const count = visibleCharts.length
+    if (count <= 1) return 'grid-cols-1'
+    if (count === 2) return 'grid-cols-2'
+    if (count === 3) return 'grid-cols-3'
+    // For 4 or more charts, keep a 2-column grid for readability
+    return 'grid-cols-2'
+  })()
 
   return (
     <div className="flex flex-col gap-3">

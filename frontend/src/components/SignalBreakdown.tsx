@@ -44,7 +44,7 @@ export default function SignalBreakdown({ signals, isExpanded, onToggle }: Props
             const strengthBars = Math.round((signal.strength / 100) * 5)
 
             return (
-              <div key={idx} className="flex flex-col gap-1 rounded border border-gray-800 bg-gray-900 p-2">
+              <div key={`${signal.code}-${idx}`} className="flex flex-col gap-1 rounded border border-gray-800 bg-gray-900 p-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-gray-300">{signal.code}</span>
                   <span className={`text-xs font-medium ${sideColor}`}>{signal.side}</span>

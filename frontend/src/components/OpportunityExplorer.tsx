@@ -207,9 +207,9 @@ export default function OpportunityExplorer({ exchange = 'bitfinex', onSelectOpp
                 </td>
               </tr>
             ) : (
-              sortedOpportunities.map((opp, idx) => (
+              sortedOpportunities.map((opp) => (
                 <tr
-                  key={idx}
+                  key={`${opp.symbol}-${opp.timeframe}-${opp.created_at}`}
                   className="cursor-pointer border-t border-gray-800 hover:bg-gray-800/50"
                   onClick={() => handleSelect(opp)}
                 >

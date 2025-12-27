@@ -1745,8 +1745,17 @@ async def get_correlation_matrix(
     if stores is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
-    # Parse symbols
+    # Parse symbols and validate input
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    # Validate symbols contain only alphanumeric characters and allowed separators
+    import re
+    for sym in symbol_list:
+        if not re.match(r'^[A-Z0-9]+$', sym):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid symbol '{sym}': symbols must contain only alphanumeric characters"
+            )
 
     if len(symbol_list) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 symbols for correlation analysis")
