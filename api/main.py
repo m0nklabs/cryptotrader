@@ -62,6 +62,12 @@ _market_cap_cache_source: str = "fallback"  # Track actual source of cached data
 _market_cap_cache_lock = threading.Lock()
 MARKET_CAP_CACHE_TTL = 600  # 10 minutes in seconds
 
+# Global correlation cache
+# Key format: "symbols:exchange:timeframe:lookback" -> (result, timestamp)
+_correlation_cache: dict[str, tuple[dict[str, Any], float]] = {}
+_correlation_cache_lock = threading.Lock()
+CORRELATION_CACHE_TTL = 300  # 5 minutes in seconds (correlations change slowly)
+
 # Track application start time for uptime calculation
 _app_start_time: float = time.time()
 
@@ -889,6 +895,81 @@ async def get_market_cap() -> dict[str, Any]:
         "source": source,
         "last_updated": int(_market_cap_cache_time * 1000) if _market_cap_cache_time > 0 else None,
     }
+
+
+@app.get("/api/correlation", tags=["Analysis"])
+async def get_correlation_matrix(
+    symbols: str = Query(..., description="Comma-separated list of symbols (e.g., BTCUSD,ETHUSD,SOLUSD)"),
+    exchange: str = Query("bitfinex", description="Exchange name"),
+    timeframe: str = Query("1d", description="Timeframe (1d recommended)"),
+    lookback: int = Query(30, ge=7, le=365, description="Lookback period in days (7, 30, 90, 365)"),
+):
+    """Calculate correlation matrix between assets.
+
+    Returns correlation coefficients between -1 (negative correlation) and +1 (positive correlation).
+    Useful for portfolio diversification analysis.
+
+    Results are cached for 5 minutes to reduce computational load.
+    """
+    from core.analysis.correlation import calculate_correlation_matrix
+
+    stores = _get_stores()
+    if stores is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    # Parse symbols and validate input
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    # Validate symbols contain only alphanumeric characters and allowed separators
+    import re
+
+    for sym in symbol_list:
+        if not re.match(r"^[A-Z0-9]+$", sym):
+            raise HTTPException(
+                status_code=400, detail=f"Invalid symbol '{sym}': symbols must contain only alphanumeric characters"
+            )
+
+    if len(symbol_list) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 symbols for correlation analysis")
+
+    # Create cache key
+    cache_key = f"{','.join(sorted(symbol_list))}:{exchange}:{timeframe}:{lookback}"
+
+    # Check cache
+    with _correlation_cache_lock:
+        if cache_key in _correlation_cache:
+            cached_result, cached_time = _correlation_cache[cache_key]
+            age = time.time() - cached_time
+            if age < CORRELATION_CACHE_TTL:
+                logger.debug(f"Returning cached correlation result (age: {age:.1f}s)")
+                return cached_result
+
+    # Calculate correlation (cache miss or expired)
+    try:
+        result = await calculate_correlation_matrix(
+            stores=stores,
+            symbols=symbol_list,
+            exchange=exchange,
+            timeframe=timeframe,
+            lookback_days=lookback,
+        )
+
+        # Update cache
+        with _correlation_cache_lock:
+            _correlation_cache[cache_key] = (result, time.time())
+            # Limit cache size to prevent memory issues (keep 50 most recently cached entries by insertion time)
+            if len(_correlation_cache) > 100:
+                # Remove oldest entries, keep only the most recent 50
+                sorted_items = sorted(_correlation_cache.items(), key=lambda x: x[1][1])
+                _correlation_cache.clear()
+                _correlation_cache.update(dict(sorted_items[-50:]))
+
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Correlation calculation failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to calculate correlation matrix")
 
 
 @app.exception_handler(Exception)
