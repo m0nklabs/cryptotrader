@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   assign-copilot:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, org]
     steps:
       - name: Generate App Token
         id: generate-token

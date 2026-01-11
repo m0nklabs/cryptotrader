@@ -10,7 +10,7 @@ on:
 jobs:
   mark-ready:
     name: Mark Copilot PR as ready for review
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, org]
     # Only run if CI succeeded and it's from a Copilot branch
     if: >
       github.event.workflow_run.conclusion == 'success' &&

@@ -18,7 +18,7 @@ permissions:
 jobs:
   request-review:
     name: Request Copilot Review
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, org]
     if: github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Find PR for this branch

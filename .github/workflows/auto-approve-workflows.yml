@@ -9,7 +9,7 @@ on:
 jobs:
   auto-trigger:
     name: Trigger workflows for blocked Copilot PRs
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, org]
     steps:
       - name: Trigger workflows via dispatch (bypasses approval)
         env:

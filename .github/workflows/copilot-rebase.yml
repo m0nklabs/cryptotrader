@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   rebase-copilot-prs:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, org]
 
     steps:
       - name: Generate App Token
