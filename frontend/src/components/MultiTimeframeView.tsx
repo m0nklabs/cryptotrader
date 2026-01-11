@@ -11,6 +11,11 @@ import type { OHLCV } from '../utils/indicators'
 
 type Props = {
   symbol: string
+  /**
+   * Function to fetch candle data for a symbol and timeframe.
+   * IMPORTANT: This function should be memoized with useCallback to prevent
+   * unnecessary re-fetching of data on every parent render.
+   */
   fetchCandles: (symbol: string, timeframe: string) => Promise<OHLCV[]>
 }
 
