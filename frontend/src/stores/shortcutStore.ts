@@ -42,7 +42,16 @@ export const useShortcutStore = create<ShortcutState>((set, get) => ({
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
         const bindings = JSON.parse(saved)
-        set({ customBindings: bindings })
+        // Validate that the loaded data is an object with string values
+        if (typeof bindings === 'object' && bindings !== null && !Array.isArray(bindings)) {
+          const validated: Partial<Record<ShortcutAction, string>> = {}
+          for (const [key, value] of Object.entries(bindings)) {
+            if (typeof value === 'string') {
+              validated[key as ShortcutAction] = value
+            }
+          }
+          set({ customBindings: validated })
+        }
       }
     } catch (err) {
       console.error('Failed to load keyboard shortcuts:', err)

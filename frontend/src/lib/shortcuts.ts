@@ -170,6 +170,11 @@ export function matchesShortcut(
   // we don't check shift modifier unless explicitly specified in the shortcut definition
   const shouldIgnoreShift = IMPLICIT_SHIFT_KEYS.includes(shortcut.key) && !needsShift
 
+  // Modifier matching logic:
+  // - Ctrl/Meta must match exactly
+  // - Alt must match exactly
+  // - Shift is checked only if not ignored (for implicit shift keys like ?)
+  // This ensures we reject shortcuts when unexpected modifiers are pressed
   if (needsCtrl !== hasCtrl) return false
   if (needsAlt !== hasAlt) return false
   // Only check shift if we're not ignoring it for implicit shift keys

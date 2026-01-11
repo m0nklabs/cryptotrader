@@ -25,7 +25,7 @@ export function useCorrelation(
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Stable symbol key for dependency tracking
+  // Stable symbol key for dependency tracking (sorted to avoid refetches on reorder)
   const symbolKey = useMemo(() => symbols.slice().sort().join(','), [symbols])
 
   useEffect(() => {
@@ -42,8 +42,8 @@ export function useCorrelation(
       setError(null)
 
       try {
-        const symbolsParam = symbols.join(',')
-        const url = `/api/correlation?symbols=${encodeURIComponent(symbolsParam)}&exchange=${encodeURIComponent(exchange)}&timeframe=${encodeURIComponent(timeframe)}&lookback=${lookbackDays}`
+        // Use symbolKey directly for consistency with dependency tracking
+        const url = `/api/correlation?symbols=${encodeURIComponent(symbolKey)}&exchange=${encodeURIComponent(exchange)}&timeframe=${encodeURIComponent(timeframe)}&lookback=${lookbackDays}`
 
         const response = await fetch(url, { signal: controller.signal })
 
@@ -60,7 +60,7 @@ export function useCorrelation(
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
           console.debug('Correlation fetch aborted', {
-            symbols,
+            symbolKey,
             exchange,
             timeframe,
             lookbackDays,
