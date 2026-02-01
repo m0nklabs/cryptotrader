@@ -105,8 +105,8 @@ export default function App() {
   const settingsRef = useRef<HTMLDivElement | null>(null)
 
   const [chartSymbol, setChartSymbol] = useState<string>('BTCUSD')
-  const [chartTimeframe, setChartTimeframe] = useState<string>('1m')
-  const [chartLimit, setChartLimit] = useState<number>(480)
+  const [chartTimeframe, setChartTimeframe] = useState<string>('1h')
+  const [chartLimit, setChartLimit] = useState<number>(500)
   const [chartCandles, setChartCandles] = useState<
     Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>
   >([])
@@ -190,13 +190,15 @@ export default function App() {
   }
 
   const pickDefaultTimeframe = (timeframes: string[]) => {
-    if (timeframes.includes('1m')) return '1m'
-    if (timeframes.includes('5m')) return '5m'
-    if (timeframes.includes('15m')) return '15m'
+    // Prefer 1h as practical default (good balance of data + overview)
+    // Then higher timeframes, then lower
     if (timeframes.includes('1h')) return '1h'
     if (timeframes.includes('4h')) return '4h'
     if (timeframes.includes('1d')) return '1d'
-    return timeframes[0] || '1m'
+    if (timeframes.includes('15m')) return '15m'
+    if (timeframes.includes('5m')) return '5m'
+    if (timeframes.includes('1m')) return '1m'
+    return timeframes[0] || '1h'
   }
 
   const formatCurrency = (amount: number, currency: string): string => {
@@ -275,7 +277,7 @@ export default function App() {
   const timeframesForChartSymbol = useMemo(() => {
     const tfs = availableTimeframesBySymbol[chartSymbol]
     if (tfs && tfs.length) return tfs
-    return ['1m']
+    return ['1h', '4h', '1d', '1m']  // Fallback with reasonable defaults
   }, [availableTimeframesBySymbol, chartSymbol])
 
   // Real-time candle updates via WebSocket/SSE with polling fallback
