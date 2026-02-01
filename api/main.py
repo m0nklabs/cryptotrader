@@ -480,6 +480,18 @@ async def get_latest_candles(
         ) from e
 
 
+# Alias for /candles/latest - frontend uses /candles
+@app.get("/candles")
+async def get_candles(
+    exchange: str = Query(default="bitfinex", description="Exchange name"),
+    symbol: str = Query(..., description="Trading symbol (e.g., BTCUSD)"),
+    timeframe: str = Query(..., description="Timeframe (e.g., 1m, 5m, 1h)"),
+    limit: int = Query(default=100, ge=1, le=5000, description="Number of candles to return"),
+) -> dict[str, Any]:
+    """Alias for /candles/latest endpoint."""
+    return await get_latest_candles(exchange=exchange, symbol=symbol, timeframe=timeframe, limit=limit)
+
+
 @app.get("/candles/available")
 async def get_available_pairs(
     exchange: str = Query(default="bitfinex", description="Exchange name"),
