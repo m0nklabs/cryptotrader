@@ -8,6 +8,10 @@ export default defineConfig({
     port: 5176,
     strictPort: true,
     proxy: {
+      '/api/wallet': {
+        target: 'http://127.0.0.1:8101',
+        rewrite: (path) => path.replace(/^\/api\/wallet/, ''),
+      },
       '/api': {
         target: 'http://127.0.0.1:8000',
         rewrite: (path) => path.replace(/^\/api/, ''),
@@ -20,6 +24,10 @@ export default defineConfig({
   },
   preview: {
     proxy: {
+      '/api/wallet': {
+        target: 'http://127.0.0.1:8101',
+        rewrite: (path) => path.replace(/^\/api\/wallet/, ''),
+      },
       '/api': {
         target: 'http://127.0.0.1:8000',
         rewrite: (path) => path.replace(/^\/api/, ''),

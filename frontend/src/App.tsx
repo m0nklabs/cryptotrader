@@ -325,12 +325,14 @@ export default function App() {
           const rows = candles
             .map((row) => {
               if (!row || typeof row !== 'object') return null
-              const t = Number((row as { t?: unknown }).t)
-              const o = Number((row as { o?: unknown }).o)
-              const h = Number((row as { h?: unknown }).h)
-              const l = Number((row as { l?: unknown }).l)
-              const c = Number((row as { c?: unknown }).c)
-              const v = Number((row as { v?: unknown }).v)
+              // Support both old (t,o,h,l,c,v) and new (open_time_ms,open,high,low,close,volume) formats
+              const r = row as Record<string, unknown>
+              const t = Number(r.t ?? r.open_time_ms)
+              const o = Number(r.o ?? r.open)
+              const h = Number(r.h ?? r.high)
+              const l = Number(r.l ?? r.low)
+              const c = Number(r.c ?? r.close)
+              const v = Number(r.v ?? r.volume)
               if (![t, o, h, l, c, v].every(Number.isFinite)) return null
               return { t, o, h, l, c, v }
             })
