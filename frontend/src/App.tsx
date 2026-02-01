@@ -997,6 +997,8 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto px-3 py-3">
+          {/* Dashboard view - shows all panels */}
+          {activeView === VIEW_IDS.DASHBOARD && (
           <div className="ct-dock-grid gap-3">
             <div className="ct-dock-left flex flex-col gap-3">
               <Panel
@@ -1355,6 +1357,221 @@ export default function App() {
               </Panel>
             </div>
           </div>
+          )}
+
+          {/* Chart view - full-width chart */}
+          {activeView === VIEW_IDS.CHART && (
+            <div className="flex h-full flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <select
+                  value={chartSymbol}
+                  onChange={(e) => setChartSymbol(e.target.value)}
+                  className="rounded border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800"
+                >
+                  {availableSymbols.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <select
+                  value={chartTimeframe}
+                  onChange={(e) => setChartTimeframe(e.target.value)}
+                  className="rounded border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800"
+                >
+                  {timeframesForChartSymbol.map((tf) => (
+                    <option key={tf} value={tf}>{tf}</option>
+                  ))}
+                </select>
+                <span className={`ml-2 text-xs ${wsConnected ? 'text-green-500' : 'text-gray-400'}`}>
+                  {wsConnected ? '● Live' : '○ Polling'}
+                </span>
+              </div>
+              <div className="min-h-[400px] flex-1 rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
+                <CandlestickChart
+                  candles={chartCandles.map((c) => ({
+                    time: c.t,
+                    open: c.o,
+                    high: c.h,
+                    low: c.l,
+                    close: c.c,
+                    volume: c.v,
+                  }))}
+                  height={500}
+                  symbol={chartSymbol}
+                  timeframe={chartTimeframe}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Orders view */}
+          {activeView === VIEW_IDS.ORDERS && (
+            <div className="flex flex-col gap-3">
+              <Panel title="Place Order" subtitle={`${chartSymbol} @ ${currentPrice?.toFixed(2) || '—'}`}>
+                <OrderForm symbol={chartSymbol} currentPrice={currentPrice} onSubmit={handlePlaceOrder} />
+              </Panel>
+              <Panel title="Open Orders" subtitle={`${orders.length} active`}>
+                <OrdersTable orders={orders} onCancel={handleCancelOrder} loading={tradingLoading} />
+              </Panel>
+            </div>
+          )}
+
+          {/* Positions view */}
+          {activeView === VIEW_IDS.POSITIONS && (
+            <Panel title="Open Positions" subtitle={`${positions.length} positions`}>
+              <PositionsTable
+                positions={positions}
+                onClose={handleClosePosition}
+                loading={tradingLoading}
+              />
+            </Panel>
+          )}
+
+          {/* Signals view */}
+          {activeView === VIEW_IDS.SIGNALS && (
+            <Panel title="Trading Signals" subtitle="Top opportunities">
+              {signalsError ? (
+                <div className="text-xs text-red-500">{signalsError}</div>
+              ) : signals.length === 0 ? (
+                <div className="text-xs text-gray-500">No signals available</div>
+              ) : (
+                <div className="space-y-2">
+                  {signals.map((sig, idx) => (
+                    <div key={idx} className="rounded border border-gray-200 p-2 dark:border-gray-700">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{sig.symbol}</span>
+                        <span className={`text-xs ${sig.side === 'buy' ? 'text-green-500' : 'text-red-500'}`}>
+                          {sig.side.toUpperCase()} ({sig.score.toFixed(1)})
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">{sig.timeframe}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+          )}
+
+          {/* Market Watch view */}
+          {activeView === VIEW_IDS.MARKET_WATCH && (
+            <Panel title="Market Watch" subtitle={`${availableSymbols.length} symbols`}>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                {availableSymbols.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => { setChartSymbol(s); setActiveView(VIEW_IDS.CHART); }}
+                    className="rounded border border-gray-200 p-2 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                  >
+                    <div className="font-medium">{s}</div>
+                    <div className="text-xs text-gray-500">
+                      {availableTimeframesBySymbol[s]?.join(', ') || '—'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Panel>
+          )}
+
+          {/* Ingestion Status view */}
+          {activeView === VIEW_IDS.INGESTION_STATUS && (
+            <Panel title="Data Ingestion" subtitle="Market data service status">
+              <div className="space-y-2">
+                <Kvp k="API Status" v={ingestionStatus.apiReachable ? '✓ Online' : '✗ Offline'} />
+                <Kvp k="Latest BTCUSD-1m" v={ingestionStatus.btcusd1mLatestTime
+                  ? new Date(ingestionStatus.btcusd1mLatestTime).toISOString().slice(0, 19).replace('T', ' ')
+                  : '—'} />
+                {ingestionStatus.gapStats && (
+                  <>
+                    <Kvp k="Open Gaps" v={ingestionStatus.gapStats.open_gaps} />
+                    <Kvp k="Repaired (24h)" v={ingestionStatus.gapStats.repaired_24h} />
+                  </>
+                )}
+              </div>
+            </Panel>
+          )}
+
+          {/* Wallet view */}
+          {activeView === VIEW_IDS.WALLET && (
+            <Panel title="Wallet Balances" subtitle="Bitfinex">
+              {walletsLoading ? (
+                <div className="text-xs text-gray-500">Loading...</div>
+              ) : walletsError ? (
+                <div className="text-xs text-red-500">{walletsError}</div>
+              ) : wallets.length === 0 ? (
+                <div className="text-xs text-gray-500">No balances</div>
+              ) : (
+                <div className="space-y-3">
+                  {['exchange', 'margin', 'funding'].map((type) => {
+                    const typeWallets = wallets.filter((w) => w.type === type && w.balance !== 0)
+                    if (typeWallets.length === 0) return null
+                    return (
+                      <div key={type}>
+                        <div className="mb-1 text-xs font-semibold uppercase text-gray-500">{type}</div>
+                        {typeWallets.map((w, i) => (
+                          <Kvp key={i} k={w.currency} v={formatCurrency(w.balance, w.currency)} />
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </Panel>
+          )}
+
+          {/* Settings view */}
+          {activeView === VIEW_IDS.SETTINGS && (
+            <Panel title="Settings">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span>Theme</span>
+                  <button
+                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                    className="rounded border border-gray-200 px-3 py-1 text-xs dark:border-gray-700"
+                  >
+                    {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>WebSocket</span>
+                  <button
+                    onClick={() => setUseWebSocket(!useWebSocket)}
+                    className={`rounded px-3 py-1 text-xs ${useWebSocket ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-800'}`}
+                  >
+                    {useWebSocket ? 'Enabled' : 'Disabled'}
+                  </button>
+                </div>
+              </div>
+            </Panel>
+          )}
+
+          {/* System Status view */}
+          {activeView === VIEW_IDS.SYSTEM_STATUS && (
+            <Panel title="System Status">
+              {systemStatusError ? (
+                <div className="text-xs text-red-500">{systemStatusError}</div>
+              ) : systemStatus ? (
+                <div className="space-y-2">
+                  <Kvp k="Backend" v={systemStatus.backend.status === 'ok' ? '✓ OK' : '✗ Error'} />
+                  <Kvp k="Database" v={systemStatus.database.status === 'ok'
+                    ? `✓ ${systemStatus.database.latency_ms}ms`
+                    : '✗ Error'} />
+                  <Kvp k="Uptime" v={`${Math.floor((systemStatus.backend.uptime_seconds || 0) / 60)}m`} />
+                </div>
+              ) : (
+                <div className="text-xs text-gray-500">Loading...</div>
+              )}
+            </Panel>
+          )}
+
+          {/* Opportunities view - placeholder */}
+          {activeView === VIEW_IDS.OPPORTUNITIES && (
+            <Panel title="Trading Opportunities" subtitle="Coming soon">
+              <div className="py-8 text-center text-gray-500">
+                <div className="text-4xl mb-2">💡</div>
+                <div>Automated opportunity detection</div>
+                <div className="text-xs mt-1">Based on signals, volume, and momentum</div>
+              </div>
+            </Panel>
+          )}
         </main>
 
         <footer className="border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
