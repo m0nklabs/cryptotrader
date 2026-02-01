@@ -949,6 +949,218 @@ async def get_market_cap() -> dict[str, Any]:
     }
 
 
+# ============================================================================
+# Signals & Gaps endpoints
+# ============================================================================
+
+
+@app.get("/signals")
+async def get_signals(
+    exchange: str = Query("bitfinex", description="Exchange name"),
+    symbol: str = Query("BTCUSD", description="Trading symbol"),
+    timeframe: str = Query("1h", description="Timeframe for analysis"),
+    limit: int = Query(10, ge=1, le=100, description="Max signals to return"),
+) -> dict[str, Any]:
+    """Get trading signals based on recent price action.
+
+    Generates basic signals from RSI oversold/overbought conditions.
+    """
+    signals_list: list[dict[str, Any]] = []
+
+    try:
+        stores = _get_stores()
+        engine = stores._get_engine()  # noqa: SLF001
+        _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+        # Get recent candles for RSI calculation
+        query = text(
+            """
+            SELECT open_time_ms, close
+            FROM candles
+            WHERE exchange = :exchange AND symbol = :symbol AND timeframe = :timeframe
+            ORDER BY open_time_ms DESC
+            LIMIT 50
+        """
+        )
+
+        with engine.begin() as conn:
+            rows = conn.execute(
+                query,
+                {
+                    "exchange": exchange.lower(),
+                    "symbol": symbol.upper(),
+                    "timeframe": timeframe,
+                },
+            ).fetchall()
+
+        if len(rows) >= 15:
+            # Calculate RSI (simple implementation)
+            closes = [float(r[1]) for r in reversed(rows)]
+            gains = []
+            losses = []
+            for i in range(1, len(closes)):
+                delta = closes[i] - closes[i - 1]
+                gains.append(max(0, delta))
+                losses.append(max(0, -delta))
+
+            if len(gains) >= 14:
+                avg_gain = sum(gains[-14:]) / 14
+                avg_loss = sum(losses[-14:]) / 14
+
+                if avg_loss > 0:
+                    rs = avg_gain / avg_loss
+                    rsi = 100 - (100 / (1 + rs))
+                else:
+                    rsi = 100
+
+                current_price = closes[-1]
+                timestamp = int(rows[0][0])
+
+                # Generate signal if RSI is extreme
+                if rsi < 30:
+                    signals_list.append(
+                        {
+                            "symbol": symbol,
+                            "timeframe": timeframe,
+                            "score": round((30 - rsi) / 30 * 100, 1),
+                            "side": "BUY",
+                            "signals": [
+                                {
+                                    "code": "RSI_OVERSOLD",
+                                    "side": "BUY",
+                                    "strength": round((30 - rsi) / 30, 2),
+                                    "value": f"{rsi:.1f}",
+                                    "reason": f"RSI({rsi:.1f}) below 30 - oversold",
+                                }
+                            ],
+                            "price": current_price,
+                            "created_at": timestamp,
+                        }
+                    )
+                elif rsi > 70:
+                    signals_list.append(
+                        {
+                            "symbol": symbol,
+                            "timeframe": timeframe,
+                            "score": round((rsi - 70) / 30 * 100, 1),
+                            "side": "SELL",
+                            "signals": [
+                                {
+                                    "code": "RSI_OVERBOUGHT",
+                                    "side": "SELL",
+                                    "strength": round((rsi - 70) / 30, 2),
+                                    "value": f"{rsi:.1f}",
+                                    "reason": f"RSI({rsi:.1f}) above 70 - overbought",
+                                }
+                            ],
+                            "price": current_price,
+                            "created_at": timestamp,
+                        }
+                    )
+    except Exception as e:
+        logger.warning(f"Failed to generate signals: {e}")
+
+    return {
+        "exchange": exchange,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "signals": signals_list[:limit],
+        "count": len(signals_list),
+    }
+
+
+@app.get("/gaps/summary")
+async def get_gaps_summary(
+    exchange: str = Query("bitfinex", description="Exchange name"),
+) -> dict[str, Any]:
+    """Get gap statistics from candles data.
+
+    Detects gaps by checking for missing expected candles in 1m timeframe.
+    """
+    open_gaps = 0
+    repaired_24h = 0
+    oldest_gap: int | None = None
+
+    try:
+        stores = _get_stores()
+        engine = stores._get_engine()  # noqa: SLF001
+        _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+        # Get gap count by checking for discontinuities in 1m candles
+        # A gap exists if next candle timestamp > current + 60000ms
+        gap_query = text(
+            """
+            WITH candle_gaps AS (
+                SELECT
+                    open_time_ms,
+                    LEAD(open_time_ms) OVER (PARTITION BY symbol ORDER BY open_time_ms) as next_time
+                FROM candles
+                WHERE exchange = :exchange
+                  AND timeframe = '1m'
+                  AND open_time_ms > :since
+            )
+            SELECT
+                COUNT(*) as gap_count,
+                MIN(open_time_ms) as oldest_gap_time
+            FROM candle_gaps
+            WHERE next_time - open_time_ms > 120000
+        """
+        )
+
+        now_ms = int(time.time() * 1000)
+        week_ago_ms = now_ms - (7 * 24 * 60 * 60 * 1000)
+        day_ago_ms = now_ms - (24 * 60 * 60 * 1000)
+
+        with engine.begin() as conn:
+            # Count gaps in last 7 days
+            result = conn.execute(
+                gap_query,
+                {
+                    "exchange": exchange.lower(),
+                    "since": week_ago_ms,
+                },
+            ).fetchone()
+
+            if result:
+                open_gaps = int(result[0] or 0)
+                oldest_gap = int(result[1]) if result[1] else None
+
+            # Count "repaired" = candles added in last 24h that filled gaps
+            # (simplified: just count new 1m candles in last 24h)
+            repair_query = text(
+                """
+                SELECT COUNT(*) FROM candles
+                WHERE exchange = :exchange
+                  AND timeframe = '1m'
+                  AND open_time_ms BETWEEN :day_ago AND :now
+            """
+            )
+            repair_result = conn.execute(
+                repair_query,
+                {
+                    "exchange": exchange.lower(),
+                    "day_ago": day_ago_ms,
+                    "now": now_ms,
+                },
+            ).fetchone()
+
+            if repair_result:
+                # Estimate repairs based on candle density
+                expected_candles = 24 * 60  # 1440 candles per day
+                actual_candles = int(repair_result[0] or 0)
+                if actual_candles > expected_candles:
+                    repaired_24h = actual_candles - expected_candles
+
+    except Exception as e:
+        logger.warning(f"Failed to get gap stats: {e}")
+
+    return {
+        "open_gaps": open_gaps,
+        "repaired_24h": repaired_24h,
+        "oldest_open_gap": oldest_gap,
+    }
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(_request, exc):
     """Global exception handler to ensure consistent error responses."""

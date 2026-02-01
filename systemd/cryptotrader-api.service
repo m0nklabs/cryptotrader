@@ -1,0 +1,25 @@
+[Unit]
+Description=CryptoTrader API (FastAPI backend)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/cryptotrader
+
+# Load environment from .env file (includes DATABASE_URL, API keys)
+EnvironmentFile=%h/cryptotrader/.env
+
+# Fallback DATABASE_URL if not in .env
+Environment=DATABASE_URL=postgresql://cryptotrader:cryptotrader@127.0.0.1:5432/cryptotrader
+Environment=PYTHONPATH=%h/cryptotrader
+
+ExecStart=%h/cryptotrader/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

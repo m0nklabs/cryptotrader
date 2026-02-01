@@ -609,24 +609,24 @@ export default function App() {
             throw new Error('Unexpected response format')
           }
 
-          const walletsData =
-            payload && typeof payload === 'object' && 'wallets' in payload
-              ? (payload as { wallets?: unknown }).wallets
-              : null
+          // Support both old format { wallets: [...] } and new format { balances: [...] }
+          const p = payload as Record<string, unknown>
+          const walletsData = Array.isArray(p.wallets) ? p.wallets : Array.isArray(p.balances) ? p.balances : null
           if (!Array.isArray(walletsData)) throw new Error('Unexpected response format')
 
           const parsed: Wallet[] = walletsData
             .map((w) => {
               if (!w || typeof w !== 'object') return null
               const wallet = w as Record<string, unknown>
+              // Support both old (type,currency,balance,available) and new (currency,total,available,reserved) formats
               return {
-                type: String(wallet.type || ''),
+                type: String(wallet.type || 'exchange'),
                 currency: String(wallet.currency || ''),
-                balance: Number(wallet.balance || 0),
+                balance: Number(wallet.balance ?? wallet.total ?? 0),
                 available: Number(wallet.available || 0),
               }
             })
-            .filter((w): w is Wallet => w !== null)
+            .filter((w): w is Wallet => w !== null && w.balance > 0.0001)
 
           setWallets(parsed)
         })
