@@ -8,18 +8,26 @@ export default defineConfig({
     port: 5176,
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:8787',
-      '/healthz': 'http://127.0.0.1:8787',
-      '/system': 'http://127.0.0.1:8787',
-      '/candles': 'http://127.0.0.1:8787',
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/healthz': 'http://127.0.0.1:8000',
+      '/health': 'http://127.0.0.1:8000',
+      '/system': 'http://127.0.0.1:8000',
+      '/candles': 'http://127.0.0.1:8000',
     },
   },
   preview: {
     proxy: {
-      '/api': 'http://127.0.0.1:8787',
-      '/healthz': 'http://127.0.0.1:8787',
-      '/system': 'http://127.0.0.1:8787',
-      '/candles': 'http://127.0.0.1:8787',
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/healthz': 'http://127.0.0.1:8000',
+      '/health': 'http://127.0.0.1:8000',
+      '/system': 'http://127.0.0.1:8000',
+      '/candles': 'http://127.0.0.1:8000',
     },
   },
 })

@@ -480,6 +480,52 @@ async def get_latest_candles(
         ) from e
 
 
+@app.get("/candles/available")
+async def get_available_pairs(
+    exchange: str = Query(default="bitfinex", description="Exchange name"),
+) -> dict[str, Any]:
+    """Get available symbol/timeframe pairs in the database.
+
+    Args:
+        exchange: Exchange name (default: bitfinex)
+
+    Returns:
+        JSON with list of available symbol/timeframe pairs.
+    """
+    try:
+        stores = _get_stores()
+        engine = stores._get_engine()  # noqa: SLF001
+        _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+        stmt = text(
+            """
+            SELECT DISTINCT symbol, timeframe
+            FROM candles
+            WHERE exchange = :exchange
+            ORDER BY symbol, timeframe
+            """
+        )
+
+        with engine.connect() as conn:
+            result = conn.execute(stmt, {"exchange": exchange})
+            pairs = [{"symbol": row[0], "timeframe": row[1]} for row in result]
+
+        return {
+            "exchange": exchange,
+            "pairs": pairs,
+            "count": len(pairs),
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "db_error",
+                "detail": str(e),
+            },
+        ) from e
+
+
 @app.get("/candles/stream")
 async def stream_candles(
     symbol: str = Query(..., description="Trading symbol (e.g., BTCUSD)"),
