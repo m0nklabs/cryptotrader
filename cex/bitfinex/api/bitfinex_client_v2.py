@@ -279,13 +279,13 @@ class BitfinexClient:
         sort: int = -1,
     ) -> List[Dict[str, Any]]:
         """
-        Get candlestick data (OHLCV).
+        Get candlestick data (OHLCV) via pure REST API.
 
         Args:
             timeframe: Candle timeframe (1m, 5m, 15m, 30m, 1h, 3h, 6h, 12h, 1D, 7D, 14D, 1M)
             symbol: Trading pair symbol (e.g., 'tBTCUSD')
             section: 'hist' for historical or 'last' for last candle
-            limit: Number of candles to return
+            limit: Number of candles to return (default 100, max 10000)
             start: Start timestamp in milliseconds
             end: End timestamp in milliseconds
             sort: Sort direction (1 = oldest first, -1 = newest first)
@@ -293,11 +293,46 @@ class BitfinexClient:
         Returns:
             List of candle dicts with OHLCV data
         """
-        candles = self.client.rest.public.get_t_candles(timeframe, symbol, section, limit, start, end, sort)
-        return [
-            {"timestamp": c.mts, "open": c.open, "close": c.close, "high": c.high, "low": c.low, "volume": c.volume}
-            for c in candles
-        ]
+        try:
+            # Ensure symbol starts with 't'
+            if not symbol.startswith("t"):
+                symbol = "t" + symbol
+
+            # Build URL: /candles/trade:{timeframe}:{symbol}/{section}
+            url = f"{self.BASE_URL}/candles/trade:{timeframe}:{symbol}/{section}"
+
+            # Build query parameters
+            params = {}
+            if limit is not None:
+                params["limit"] = limit
+            if start is not None:
+                params["start"] = start
+            if end is not None:
+                params["end"] = end
+            if sort is not None:
+                params["sort"] = sort
+
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+
+            # Response format: [[MTS, OPEN, CLOSE, HIGH, LOW, VOLUME], ...]
+            data = response.json()
+
+            return [
+                {
+                    "timestamp": c[0],
+                    "open": float(c[1]),
+                    "close": float(c[2]),
+                    "high": float(c[3]),
+                    "low": float(c[4]),
+                    "volume": float(c[5]),
+                }
+                for c in data
+            ]
+
+        except Exception as e:
+            print(f"Error fetching candles for {symbol}: {e}")
+            return []
 
     # ==================== Authenticated API Methods ====================
 

@@ -105,6 +105,25 @@ python -m api.main
 cd frontend && npm install && npm run dev
 ```
 
+### Running as Services (systemd)
+
+For production, run frontend and backend as systemd user services:
+
+```bash
+# Install frontend service (Vite preview on port 5176)
+cp systemd/cryptotrader-frontend.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now cryptotrader-frontend.service
+
+# Check status
+systemctl --user status cryptotrader-frontend.service
+
+# View logs
+journalctl --user -u cryptotrader-frontend.service -f
+```
+
+See [docs/OPERATIONS.md](docs/OPERATIONS.md) for full operational details.
+
 Or use **DevContainer** in VS Code for a pre-configured environment.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions.

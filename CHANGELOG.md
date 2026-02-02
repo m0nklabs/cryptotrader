@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-02-02
+### Frontend Improvements
+- Add Market Watch view with live price updates, 24h change %, RSI, and EMA trend indicators
+- Enhance Signals view with color-coded signal cards showing RSI, MACD, and EMA crossover signals
+- Improve Opportunities view with detailed signal breakdowns and clickable symbols
+- Add `useMemo` for chart candle sorting to fix lightweight-charts assertion errors
+- Disable wallet service calls (port 8101 not deployed) to prevent NetworkErrors
+- Add Paper Trading as separate nav section with dedicated Orders and Positions views
+- Improve OrdersTable to support both paper trading and exchange order formats
+
+### Backend API
+- Add `/market-watch` endpoint returning prices, 24h stats, RSI, and EMA trends for all symbols
+- Enhance `/signals` endpoint to scan all symbols with multi-indicator scoring (RSI, EMA, MACD)
+- Add `/research/{symbol}` endpoint for comprehensive technical analysis with LLM integration
+- Add `/research/llm/status` endpoint to check Ollama availability
+- Fix `/gaps/summary` SQL to use correct column names (`open_time` vs `open_time_ms`)
+
+### New Core Modules
+- Add `core/signals/reasoning.py` - Technical analysis engine with rule-based recommendations
+- Add `core/signals/llm.py` - Ollama integration for natural language trading explanations
+
+### Configuration & Documentation
+- Add port management section to `.github/copilot-instructions.md`
+- Document systemd services for frontend (user) and market-data (system)
+- Add debug and test scripts in `scripts/`
+
 ## 2025-12-21
 - Add `scripts/bitfinex_candles_smoke.py` to validate Bitfinex public candle downloads without a DB.
 - Add minimal frontend dashboard skeleton under `frontend/` (sticky header/footer, panel layout, small fonts, dark mode, collapsible panels) and document it.
