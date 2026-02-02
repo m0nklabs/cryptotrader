@@ -4,7 +4,7 @@
  * TradingView-style candlestick chart with indicator overlays using lightweight-charts v5
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import {
   createChart,
   CandlestickSeries,
@@ -122,6 +122,11 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
     return defaults
   })
 
+  // Sort candles by time ascending (required by lightweight-charts)
+  const sortedCandles = useMemo(() => {
+    return [...candles].sort((a, b) => a.time - b.time)
+  }, [candles])
+
   const toggleIndicator = (key: keyof IndicatorState) => {
     setIndicators((prev) => {
       const next = { ...prev, [key]: !prev[key] }
@@ -226,9 +231,9 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
 
   // Update candle data
   useEffect(() => {
-    if (!candleSeries.current || candles.length === 0) return
+    if (!candleSeries.current || sortedCandles.length === 0) return
 
-    const data: CandlestickData[] = candles.map((c) => ({
+    const data: CandlestickData[] = sortedCandles.map((c) => ({
       time: c.time as CandlestickData['time'],
       open: c.open,
       high: c.high,
@@ -240,7 +245,7 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
 
     // Fit content
     mainChart.current?.timeScale().fitContent()
-  }, [candles])
+  }, [sortedCandles])
 
   // Update Bollinger Bands
   useEffect(() => {
@@ -250,13 +255,13 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
     bollingerMiddle.current.applyOptions({ visible: indicators.bollinger })
     bollingerLower.current.applyOptions({ visible: indicators.bollinger })
 
-    if (indicators.bollinger && candles.length > 20) {
-      const bb = calculateBollingerBands(candles)
+    if (indicators.bollinger && sortedCandles.length > 20) {
+      const bb = calculateBollingerBands(sortedCandles)
       bollingerUpper.current.setData(bb.map((b) => ({ time: b.time as LineData['time'], value: b.upper })))
       bollingerMiddle.current.setData(bb.map((b) => ({ time: b.time as LineData['time'], value: b.middle })))
       bollingerLower.current.setData(bb.map((b) => ({ time: b.time as LineData['time'], value: b.lower })))
     }
-  }, [indicators.bollinger, candles])
+  }, [indicators.bollinger, sortedCandles])
 
   // Update Moving Averages
   useEffect(() => {
@@ -277,11 +282,11 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
         return
       }
 
-      if (candles.length < period) return
+      if (sortedCandles.length < period) return
 
-      const closes = candles.map((c) => c.close)
+      const closes = sortedCandles.map((c) => c.close)
       const values = calculatorFn(closes, period)
-      const data = candles
+      const data = sortedCandles
         .map((c, i) => ({
           time: c.time as LineData['time'],
           value: values[i],
@@ -295,7 +300,7 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
     updateIndicator(sma50Series.current, indicators.sma50, sma, 50)
     updateIndicator(ema12Series.current, indicators.ema12, ema, 12)
     updateIndicator(ema26Series.current, indicators.ema26, ema, 26)
-  }, [indicators.sma20, indicators.sma50, indicators.ema12, indicators.ema26, candles])
+  }, [indicators.sma20, indicators.sma50, indicators.ema12, indicators.ema26, sortedCandles])
 
   // RSI sub-chart
   useEffect(() => {
@@ -334,7 +339,7 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
       lineWidth: 2,
     })
 
-    const rsiData = calculateRSI(candles)
+    const rsiData = calculateRSI(sortedCandles)
     series.setData(rsiData.map((r) => ({ time: r.time as LineData['time'], value: r.value })))
 
     // Overbought/oversold lines
@@ -358,7 +363,7 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
       chart.remove()
       rsiChart.current = null
     }
-  }, [indicators.rsi, candles])
+  }, [indicators.rsi, sortedCandles])
 
   // MACD sub-chart
   useEffect(() => {
@@ -389,7 +394,7 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
 
     macdChart.current = chart
 
-    const macdData = calculateMACD(candles)
+    const macdData = calculateMACD(sortedCandles)
 
     // Histogram
     const histogram = chart.addSeries(HistogramSeries, {
@@ -428,7 +433,7 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
       chart.remove()
       macdChart.current = null
     }
-  }, [indicators.macd, candles])
+  }, [indicators.macd, sortedCandles])
 
   // Stochastic sub-chart
   useEffect(() => {
@@ -462,7 +467,7 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
 
     stochChart.current = chart
 
-    const stochData = calculateStochastic(candles)
+    const stochData = calculateStochastic(sortedCandles)
 
     const kLine = chart.addSeries(LineSeries, {
       color: INDICATOR_COLORS.stochK,
@@ -496,7 +501,7 @@ export default function CandlestickChart({ candles, symbol, timeframe, height = 
       chart.remove()
       stochChart.current = null
     }
-  }, [indicators.stochastic, candles])
+  }, [indicators.stochastic, sortedCandles])
 
   return (
     <div className="flex flex-col gap-1">
