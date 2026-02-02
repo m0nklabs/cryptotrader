@@ -950,20 +950,246 @@ async def get_market_cap() -> dict[str, Any]:
 
 
 # ============================================================================
-# Signals & Gaps endpoints
+# Market Watch & Signals endpoints
 # ============================================================================
+
+
+def _calculate_indicators(closes: list[float]) -> dict[str, Any]:
+    """Calculate technical indicators from price data."""
+    result: dict[str, Any] = {}
+
+    if len(closes) < 26:
+        return result
+
+    # RSI (14 period)
+    gains = []
+    losses = []
+    for i in range(1, len(closes)):
+        delta = closes[i] - closes[i - 1]
+        gains.append(max(0, delta))
+        losses.append(max(0, -delta))
+
+    if len(gains) >= 14:
+        avg_gain = sum(gains[-14:]) / 14
+        avg_loss = sum(losses[-14:]) / 14
+        if avg_loss > 0:
+            rs = avg_gain / avg_loss
+            result["rsi"] = round(100 - (100 / (1 + rs)), 1)
+        else:
+            result["rsi"] = 100.0
+
+    # EMA calculations
+    def ema(data: list[float], period: int) -> float:
+        if len(data) < period:
+            return data[-1]
+        multiplier = 2 / (period + 1)
+        ema_val = sum(data[:period]) / period
+        for price in data[period:]:
+            ema_val = (price * multiplier) + (ema_val * (1 - multiplier))
+        return ema_val
+
+    result["ema_9"] = round(ema(closes, 9), 2)
+    result["ema_21"] = round(ema(closes, 21), 2)
+    result["price"] = closes[-1]
+
+    # Price change percentages
+    if len(closes) >= 2:
+        result["change_1"] = round((closes[-1] - closes[-2]) / closes[-2] * 100, 2)
+    if len(closes) >= 24:
+        result["change_24"] = round((closes[-1] - closes[-24]) / closes[-24] * 100, 2)
+
+    # MACD (12, 26, 9)
+    if len(closes) >= 26:
+        ema_12 = ema(closes, 12)
+        ema_26 = ema(closes, 26)
+        macd_line = ema_12 - ema_26
+        result["macd"] = round(macd_line, 2)
+
+    return result
+
+
+def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[str, Any]) -> dict[str, Any] | None:
+    """Generate trading signals from indicators."""
+    signals_list: list[dict[str, Any]] = []
+    total_score = 0
+    side_votes = {"BUY": 0, "SELL": 0}
+
+    rsi = indicators.get("rsi")
+    ema_9 = indicators.get("ema_9")
+    ema_21 = indicators.get("ema_21")
+    macd = indicators.get("macd")
+    price = indicators.get("price")
+
+    # RSI signals
+    if rsi is not None:
+        if rsi < 30:
+            strength = (30 - rsi) / 30
+            signals_list.append(
+                {
+                    "code": "RSI_OVERSOLD",
+                    "side": "BUY",
+                    "strength": round(strength, 2),
+                    "value": f"{rsi}",
+                    "reason": f"RSI {rsi} < 30 (oversold)",
+                }
+            )
+            total_score += strength * 40
+            side_votes["BUY"] += 2
+        elif rsi > 70:
+            strength = (rsi - 70) / 30
+            signals_list.append(
+                {
+                    "code": "RSI_OVERBOUGHT",
+                    "side": "SELL",
+                    "strength": round(strength, 2),
+                    "value": f"{rsi}",
+                    "reason": f"RSI {rsi} > 70 (overbought)",
+                }
+            )
+            total_score += strength * 40
+            side_votes["SELL"] += 2
+        elif rsi < 40:
+            signals_list.append(
+                {
+                    "code": "RSI_LOW",
+                    "side": "BUY",
+                    "strength": 0.3,
+                    "value": f"{rsi}",
+                    "reason": f"RSI {rsi} approaching oversold",
+                }
+            )
+            total_score += 10
+            side_votes["BUY"] += 1
+        elif rsi > 60:
+            signals_list.append(
+                {
+                    "code": "RSI_HIGH",
+                    "side": "SELL",
+                    "strength": 0.3,
+                    "value": f"{rsi}",
+                    "reason": f"RSI {rsi} approaching overbought",
+                }
+            )
+            total_score += 10
+            side_votes["SELL"] += 1
+
+    # EMA crossover signals
+    if ema_9 is not None and ema_21 is not None and price is not None:
+        ema_diff_pct = (ema_9 - ema_21) / ema_21 * 100
+        if ema_9 > ema_21:
+            if ema_diff_pct < 1:  # Recent crossover
+                signals_list.append(
+                    {
+                        "code": "EMA_CROSS_UP",
+                        "side": "BUY",
+                        "strength": 0.6,
+                        "value": f"{ema_diff_pct:.2f}%",
+                        "reason": "EMA9 crossed above EMA21",
+                    }
+                )
+                total_score += 25
+                side_votes["BUY"] += 2
+            else:
+                signals_list.append(
+                    {
+                        "code": "EMA_BULLISH",
+                        "side": "BUY",
+                        "strength": 0.4,
+                        "value": f"{ema_diff_pct:.2f}%",
+                        "reason": "EMA9 > EMA21 (bullish trend)",
+                    }
+                )
+                total_score += 15
+                side_votes["BUY"] += 1
+        else:
+            if ema_diff_pct > -1:  # Recent crossover
+                signals_list.append(
+                    {
+                        "code": "EMA_CROSS_DOWN",
+                        "side": "SELL",
+                        "strength": 0.6,
+                        "value": f"{ema_diff_pct:.2f}%",
+                        "reason": "EMA9 crossed below EMA21",
+                    }
+                )
+                total_score += 25
+                side_votes["SELL"] += 2
+            else:
+                signals_list.append(
+                    {
+                        "code": "EMA_BEARISH",
+                        "side": "SELL",
+                        "strength": 0.4,
+                        "value": f"{ema_diff_pct:.2f}%",
+                        "reason": "EMA9 < EMA21 (bearish trend)",
+                    }
+                )
+                total_score += 15
+                side_votes["SELL"] += 1
+
+    # MACD signals
+    if macd is not None:
+        if macd > 0:
+            signals_list.append(
+                {
+                    "code": "MACD_POSITIVE",
+                    "side": "BUY",
+                    "strength": min(0.5, abs(macd) / 100),
+                    "value": f"{macd}",
+                    "reason": f"MACD positive ({macd})",
+                }
+            )
+            total_score += 15
+            side_votes["BUY"] += 1
+        else:
+            signals_list.append(
+                {
+                    "code": "MACD_NEGATIVE",
+                    "side": "SELL",
+                    "strength": min(0.5, abs(macd) / 100),
+                    "value": f"{macd}",
+                    "reason": f"MACD negative ({macd})",
+                }
+            )
+            total_score += 15
+            side_votes["SELL"] += 1
+
+    if not signals_list:
+        return None
+
+    # Determine overall side
+    if side_votes["BUY"] > side_votes["SELL"]:
+        side = "BUY"
+    elif side_votes["SELL"] > side_votes["BUY"]:
+        side = "SELL"
+    else:
+        side = "HOLD"
+
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "score": round(min(100, total_score), 1),
+        "side": side,
+        "signals": signals_list,
+        "price": price,
+        "change_24h": indicators.get("change_24"),
+        "rsi": rsi,
+        "created_at": int(time.time() * 1000),
+    }
 
 
 @app.get("/signals")
 async def get_signals(
     exchange: str = Query("bitfinex", description="Exchange name"),
-    symbol: str = Query("BTCUSD", description="Trading symbol"),
     timeframe: str = Query("1h", description="Timeframe for analysis"),
     limit: int = Query(10, ge=1, le=100, description="Max signals to return"),
 ) -> dict[str, Any]:
-    """Get trading signals based on recent price action.
+    """Get trading signals for all available symbols.
 
-    Generates basic signals from RSI oversold/overbought conditions.
+    Scans all symbols and generates signals based on:
+    - RSI (oversold/overbought)
+    - EMA crossovers (9/21)
+    - MACD momentum
     """
     signals_list: list[dict[str, Any]] = []
 
@@ -972,100 +1198,159 @@ async def get_signals(
         engine = stores._get_engine()  # noqa: SLF001
         _, text = stores._require_sqlalchemy()  # noqa: SLF001
 
-        # Get recent candles for RSI calculation
-        query = text(
+        # Get all available symbols
+        symbols_query = text(
             """
-            SELECT open_time_ms, close
-            FROM candles
-            WHERE exchange = :exchange AND symbol = :symbol AND timeframe = :timeframe
-            ORDER BY open_time_ms DESC
-            LIMIT 50
+            SELECT DISTINCT symbol FROM candles
+            WHERE exchange = :exchange AND timeframe = :timeframe
+            ORDER BY symbol
         """
         )
 
         with engine.begin() as conn:
-            rows = conn.execute(
-                query,
-                {
-                    "exchange": exchange.lower(),
-                    "symbol": symbol.upper(),
-                    "timeframe": timeframe,
-                },
-            ).fetchall()
+            symbols = [
+                row[0]
+                for row in conn.execute(
+                    symbols_query, {"exchange": exchange.lower(), "timeframe": timeframe}
+                ).fetchall()
+            ]
 
-        if len(rows) >= 15:
-            # Calculate RSI (simple implementation)
-            closes = [float(r[1]) for r in reversed(rows)]
-            gains = []
-            losses = []
-            for i in range(1, len(closes)):
-                delta = closes[i] - closes[i - 1]
-                gains.append(max(0, delta))
-                losses.append(max(0, -delta))
+        # Analyze each symbol
+        for symbol in symbols:
+            candle_query = text(
+                """
+                SELECT EXTRACT(EPOCH FROM open_time) * 1000 as open_time_ms,
+                       open, high, low, close, volume
+                FROM candles
+                WHERE exchange = :exchange AND symbol = :symbol AND timeframe = :timeframe
+                ORDER BY open_time DESC
+                LIMIT 50
+            """
+            )
 
-            if len(gains) >= 14:
-                avg_gain = sum(gains[-14:]) / 14
-                avg_loss = sum(losses[-14:]) / 14
+            with engine.begin() as conn:
+                rows = conn.execute(
+                    candle_query,
+                    {"exchange": exchange.lower(), "symbol": symbol, "timeframe": timeframe},
+                ).fetchall()
 
-                if avg_loss > 0:
-                    rs = avg_gain / avg_loss
-                    rsi = 100 - (100 / (1 + rs))
-                else:
-                    rsi = 100
+            if len(rows) < 26:
+                continue
 
-                current_price = closes[-1]
-                timestamp = int(rows[0][0])
+            closes = [float(r[4]) for r in reversed(rows)]
+            indicators = _calculate_indicators(closes)
 
-                # Generate signal if RSI is extreme
-                if rsi < 30:
-                    signals_list.append(
-                        {
-                            "symbol": symbol,
-                            "timeframe": timeframe,
-                            "score": round((30 - rsi) / 30 * 100, 1),
-                            "side": "BUY",
-                            "signals": [
-                                {
-                                    "code": "RSI_OVERSOLD",
-                                    "side": "BUY",
-                                    "strength": round((30 - rsi) / 30, 2),
-                                    "value": f"{rsi:.1f}",
-                                    "reason": f"RSI({rsi:.1f}) below 30 - oversold",
-                                }
-                            ],
-                            "price": current_price,
-                            "created_at": timestamp,
-                        }
-                    )
-                elif rsi > 70:
-                    signals_list.append(
-                        {
-                            "symbol": symbol,
-                            "timeframe": timeframe,
-                            "score": round((rsi - 70) / 30 * 100, 1),
-                            "side": "SELL",
-                            "signals": [
-                                {
-                                    "code": "RSI_OVERBOUGHT",
-                                    "side": "SELL",
-                                    "strength": round((rsi - 70) / 30, 2),
-                                    "value": f"{rsi:.1f}",
-                                    "reason": f"RSI({rsi:.1f}) above 70 - overbought",
-                                }
-                            ],
-                            "price": current_price,
-                            "created_at": timestamp,
-                        }
-                    )
+            signal = _generate_signals_for_symbol(symbol, timeframe, indicators)
+            if signal and signal["score"] >= 20:  # Only include signals with meaningful score
+                signals_list.append(signal)
+
+        # Sort by score descending
+        signals_list.sort(key=lambda x: x["score"], reverse=True)
+
     except Exception as e:
         logger.warning(f"Failed to generate signals: {e}")
 
     return {
         "exchange": exchange,
-        "symbol": symbol,
         "timeframe": timeframe,
         "signals": signals_list[:limit],
         "count": len(signals_list),
+        "scanned": len(signals_list),
+    }
+
+
+@app.get("/market-watch")
+async def get_market_watch(
+    exchange: str = Query("bitfinex", description="Exchange name"),
+    timeframe: str = Query("1h", description="Timeframe for analysis"),
+) -> dict[str, Any]:
+    """Get market watch data for all symbols.
+
+    Returns current prices, 24h changes, and key indicators for each symbol.
+    """
+    watch_list: list[dict[str, Any]] = []
+
+    try:
+        stores = _get_stores()
+        engine = stores._get_engine()  # noqa: SLF001
+        _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+        # Get all available symbols
+        symbols_query = text(
+            """
+            SELECT DISTINCT symbol FROM candles
+            WHERE exchange = :exchange AND timeframe = :timeframe
+            ORDER BY symbol
+        """
+        )
+
+        with engine.begin() as conn:
+            symbols = [
+                row[0]
+                for row in conn.execute(
+                    symbols_query, {"exchange": exchange.lower(), "timeframe": timeframe}
+                ).fetchall()
+            ]
+
+        for symbol in symbols:
+            candle_query = text(
+                """
+                SELECT EXTRACT(EPOCH FROM open_time) * 1000 as open_time_ms,
+                       open, high, low, close, volume
+                FROM candles
+                WHERE exchange = :exchange AND symbol = :symbol AND timeframe = :timeframe
+                ORDER BY open_time DESC
+                LIMIT 50
+            """
+            )
+
+            with engine.begin() as conn:
+                rows = conn.execute(
+                    candle_query,
+                    {"exchange": exchange.lower(), "symbol": symbol, "timeframe": timeframe},
+                ).fetchall()
+
+            if len(rows) < 2:
+                continue
+
+            closes = [float(r[4]) for r in reversed(rows)]
+            volumes = [float(r[5]) for r in reversed(rows)]
+            highs = [float(r[3]) for r in reversed(rows)]
+            lows = [float(r[2]) for r in reversed(rows)]
+
+            indicators = _calculate_indicators(closes)
+
+            # Calculate 24h high/low
+            high_24h = max(highs[-24:]) if len(highs) >= 24 else max(highs)
+            low_24h = min(lows[-24:]) if len(lows) >= 24 else min(lows)
+            vol_24h = sum(volumes[-24:]) if len(volumes) >= 24 else sum(volumes)
+
+            watch_list.append(
+                {
+                    "symbol": symbol,
+                    "price": closes[-1],
+                    "change_1h": indicators.get("change_1", 0),
+                    "change_24h": indicators.get("change_24", 0),
+                    "high_24h": high_24h,
+                    "low_24h": low_24h,
+                    "volume_24h": round(vol_24h, 2),
+                    "rsi": indicators.get("rsi"),
+                    "ema_trend": "bullish" if indicators.get("ema_9", 0) > indicators.get("ema_21", 0) else "bearish",
+                    "updated_at": int(rows[0][0]),
+                }
+            )
+
+        # Sort by 24h change (most volatile first)
+        watch_list.sort(key=lambda x: abs(x.get("change_24h", 0)), reverse=True)
+
+    except Exception as e:
+        logger.warning(f"Failed to get market watch: {e}")
+
+    return {
+        "exchange": exchange,
+        "timeframe": timeframe,
+        "symbols": watch_list,
+        "count": len(watch_list),
     }
 
 
@@ -1087,29 +1372,29 @@ async def get_gaps_summary(
         _, text = stores._require_sqlalchemy()  # noqa: SLF001
 
         # Get gap count by checking for discontinuities in 1m candles
-        # A gap exists if next candle timestamp > current + 60000ms
+        # A gap exists if next candle timestamp > current + 60 seconds
         gap_query = text(
             """
             WITH candle_gaps AS (
                 SELECT
-                    open_time_ms,
-                    LEAD(open_time_ms) OVER (PARTITION BY symbol ORDER BY open_time_ms) as next_time
+                    open_time,
+                    LEAD(open_time) OVER (PARTITION BY symbol ORDER BY open_time) as next_time
                 FROM candles
                 WHERE exchange = :exchange
                   AND timeframe = '1m'
-                  AND open_time_ms > :since
+                  AND open_time > :since
             )
             SELECT
                 COUNT(*) as gap_count,
-                MIN(open_time_ms) as oldest_gap_time
+                MIN(EXTRACT(EPOCH FROM open_time) * 1000)::bigint as oldest_gap_time
             FROM candle_gaps
-            WHERE next_time - open_time_ms > 120000
+            WHERE EXTRACT(EPOCH FROM (next_time - open_time)) > 120
         """
         )
 
-        now_ms = int(time.time() * 1000)
-        week_ago_ms = now_ms - (7 * 24 * 60 * 60 * 1000)
-        day_ago_ms = now_ms - (24 * 60 * 60 * 1000)
+        # Timestamp for reference (unused currently)
+        week_ago = datetime.fromtimestamp(time.time() - 7 * 24 * 60 * 60, tz=timezone.utc)
+        day_ago = datetime.fromtimestamp(time.time() - 24 * 60 * 60, tz=timezone.utc)
 
         with engine.begin() as conn:
             # Count gaps in last 7 days
@@ -1117,7 +1402,7 @@ async def get_gaps_summary(
                 gap_query,
                 {
                     "exchange": exchange.lower(),
-                    "since": week_ago_ms,
+                    "since": week_ago,
                 },
             ).fetchone()
 
@@ -1132,15 +1417,16 @@ async def get_gaps_summary(
                 SELECT COUNT(*) FROM candles
                 WHERE exchange = :exchange
                   AND timeframe = '1m'
-                  AND open_time_ms BETWEEN :day_ago AND :now
+                  AND open_time BETWEEN :day_ago AND :now
             """
             )
+            now_dt = datetime.fromtimestamp(time.time(), tz=timezone.utc)
             repair_result = conn.execute(
                 repair_query,
                 {
                     "exchange": exchange.lower(),
-                    "day_ago": day_ago_ms,
-                    "now": now_ms,
+                    "day_ago": day_ago,
+                    "now": now_dt,
                 },
             ).fetchone()
 
@@ -1171,3 +1457,157 @@ async def global_exception_handler(_request, exc):
             "message": "An unexpected error occurred",
         },
     )
+
+
+# =============================================================================
+# Research / Technical Analysis Endpoints
+# =============================================================================
+
+
+class ResearchRequest(BaseModel):
+    """Request body for research endpoint."""
+
+    symbol: str = Field(..., description="Trading symbol (e.g., BTCUSD)")
+    timeframe: str = Field("4h", description="Analysis timeframe")
+    question: str | None = Field(None, description="Specific question to answer")
+    use_llm: bool = Field(False, description="Use LLM for natural language explanation")
+
+
+class ResearchResponse(BaseModel):
+    """Response from research endpoint."""
+
+    symbol: str
+    timeframe: str
+    recommendation: str
+    confidence: int
+    current_price: str
+    reasoning: list[str]
+    bullish_factors: list[str]
+    bearish_factors: list[str]
+    support_levels: list[str]
+    resistance_levels: list[str]
+    suggested_entry: str | None
+    suggested_stop: str | None
+    suggested_target: str | None
+    risk_reward_ratio: float | None
+    llm_summary: str | None = None
+    llm_explanation: str | None = None
+    llm_risks: str | None = None
+
+
+@app.get("/research/{symbol}")
+async def get_research(
+    symbol: str = Path(..., description="Trading symbol (e.g., BTCUSD)"),
+    timeframe: str = Query("4h", description="Analysis timeframe"),
+    question: str | None = Query(None, description="Specific question to answer"),
+    use_llm: bool = Query(False, description="Use LLM for natural language explanation"),
+) -> ResearchResponse:
+    """Get comprehensive technical analysis and trading recommendation.
+
+    Analyzes the symbol using:
+    - RSI, MACD, Bollinger Bands
+    - EMA trend analysis (20/50/200)
+    - Support/resistance levels
+    - Volume analysis
+
+    Optionally uses Ollama LLM for natural language explanations.
+
+    Args:
+        symbol: Trading pair (e.g., BTCUSD)
+        timeframe: Candle timeframe for analysis
+        question: Optional specific question (e.g., "should I buy now?")
+        use_llm: Whether to include LLM-powered explanation
+
+    Returns:
+        Comprehensive analysis with recommendation and reasoning
+    """
+    from core.signals.reasoning import SignalReasoner
+
+    try:
+        # Get database URL
+        db_url = os.environ.get("DATABASE_URL", "postgresql://localhost/cryptotrader")
+
+        # Run analysis
+        reasoner = SignalReasoner(db_url=db_url)
+        analysis = await reasoner.analyze(symbol.upper(), timeframe)
+
+        # Prepare response
+        response = ResearchResponse(
+            symbol=analysis.symbol,
+            timeframe=analysis.timeframe,
+            recommendation=analysis.recommendation.value,
+            confidence=analysis.confidence,
+            current_price=f"{analysis.current_price:,.2f}",
+            reasoning=analysis.reasoning,
+            bullish_factors=analysis.bullish_factors,
+            bearish_factors=analysis.bearish_factors,
+            support_levels=[f"{s:,.2f}" for s in analysis.support_levels],
+            resistance_levels=[f"{r:,.2f}" for r in analysis.resistance_levels],
+            suggested_entry=f"{analysis.suggested_entry:,.2f}" if analysis.suggested_entry else None,
+            suggested_stop=f"{analysis.suggested_stop:,.2f}" if analysis.suggested_stop else None,
+            suggested_target=f"{analysis.suggested_target:,.2f}" if analysis.suggested_target else None,
+            risk_reward_ratio=analysis.risk_reward_ratio,
+        )
+
+        # Add LLM explanation if requested
+        if use_llm:
+            try:
+                from core.signals.llm import OllamaAnalyst
+
+                analyst = OllamaAnalyst()
+                if await analyst.is_available():
+                    if question:
+                        answer = await analyst.answer_question(analysis, question)
+                        response.llm_summary = answer
+                    else:
+                        llm_response = await analyst.explain(analysis)
+                        response.llm_summary = llm_response.summary
+                        response.llm_explanation = llm_response.detailed_explanation
+                        response.llm_risks = llm_response.risk_assessment
+                else:
+                    response.llm_summary = "Ollama not available. Install and run: ollama serve"
+            except Exception as e:
+                logger.warning(f"LLM analysis failed: {e}")
+                response.llm_summary = f"LLM unavailable: {e}"
+
+        return response
+
+    except Exception as e:
+        logger.exception(f"Research analysis failed for {symbol}")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "analysis_failed", "message": str(e)},
+        ) from e
+
+
+@app.post("/research")
+async def post_research(request: ResearchRequest) -> ResearchResponse:
+    """POST version of research endpoint for complex queries.
+
+    Same as GET /research/{symbol} but accepts JSON body.
+    """
+    return await get_research(
+        symbol=request.symbol,
+        timeframe=request.timeframe,
+        question=request.question,
+        use_llm=request.use_llm,
+    )
+
+
+@app.get("/research/llm/status")
+async def get_llm_status() -> dict[str, Any]:
+    """Check LLM (Ollama) availability and list models.
+
+    Returns:
+        Status of Ollama service and available models.
+    """
+    try:
+        from core.signals.llm import check_ollama
+
+        return await check_ollama()
+    except Exception as e:
+        return {
+            "available": False,
+            "error": str(e),
+            "host": "http://localhost:11434",
+        }

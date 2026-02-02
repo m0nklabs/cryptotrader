@@ -74,12 +74,16 @@ const INGESTION_STATUS_REFRESH_INTERVAL_MS = 15_000
 const WALLET_REFRESH_INTERVAL_MS = 30_000
 const MARKET_CAP_REFRESH_INTERVAL_MS = 600_000 // 10 minutes
 const SYSTEM_STATUS_REFRESH_INTERVAL_MS = 10_000 // 10 seconds
+const MARKET_WATCH_REFRESH_INTERVAL_MS = 30_000 // 30 seconds
 
 type Signal = {
   symbol: string
   timeframe: string
   score: number
   side: string
+  price?: number
+  change_24h?: number
+  rsi?: number
   signals: Array<{
     code: string
     side: string
@@ -88,6 +92,19 @@ type Signal = {
     reason: string
   }>
   created_at: number
+}
+
+type MarketWatchItem = {
+  symbol: string
+  price: number
+  change_1h: number
+  change_24h: number
+  high_24h: number
+  low_24h: number
+  volume_24h: number
+  rsi: number | null
+  ema_trend: 'bullish' | 'bearish'
+  updated_at: number
 }
 
 type Wallet = {
@@ -128,6 +145,9 @@ export default function App() {
 
   const [signals, setSignals] = useState<Signal[]>([])
   const [signalsError, setSignalsError] = useState<string | null>(null)
+
+  const [marketWatch, setMarketWatch] = useState<MarketWatchItem[]>([])
+  const [marketWatchError, setMarketWatchError] = useState<string | null>(null)
 
   const [wallets, setWallets] = useState<Wallet[]>([])
   const [walletsError, setWalletsError] = useState<string | null>(null)
@@ -521,7 +541,7 @@ export default function App() {
 
       setSignalsError(null)
 
-      fetch('/api/signals?exchange=bitfinex&limit=10', { signal: controller.signal })
+      fetch(`/api/signals?exchange=bitfinex&timeframe=${encodeURIComponent(chartTimeframe)}&limit=20`, { signal: controller.signal })
         .then(async (resp) => {
           const bodyText = await resp.text()
           if (!resp.ok) {
@@ -554,11 +574,14 @@ export default function App() {
                 timeframe: String(s.timeframe || ''),
                 score: Number(s.score || 0),
                 side: String(s.side || 'HOLD'),
+                price: s.price != null ? Number(s.price) : undefined,
+                change_24h: s.change_24h != null ? Number(s.change_24h) : undefined,
+                rsi: s.rsi != null ? Number(s.rsi) : undefined,
                 signals: Array.isArray(s.signals) ? s.signals : [],
                 created_at: Number(s.created_at || 0),
               }
             })
-            .filter((s): s is Signal => s !== null)
+            .filter((s): s is Signal => s !== null && s.score > 0)
 
           setSignals(parsed)
         })
@@ -578,9 +601,86 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [])
+  }, [chartTimeframe])
 
+  // Fetch market watch data
   useEffect(() => {
+    let mounted = true
+    let inFlight: AbortController | null = null
+
+    const load = () => {
+      if (!mounted) return
+      if (inFlight) inFlight.abort()
+      const controller = new AbortController()
+      inFlight = controller
+
+      setMarketWatchError(null)
+
+      fetch(`/api/market-watch?exchange=bitfinex&timeframe=${encodeURIComponent(chartTimeframe)}`, { signal: controller.signal })
+        .then(async (resp) => {
+          const bodyText = await resp.text()
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 120)}`)
+
+          let payload: unknown
+          try {
+            payload = JSON.parse(bodyText) as unknown
+          } catch {
+            throw new Error(`Non-JSON response: ${bodyText.slice(0, 120)}`)
+          }
+
+          if (!payload || typeof payload !== 'object') throw new Error('Unexpected response format')
+
+          const symbolsData = (payload as { symbols?: unknown }).symbols
+          if (!Array.isArray(symbolsData)) throw new Error('Unexpected response format')
+
+          const parsed: MarketWatchItem[] = symbolsData
+            .map((item) => {
+              if (!item || typeof item !== 'object') return null
+              const i = item as Record<string, unknown>
+              return {
+                symbol: String(i.symbol || ''),
+                price: Number(i.price || 0),
+                change_1h: Number(i.change_1h || 0),
+                change_24h: Number(i.change_24h || 0),
+                high_24h: Number(i.high_24h || 0),
+                low_24h: Number(i.low_24h || 0),
+                volume_24h: Number(i.volume_24h || 0),
+                rsi: i.rsi != null ? Number(i.rsi) : null,
+                ema_trend: i.ema_trend === 'bullish' ? 'bullish' : 'bearish',
+                updated_at: Number(i.updated_at || 0),
+              }
+            })
+            .filter((i): i is MarketWatchItem => i !== null && i.price > 0)
+
+          setMarketWatch(parsed)
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          setMarketWatchError(`Unable to load market watch (${message})`)
+          setMarketWatch([])
+        })
+    }
+
+    load()
+    const id = window.setInterval(load, MARKET_WATCH_REFRESH_INTERVAL_MS)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+      if (inFlight) inFlight.abort()
+    }
+  }, [chartTimeframe])
+
+  // Wallet balances - disabled until wallets-data service is deployed
+  const WALLETS_SERVICE_ENABLED = false
+  useEffect(() => {
+    if (!WALLETS_SERVICE_ENABLED) {
+      setWalletsLoading(false)
+      setWalletsError('Wallet service not yet deployed')
+      return
+    }
+
     let mounted = true
     let inFlight: AbortController | null = null
 
@@ -1183,7 +1283,7 @@ export default function App() {
               </Panel>
 
               <div className="ct-dock-bottom flex flex-col gap-3">
-                <Panel title="Orders" subtitle={`${orders.filter(o => o.status === 'PENDING').length} pending / ${orders.filter(o => o.status === 'FILLED').length} filled`}>
+                <Panel title="Orders" subtitle={`${orders.filter(o => o.status === 'PENDING' || o.status === 'ACTIVE').length} active / ${orders.filter(o => o.status === 'FILLED' || o.status === 'EXECUTED').length} filled`}>
                   <OrdersTable
                     orders={orders}
                     onCancel={handleCancelOrder}
@@ -1407,8 +1507,8 @@ export default function App() {
             </div>
           )}
 
-          {/* Orders view */}
-          {activeView === VIEW_IDS.ORDERS && (
+          {/* Paper Trading Orders view */}
+          {activeView === VIEW_IDS.PAPER_ORDERS && (
             <div className="flex flex-col gap-3">
               <Panel title="Place Order" subtitle={`${chartSymbol} @ ${currentPrice?.toFixed(2) || '—'}`}>
                 <OrderForm symbol={chartSymbol} currentPrice={currentPrice} onSubmit={handlePlaceOrder} />
@@ -1419,8 +1519,8 @@ export default function App() {
             </div>
           )}
 
-          {/* Positions view */}
-          {activeView === VIEW_IDS.POSITIONS && (
+          {/* Paper Trading Positions view */}
+          {activeView === VIEW_IDS.PAPER_POSITIONS && (
             <Panel title="Open Positions" subtitle={`${positions.length} positions`}>
               <PositionsTable
                 positions={positions}
@@ -1432,24 +1532,46 @@ export default function App() {
 
           {/* Signals view */}
           {activeView === VIEW_IDS.SIGNALS && (
-            <Panel title="Trading Signals" subtitle="Top opportunities">
+            <Panel title="Trading Signals" subtitle={`${signals.length} opportunities`}>
               {signalsError ? (
                 <div className="text-xs text-red-500">{signalsError}</div>
               ) : signals.length === 0 ? (
-                <div className="text-xs text-gray-500">No signals available</div>
+                <div className="text-xs text-gray-500">No active signals - markets are neutral</div>
               ) : (
                 <div className="space-y-2">
-                  {signals.map((sig, idx) => (
-                    <div key={idx} className="rounded border border-gray-200 p-2 dark:border-gray-700">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{sig.symbol}</span>
-                        <span className={`text-xs ${sig.side === 'buy' ? 'text-green-500' : 'text-red-500'}`}>
-                          {sig.side.toUpperCase()} ({sig.score.toFixed(1)})
-                        </span>
+                  {signals.map((sig, idx) => {
+                    const sideColor = sig.side === 'BUY' ? 'text-green-500' : sig.side === 'SELL' ? 'text-red-500' : 'text-gray-500'
+                    const scoreColor = sig.score >= 60 ? 'bg-green-100 dark:bg-green-900' : sig.score >= 40 ? 'bg-yellow-100 dark:bg-yellow-900' : 'bg-gray-100 dark:bg-gray-800'
+                    return (
+                      <div key={idx} className={`rounded border border-gray-200 p-2 dark:border-gray-700 ${scoreColor}`}>
+                        <div className="flex items-center justify-between">
+                          <button
+                            className="font-medium hover:underline"
+                            onClick={() => { setChartSymbol(sig.symbol); setActiveView(VIEW_IDS.CHART); }}
+                          >
+                            {sig.symbol}
+                          </button>
+                          <span className={`text-sm font-bold ${sideColor}`}>
+                            {sig.side} ({sig.score.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                          <span>{sig.timeframe} • RSI: {sig.rsi?.toFixed(0) || '—'}</span>
+                          {sig.price && <span>${sig.price.toLocaleString()}</span>}
+                        </div>
+                        {sig.signals.length > 0 && (
+                          <div className="mt-2 space-y-0.5 text-[11px] text-gray-600 dark:text-gray-400">
+                            {sig.signals.slice(0, 3).map((s, i) => (
+                              <div key={i} className="flex justify-between">
+                                <span>• {s.code}</span>
+                                <span className={s.side === 'BUY' ? 'text-green-600' : 'text-red-600'}>{s.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="mt-1 text-xs text-gray-500">{sig.timeframe}</div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </Panel>
@@ -1457,21 +1579,52 @@ export default function App() {
 
           {/* Market Watch view */}
           {activeView === VIEW_IDS.MARKET_WATCH && (
-            <Panel title="Market Watch" subtitle={`${availableSymbols.length} symbols`}>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                {availableSymbols.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => { setChartSymbol(s); setActiveView(VIEW_IDS.CHART); }}
-                    className="rounded border border-gray-200 p-2 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
-                  >
-                    <div className="font-medium">{s}</div>
-                    <div className="text-xs text-gray-500">
-                      {availableTimeframesBySymbol[s]?.join(', ') || '—'}
-                    </div>
-                  </button>
-                ))}
-              </div>
+            <Panel title="Market Watch" subtitle={`${marketWatch.length} symbols`}>
+              {marketWatchError ? (
+                <div className="text-xs text-red-500">{marketWatchError}</div>
+              ) : marketWatch.length === 0 ? (
+                <div className="text-xs text-gray-500">Loading market data...</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        <th className="py-1 text-left font-medium">Symbol</th>
+                        <th className="py-1 text-right font-medium">Price</th>
+                        <th className="py-1 text-right font-medium">24h %</th>
+                        <th className="py-1 text-right font-medium">RSI</th>
+                        <th className="py-1 text-right font-medium">Trend</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {marketWatch.map((item) => {
+                        const changeColor = item.change_24h >= 0 ? 'text-green-500' : 'text-red-500'
+                        const rsiColor = item.rsi != null && item.rsi < 30 ? 'text-green-500' : item.rsi != null && item.rsi > 70 ? 'text-red-500' : ''
+                        const trendColor = item.ema_trend === 'bullish' ? 'text-green-500' : 'text-red-500'
+                        return (
+                          <tr
+                            key={item.symbol}
+                            className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800 cursor-pointer"
+                            onClick={() => { setChartSymbol(item.symbol); setActiveView(VIEW_IDS.CHART); }}
+                          >
+                            <td className="py-1.5 font-medium">{item.symbol}</td>
+                            <td className="py-1.5 text-right">${item.price.toLocaleString()}</td>
+                            <td className={`py-1.5 text-right ${changeColor}`}>
+                              {item.change_24h >= 0 ? '+' : ''}{item.change_24h.toFixed(2)}%
+                            </td>
+                            <td className={`py-1.5 text-right ${rsiColor}`}>
+                              {item.rsi?.toFixed(0) || '—'}
+                            </td>
+                            <td className={`py-1.5 text-right ${trendColor}`}>
+                              {item.ema_trend === 'bullish' ? '↑' : '↓'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Panel>
           )}
 
@@ -1566,14 +1719,83 @@ export default function App() {
             </Panel>
           )}
 
-          {/* Opportunities view - placeholder */}
+          {/* Opportunities view - shows trading signals */}
           {activeView === VIEW_IDS.OPPORTUNITIES && (
-            <Panel title="Trading Opportunities" subtitle="Coming soon">
-              <div className="py-8 text-center text-gray-500">
-                <div className="text-4xl mb-2">💡</div>
-                <div>Automated opportunity detection</div>
-                <div className="text-xs mt-1">Based on signals, volume, and momentum</div>
-              </div>
+            <Panel title="Trading Opportunities" subtitle={`${signals.length} signals on ${chartTimeframe}`}>
+              {signalsError ? (
+                <div className="text-xs text-red-500">{signalsError}</div>
+              ) : signals.length === 0 ? (
+                <div className="py-8 text-center text-gray-500">
+                  <div className="text-4xl mb-2">📊</div>
+                  <div>No opportunities detected</div>
+                  <div className="text-xs mt-1">Try a different timeframe</div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {signals.map((sig, idx) => {
+                    const sideColor =
+                      sig.side === 'BUY'
+                        ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                        : sig.side === 'SELL'
+                          ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                          : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                    const scoreColor =
+                      sig.score >= 70
+                        ? 'text-green-400'
+                        : sig.score >= 50
+                          ? 'text-yellow-400'
+                          : 'text-gray-400'
+
+                    return (
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 hover:bg-gray-800 transition-colors cursor-pointer"
+                        onClick={() => {
+                          setSelectedSymbol(sig.symbol)
+                          setActiveView(VIEW_IDS.CHART)
+                        }}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white">{sig.symbol}</span>
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium border ${sideColor}`}>
+                              {sig.side}
+                            </span>
+                          </div>
+                          <span className={`text-lg font-bold ${scoreColor}`}>{sig.score.toFixed(0)}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+                          <span>
+                            {sig.price != null ? `$${sig.price.toLocaleString()}` : '—'}
+                          </span>
+                          <span className={sig.change_24h != null && sig.change_24h < 0 ? 'text-red-400' : 'text-green-400'}>
+                            {sig.change_24h != null ? `${sig.change_24h >= 0 ? '+' : ''}${sig.change_24h.toFixed(2)}%` : '—'}
+                          </span>
+                          {sig.rsi != null && (
+                            <span className={sig.rsi < 30 ? 'text-green-400' : sig.rsi > 70 ? 'text-red-400' : ''}>
+                              RSI {sig.rsi.toFixed(0)}
+                            </span>
+                          )}
+                        </div>
+
+                        {sig.signals.length > 0 && (
+                          <div className="space-y-1 text-xs">
+                            {sig.signals.map((s, i) => (
+                              <div key={i} className="flex items-start gap-2 text-gray-400">
+                                <span className={s.side === 'BUY' ? 'text-green-500' : s.side === 'SELL' ? 'text-red-500' : 'text-gray-500'}>
+                                  {s.side === 'BUY' ? '▲' : s.side === 'SELL' ? '▼' : '●'}
+                                </span>
+                                <span>{s.reason}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </Panel>
           )}
         </main>
