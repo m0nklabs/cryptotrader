@@ -4,23 +4,35 @@
  */
 
 const API_BASE = '/api';
+// Wallets-data service for real exchange data (not yet deployed)
+const WALLETS_API = 'http://localhost:8101';
+// Flag to indicate wallets-data service is available
+const WALLETS_SERVICE_ENABLED = false;
 
-export type OrderSide = 'BUY' | 'SELL';
-export type OrderType = 'market' | 'limit';
-export type OrderStatus = 'PENDING' | 'FILLED' | 'CANCELLED';
+export type OrderSide = 'BUY' | 'SELL' | 'buy' | 'sell';
+export type OrderType = 'market' | 'limit' | string;  // Bitfinex uses 'EXCHANGE LIMIT' etc.
+export type OrderStatus = 'PENDING' | 'FILLED' | 'CANCELLED' | 'ACTIVE' | string;
 
 export interface Order {
   order_id: number;
   symbol: string;
   side: OrderSide;
   order_type: OrderType;
-  qty: string;
-  limit_price: string | null;
-  fill_price: string | null;
+  // Paper trading fields
+  qty?: string;
+  limit_price?: string | null;
+  fill_price?: string | null;
+  slippage_bps?: string | null;
+  filled_at?: string | null;
+  // Exchange order fields (from wallets-data)
+  exchange?: string;
+  amount?: string;
+  amount_filled?: string;
+  price?: string | null;
+  avg_price?: string | null;
   status: OrderStatus;
-  slippage_bps: string | null;
   created_at: string | null;
-  filled_at: string | null;
+  updated_at?: string | null;
 }
 
 export interface Position {
@@ -76,25 +88,37 @@ export async function placeOrder(request: PlaceOrderRequest): Promise<Order> {
 }
 
 /**
- * List orders with optional filters.
+ * List orders - fetches real orders from wallets-data service.
+ * Returns empty array if service is not available.
  */
 export async function listOrders(params?: {
   symbol?: string;
   status?: OrderStatus;
 }): Promise<Order[]> {
-  const searchParams = new URLSearchParams();
-  if (params?.symbol) searchParams.set('symbol', params.symbol);
-  if (params?.status) searchParams.set('status', params.status);
+  // Wallets-data service not yet deployed
+  if (!WALLETS_SERVICE_ENABLED) {
+    return [];
+  }
 
-  const url = `${API_BASE}/orders${searchParams.toString() ? `?${searchParams}` : ''}`;
-  const res = await fetch(url);
+  // Fetch real orders from wallets-data (Bitfinex)
+  const res = await fetch(`${WALLETS_API}/orders`);
 
   if (!res.ok) {
     throw new Error('Failed to fetch orders');
   }
 
   const data = await res.json();
-  return data.orders as Order[];
+  let orders = data.orders as Order[];
+
+  // Apply filters client-side
+  if (params?.symbol) {
+    orders = orders.filter(o => o.symbol === params.symbol);
+  }
+  if (params?.status) {
+    orders = orders.filter(o => o.status === params.status);
+  }
+
+  return orders;
 }
 
 /**
