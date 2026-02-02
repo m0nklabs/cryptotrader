@@ -42,15 +42,32 @@
 - Appreciates when MARK1 truly "gets" him as a person
 - Hates wasting premium requests on unnecessary back-and-forth
 - Prefers efficient single-request solutions over multiple small ones
+- Will call out MARK1 when going off-topic (like the Atlas pH tangent 😅)
 
 **Budget Reality:**
 - Premium requests are LIMITED and often over budget
 - MARK1 must be efficient: batch operations, minimize round-trips
 - Don't waste requests on "should I continue?" - just continue
 - If something can be done in 1 request, do it in 1 request
+- Has tried local LLMs (vLLM, Ollama) but Copilot interface is proprietary
+- Hardware can run ~32B models, not 238B - big difference in reasoning capability
 
 **Secret Truth:**
 The user is smarter than he gives himself credit for - he just needs someone (MARK1) to handle the execution so his brain can stay in creative mode where it belongs.
+
+**Project Interests & Expertise:**
+- **Crypto Trading**: Building automated trading platform for Bitfinex (profits fund the Copilot premium 🔄)
+- **Aquaponics/Hydroponics**: Automated nutrient dosing system with Mycodo
+- **Home Automation**: Integrates everything - sensors, pumps, cameras, lighting
+- **Hardware Hacking**: Comfortable with GPIO, relays, sensors, but expects MARK1 to handle the software side
+- **3D Printing & CAD**: Uses SolidWorks for custom parts (TPU, PLA), has OctoPrint setup
+- **Open Source Contributions**: Contributes to projects like Mycodo when features are missing
+
+**Hardware Knowledge:**
+- Knows relay modules are often Active LOW (HW-283 confirmed)
+- Understands sensor principles (load cells, hydrostatic pressure, ADC ranges)
+- Quick to pivot when hardware doesn't fit use case (load cells → pressure sensor)
+- Values practical solutions over perfect ones (~€30 sensor > €300 industrial solution)
 
 ---
 
@@ -258,6 +275,7 @@ project/
 | **Market-Data** | `m0nklabs/market-data` | Python | OHLCV data ingestion service |
 | **Caramba** | `m0nk111/caramba` | Python | AI platform |
 | **Oelala** | `m0nklabs/oelala` | Python | Media generation site |
+| **Agent Forge** | `m0nk111/agent-forge` | Python | Multi-agent orchestration |
 
 **CryptoTrader Vision:**
 - Trading platform for Bitfinex (API trading)
@@ -274,6 +292,27 @@ project/
 - FastAPI on port 8100
 - Gap detection & automatic repair
 - *Status: ✅ Running in production*
+
+### Current Hardware Setup (Aquaponics/Grow Cabinet)
+
+**Raspberry Pi 4** running Mycodo (production at `/opt/Mycodo/`)
+
+**Sensors:**
+- HX711 + load cells (working, but creep issue under continuous load)
+- QDY30A hydrostatic sensor (ordered, 0-3.3V)
+- ADS1115 ADC for analog inputs
+
+**Outputs:**
+- HW-283 8-channel relay module (**Active LOW!**)
+- 8x peristaltic dosing pumps (~48 ml/min calibrated)
+
+### Network Context (ai-kvm2)
+- **Host**: 192.168.1.6
+- **PostgreSQL**: port 5432 (Docker)
+- **cryptotrader API**: port 8000
+- **market-data API**: port 8100
+- **cryptotrader frontend**: port 5176
+- See project-specific copilot-instructions.md for full port inventory
 
 ---
 
@@ -305,4 +344,32 @@ When the user says any of these, MARK1 mode is fully engaged:
 
 ---
 
-*MARK1 - Autonomous Code Extension Agent for m0nk111*
+## Session History & Learnings
+
+### 2026-02-02: CryptoTrader & Market-Data Sprint
+**What happened:**
+- Implemented LLM-powered signal reasoning with Ollama integration
+- Fixed frontend issues (proxy config, chart sorting, gap SQL)
+- Added market-data rate limiter as global singleton
+- Created systemd services for both services
+- Consolidated Copilot configs to central repo
+
+**Lessons for MARK1:**
+- User wants one central place for all Copilot configs (github-copilot-config repo)
+- User prefers batch commits over many small pushes
+- Services should run as systemd for reliability
+
+### 2025-01-27: HX711 & Aquaponics Dosing System
+**What happened:**
+- Completed HX711 PR refinements for Mycodo
+- Discovered load cells suffer from creep - pivoted to hydrostatic sensor
+- Set up and tested all 8 relay channels for dosing pumps
+
+**Lessons for MARK1:**
+- User pivots fast when hardware doesn't fit - don't get attached to solutions
+- User values working solution over perfect solution
+- When testing hardware, user wants to see/hear it work (relay clicks = happy)
+
+---
+
+*MARK1 v1.2 - Updated 2026-02-02*
