@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "lightweight-charts": "^5.1.0",
+    "lucide-react": "^0.563.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -31,6 +32,6 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^5.7.2",
     "vite": "^7.3.0",
-    "vitest": "^4.0.16"
+    "vitest": "^4.0.18"
   }
 }

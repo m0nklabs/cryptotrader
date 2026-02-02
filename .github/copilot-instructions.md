@@ -59,6 +59,42 @@ These instructions apply to GitHub Copilot in the context of this repository.
 
 - If the integrated terminal is unstable/crashing, prefer disabling GPU acceleration in workspace settings (`terminal.integrated.gpuAcceleration`: `"off"`).
 
+## Host: ai-kvm2 Port Management
+
+When running on host **ai-kvm2** (192.168.1.6):
+- **ALWAYS** update `/home/flip/caramba/docs/PORTS.md` when claiming or changing a port
+- This is the authoritative port inventory for all projects on this server
+- Check for conflicts before assigning new ports
+
+### Project-Specific Ports (cryptotrader ecosystem)
+
+| Service | Port | Description |
+|---------|------|-------------|
+| cryptotrader API | 8000 | FastAPI backend (trading, candles, signals) |
+| market-data API | 8100 | OHLCV candle ingestion service (Bitfinex) |
+| wallets-data API | 8101 | Wallet/credentials management (reserved) |
+| cryptotrader frontend | 5176 | Vite dev server |
+| PostgreSQL | 5432 | Shared database (Docker container) |
+
+### Systemd Services
+
+The following services run as **user services** (`systemctl --user`):
+
+| Service | Source | Description |
+|---------|--------|-------------|
+| cryptotrader-frontend | `systemd/cryptotrader-frontend.service` | Vite dev server on port 5176 |
+| cryptotrader-api | `systemd/cryptotrader-api.service` | FastAPI backend on port 8000 |
+
+Commands:
+```bash
+systemctl --user status cryptotrader-frontend
+systemctl --user restart cryptotrader-frontend
+journalctl --user -u cryptotrader-frontend -f
+```
+
+**System services** (`sudo systemctl`):
+- `market-data.service` - OHLCV ingestion daemon on port 8100
+
 ## Communication in PRs/changes
 
 - Summarize what changed, where, and how to validate.
