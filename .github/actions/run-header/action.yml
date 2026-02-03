@@ -1,0 +1,43 @@
+name: "Run Header"
+description: "Write a small header (actor + avatar) to the GitHub Actions job summary"
+
+inputs:
+  title:
+    description: "Optional title shown in the summary"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Write job summary header
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        title="${{ inputs.title }}"
+
+        actor="${GITHUB_ACTOR:-unknown}"
+        triggering_actor="${GITHUB_TRIGGERING_ACTOR:-}"
+
+        actor_avatar="https://github.com/${actor}.png?size=64"
+        if [ -n "$triggering_actor" ]; then
+          triggering_avatar="https://github.com/${triggering_actor}.png?size=64"
+        else
+          triggering_avatar=""
+        fi
+
+        {
+          if [ -n "$title" ]; then
+            echo "## $title"
+            echo
+          fi
+
+          if [ -n "$triggering_actor" ] && [ "$triggering_actor" != "$actor" ]; then
+            echo "**Triggered by**: ![$triggering_actor]($triggering_avatar) `$triggering_actor`"
+            echo
+            echo "**Actor**: ![$actor]($actor_avatar) `$actor`"
+          else
+            echo "**Actor**: ![$actor]($actor_avatar) `$actor`"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"

@@ -26,6 +26,11 @@ jobs:
           app_id: ${{ secrets.APP_ID }}
           private_key: ${{ secrets.APP_PRIVATE_KEY }}
 
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Auto-assign Copilot"
+
       - name: Check for active Copilot PRs
         id: check-prs
         uses: actions/github-script@v8

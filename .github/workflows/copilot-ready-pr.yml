@@ -16,6 +16,11 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'copilot/')
     steps:
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Mark Copilot PRs Ready"
+
       - name: Mark PR ready for review
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}

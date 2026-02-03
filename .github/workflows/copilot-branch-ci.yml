@@ -9,6 +9,10 @@ on:
     branches:
       - 'copilot/**'
 
+concurrency:
+  group: copilot-branch-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   statuses: write
@@ -26,10 +30,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Copilot Branch CI"
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Install dependencies
         run: |

@@ -11,6 +11,11 @@ jobs:
     name: Trigger workflows for blocked Copilot PRs
     runs-on: [self-hosted, Linux, org]
     steps:
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Automation / Auto-trigger Copilot Workflows"
+
       - name: Trigger workflows via dispatch (bypasses approval)
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}

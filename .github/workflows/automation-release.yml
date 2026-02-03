@@ -19,6 +19,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Automation / Release"
+
       - name: Generate changelog
         id: changelog
         uses: orhun/git-cliff-action@v4

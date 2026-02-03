@@ -59,6 +59,11 @@ jobs:
             echo "is_copilot_pr=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Copilot Review Feedback"
+
       - name: Check for unresolved review comments
         if: steps.pr-info.outputs.has_pr == 'true' && steps.pr-info.outputs.is_copilot_pr == 'true'
         id: check-comments

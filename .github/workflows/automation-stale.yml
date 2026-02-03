@@ -16,6 +16,11 @@ jobs:
   stale:
     runs-on: [self-hosted, Linux, org]
     steps:
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Automation / Stale Issues"
+
       - uses: actions/stale@v10
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}

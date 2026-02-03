@@ -67,6 +67,11 @@ jobs:
           token: ${{ steps.generate-token.outputs.token }}
           fetch-depth: 0
 
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Copilot Rebase Helper"
+
       - name: Configure git
         run: |
           git config user.name "flip-devops-bot[bot]"

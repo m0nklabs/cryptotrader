@@ -56,6 +56,11 @@ jobs:
             echo "is_copilot=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Copilot CI Feedback"
+
       - name: Check loop protection
         if: steps.pr.outputs.found == 'true' && steps.pr.outputs.is_copilot == 'true'
         id: loop_check

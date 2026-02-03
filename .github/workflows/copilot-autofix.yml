@@ -23,6 +23,11 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Copilot Branch Autofix"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

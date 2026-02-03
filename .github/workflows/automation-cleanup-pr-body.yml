@@ -11,6 +11,11 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Automation / Clean PR Body"
+
       - name: Cleanup PR Body
         uses: actions/github-script@v8
         with:

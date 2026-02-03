@@ -18,6 +18,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Custom AI Agent"
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

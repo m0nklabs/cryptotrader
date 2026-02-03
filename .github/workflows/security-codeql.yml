@@ -28,6 +28,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Run header
+        uses: ./.github/actions/run-header
+        with:
+          title: "Security / CodeQL"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
