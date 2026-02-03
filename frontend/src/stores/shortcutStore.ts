@@ -49,7 +49,7 @@ export const useShortcutStore = create<ShortcutState>((set, get) => ({
           localStorage.removeItem(STORAGE_KEY)
           return
         }
-        
+
         // Validate that the loaded data is an object with string values
         if (typeof bindings === 'object' && bindings !== null && !Array.isArray(bindings)) {
           const validated: Partial<Record<ShortcutAction, string>> = {}

@@ -2,7 +2,7 @@
  * Crosshair Synchronization Hook
  * ===============================
  * Synchronizes crosshair position across multiple charts
- * 
+ *
  * Note: This provides basic crosshair sync by sharing the crosshair time in state.
  * Due to lightweight-charts v5 API limitations, we cannot programmatically
  * set the crosshair position on other charts. Charts will share the time value,
@@ -57,7 +57,7 @@ export function useCrosshairSync(
     // chartApi.setCrosshairPosition({ time: crosshairTime })
     // or
     // chartApi.timeScale().scrollToPosition(crosshairTime, true)
-    
+
     // Current limitation: visual crosshair cannot be programmatically positioned
     // Charts share the time value via state, but each chart's crosshair is independent
   }, [chartApi, crosshairTime])
