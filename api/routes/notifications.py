@@ -76,9 +76,7 @@ async def update_notification_settings(request: NotificationSettingsRequest):
 
     # Preserve existing telegram_chat_id if the request does not provide one
     effective_telegram_chat_id = (
-        request.telegram_chat_id
-        if request.telegram_chat_id is not None
-        else _notification_config.telegram_chat_id
+        request.telegram_chat_id if request.telegram_chat_id is not None else _notification_config.telegram_chat_id
     )
 
     _notification_config = NotificationConfig(
