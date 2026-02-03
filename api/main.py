@@ -1760,6 +1760,8 @@ async def get_correlation_matrix(
 
     Results are cached for 5 minutes to reduce computational load.
     Rate limiting should be handled by reverse proxy or API gateway (not implemented at app level).
+    
+    Maximum 15 symbols allowed to prevent server overload from expensive matrix calculations.
     """
     import asyncio
     from core.analysis.correlation import calculate_correlation_matrix
@@ -1768,12 +1770,25 @@ async def get_correlation_matrix(
     if stores is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
+    # Validate input parameters to ensure they only contain expected characters
+    import re
+
+    if not re.match(r"^[a-z0-9_-]+$", exchange.lower()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid exchange '{exchange}': must contain only alphanumeric characters, hyphens, and underscores",
+        )
+
+    if not re.match(r"^[0-9]+[smhd]$", timeframe.lower()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid timeframe '{timeframe}': must be a number followed by s/m/h/d (e.g., 1h, 4h, 1d)",
+        )
+
     # Parse symbols and validate input
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
 
-    # Validate symbols contain only alphanumeric characters and allowed separators
-    import re
-
+    # Validate symbols contain only alphanumeric characters
     for sym in symbol_list:
         if not re.match(r"^[A-Z0-9]+$", sym):
             raise HTTPException(
@@ -1782,6 +1797,13 @@ async def get_correlation_matrix(
 
     if len(symbol_list) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 symbols for correlation analysis")
+
+    # Maximum symbol limit to prevent server overload (matches frontend MAX_SYMBOLS=15)
+    if len(symbol_list) > 15:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many symbols ({len(symbol_list)}): maximum 15 symbols allowed to prevent server overload",
+        )
 
     # Create cache key
     cache_key = f"{','.join(sorted(symbol_list))}:{exchange}:{timeframe}:{lookback}"
