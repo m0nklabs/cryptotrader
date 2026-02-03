@@ -83,6 +83,31 @@ Out of scope for v2:
 
 ## Quickstart
 
+### Docker (Recommended)
+
+```bash
+# Clone and configure
+git clone https://github.com/m0nklabs/cryptotrader.git
+cd cryptotrader
+cp docker-compose.env.example .env
+# Edit .env with your settings
+
+# Start all services
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Access services
+# - Frontend: http://localhost:5176
+# - API: http://localhost:8000
+# - API Docs: http://localhost:8000/docs
+
+# Seed sample data (optional)
+docker compose exec api bash -c "export DATABASE_URL=postgresql://cryptotrader:cryptotrader@postgres:5432/cryptotrader && ./scripts/seed-data.sh"
+```
+
+See [docs/DOCKER.md](docs/DOCKER.md) for detailed Docker setup and troubleshooting.
+
+### Manual Setup
+
 ```bash
 # Clone and setup
 git clone https://github.com/m0nklabs/cryptotrader.git

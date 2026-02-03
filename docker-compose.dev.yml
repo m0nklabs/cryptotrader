@@ -1,0 +1,65 @@
+# Development overrides for docker-compose.yml
+version: "3.9"
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cryptotrader-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cryptotrader}:${POSTGRES_PASSWORD:-cryptotrader}@postgres:5432/${POSTGRES_DB:-cryptotrader}
+      - BITFINEX_API_KEY=${BITFINEX_API_KEY:-}
+      - BITFINEX_API_SECRET=${BITFINEX_API_SECRET:-}
+      - BITFINEX_TIMEOUT=${BITFINEX_TIMEOUT:-30}
+      - BITFINEX_RATE_LIMIT=${BITFINEX_RATE_LIMIT:-90}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app/api:ro
+      - ./core:/app/core:ro
+      - ./db:/app/db:ro
+      - ./scripts:/app/scripts:ro
+    command: ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cryptotrader-frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      - VITE_API_URL=http://api:8000
+    ports:
+      - "5176:5176"
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
+      - ./frontend/tsconfig.json:/app/tsconfig.json:ro
+      - ./frontend/tsconfig.node.json:/app/tsconfig.node.json:ro
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js:ro
+      - ./frontend/postcss.config.js:/app/postcss.config.js:ro
+    stdin_open: true
+    tty: true
