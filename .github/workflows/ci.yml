@@ -13,7 +13,7 @@ permissions:
 jobs:
   autofix:
     name: Auto-fix style (PRs only)
-    runs-on: [self-hosted, Linux, org]
+    runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     permissions:
       contents: write
@@ -55,7 +55,7 @@ jobs:
 
   pre-commit:
     name: Pre-commit checks
-    runs-on: [self-hosted, Linux, org]
+    runs-on: ubuntu-latest
     needs: [autofix]
     if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
     steps:
@@ -72,7 +72,7 @@ jobs:
 
   backend:
     name: Backend (ruff + pytest)
-    runs-on: [self-hosted, Linux, org]
+    runs-on: ubuntu-latest
     needs: [autofix]
     if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
 
@@ -136,7 +136,7 @@ jobs:
 
   frontend:
     name: Frontend (build)
-    runs-on: [self-hosted, Linux, org]
+    runs-on: ubuntu-latest
     needs: [autofix]
     if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
 
