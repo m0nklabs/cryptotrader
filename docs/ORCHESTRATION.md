@@ -106,6 +106,18 @@ One-sentence goal.
 | **GitHub Copilot** | `@copilot` | Cloud (GitHub) | Complex features, multi-file changes |
 | **Agent-Forge** | `m0nk111-post` | Ollama (qwen3coder 30b) | Local execution, cost-free, privacy |
 
+### Agent Configuration Files
+
+This repo keeps agent definitions in `.github/agents/`.
+
+To avoid drift, we treat `../github-copilot-config/agents/MARK1.md` (sibling repo in the same workspace) as the single source of truth for MARK1, and sync it into this repo as `.github/agents/MARK1.agent.md`.
+
+Sync command:
+
+```bash
+./scripts/sync_agents_from_central.sh
+```
+
 ## Automated Copilot Assignment
 
 A GitHub Action automatically assigns Copilot to the highest priority issue when no active Copilot PR exists.
