@@ -166,15 +166,15 @@ jobs:
           # Trigger Copilot Coding Agent to fix, but avoid spam/loops.
           FIX_MARKER="<!-- copilot-ci-fix:sha=$SHA -->"
 
-          COMMENTS_JSON="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100")"
+          COMMENTS_BODIES="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" --jq '.[].body // ""')"
           # If we've already requested a fix for this SHA, skip.
-          if echo "$COMMENTS_JSON" | jq -r '.[].body // ""' | grep -Fq "$FIX_MARKER"; then
+          if echo "$COMMENTS_BODIES" | grep -Fq "$FIX_MARKER"; then
             echo "Fix request already posted for $SHA on PR #$PR_NUMBER; skipping."
             exit 0
           fi
 
           # Hard limit fix cycles to avoid infinite loops.
-          FIX_COUNT="$(echo "$COMMENTS_JSON" | jq -r '.[].body // ""' | grep -c '<!-- copilot-ci-fix:sha=' || true)"
+          FIX_COUNT="$(echo "$COMMENTS_BODIES" | grep -c '<!-- copilot-ci-fix:sha=' || true)"
           if [ "${FIX_COUNT:-0}" -ge 3 ]; then
             echo "Fix request cycle limit reached ($FIX_COUNT); skipping @copilot trigger."
             exit 0
