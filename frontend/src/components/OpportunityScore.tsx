@@ -15,7 +15,11 @@ type Props = {
   refreshIntervalMs?: number
 }
 
-export default function OpportunityScore({ symbol, exchange = 'bitfinex' }: Props) {
+export default function OpportunityScore({
+  symbol,
+  exchange = 'bitfinex',
+  refreshIntervalMs = DEFAULT_REFRESH_INTERVAL_MS,
+}: Props) {
   const [signal, setSignal] = useState<OpportunitySignal | null>(null)
   const [history, setHistory] = useState<SignalHistory[]>([])
   const [loading, setLoading] = useState(true)
