@@ -15,7 +15,7 @@ from core.storage.postgres.stores import PostgresStores
 logger = logging.getLogger(__name__)
 
 
-async def calculate_correlation_matrix(
+def calculate_correlation_matrix(
     stores: PostgresStores,
     symbols: list[str],
     exchange: str = "bitfinex",
@@ -45,32 +45,42 @@ async def calculate_correlation_matrix(
     if len(symbols) < 2:
         raise ValueError("Need at least 2 symbols for correlation analysis")
 
+    # Get SQLAlchemy engine for sync queries
+    engine = stores._get_engine()
+    _, text = stores._require_sqlalchemy()
+
     # Fetch OHLCV data for all symbols
     all_data: dict[str, pd.DataFrame] = {}
 
     for symbol in symbols:
         try:
-            async with stores.pool.acquire() as conn:
-                result = await conn.fetch(
-                    """
-                    SELECT open_time, close
-                    FROM candles
-                    WHERE exchange = $1 AND symbol = $2 AND timeframe = $3
-                      AND open_time >= NOW() - INTERVAL '1 day' * $4
-                    ORDER BY open_time ASC
-                    """,
-                    exchange,
-                    symbol,
-                    timeframe,
-                    lookback_days,
-                )
+            stmt = text(
+                """
+                SELECT open_time, close
+                FROM candles
+                WHERE exchange = :exchange AND symbol = :symbol AND timeframe = :timeframe
+                  AND open_time >= NOW() - INTERVAL '1 day' * :lookback_days
+                ORDER BY open_time ASC
+                """
+            )
+
+            with engine.begin() as conn:
+                result = conn.execute(
+                    stmt,
+                    {
+                        "exchange": exchange,
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "lookback_days": lookback_days,
+                    },
+                ).fetchall()
 
                 if not result:
                     logger.warning(f"No data found for {symbol}")
                     continue
 
                 df = pd.DataFrame(
-                    [(row["open_time"], float(row["close"])) for row in result],
+                    [(row[0], float(row[1])) for row in result],
                     columns=["time", "close"],
                 )
                 df["time"] = pd.to_datetime(df["time"], utc=True)

@@ -1,7 +1,7 @@
 /**
  * Correlation Hook
  * ================
- * React Query hook for fetching asset correlation data
+ * React hook for fetching asset correlation data using fetch API
  */
 
 import { useEffect, useState, useMemo } from 'react'

@@ -1723,6 +1723,75 @@ async def get_gaps_summary(
         "repaired_24h": repaired_24h,
         "oldest_open_gap": oldest_gap,
     }
+@app.get("/api/signals", tags=["Analysis"])
+async def get_signals(
+    exchange: str = Query("bitfinex", description="Exchange name"),
+    symbol: str | None = Query(None, description="Filter by symbol (e.g., BTCUSD)"),
+    timeframe: str | None = Query(None, description="Filter by timeframe (e.g., 1h, 4h, 1d)"),
+    limit: int = Query(50, ge=1, le=500, description="Maximum number of signals to return"),
+):
+    """Get opportunity signals with optional filters.
+
+    Returns:
+        JSON with opportunity signals including score, side, and signal breakdown.
+        Example:
+        {
+            "signals": [
+                {
+                    "symbol": "BTCUSD",
+                    "timeframe": "1h",
+                    "score": 75,
+                    "side": "long",
+                    "signals": [...],
+                    "created_at": 1234567890
+                },
+                ...
+            ],
+            "count": 10
+        }
+    """
+    stores = _get_stores()
+    if stores is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        opportunities = stores.get_opportunities(
+            exchange=exchange,
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+        )
+
+        # Convert to API response format
+        signals = [
+            {
+                "symbol": opp.symbol,
+                "timeframe": opp.timeframe,
+                "score": opp.score,
+                "side": opp.side,
+                "signals": [
+                    {
+                        "code": sig.code,
+                        "side": sig.side,
+                        "strength": sig.strength,
+                        "value": sig.value,
+                        "reason": sig.reason,
+                    }
+                    for sig in opp.signals
+                ],
+                "created_at": int(opp.created_at.timestamp()) if opp.created_at else None,
+            }
+            for opp in opportunities
+        ]
+
+        return {
+            "signals": signals,
+            "count": len(signals),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to fetch signals: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch signals")
 
 
 @app.get("/api/correlation", tags=["Analysis"])
@@ -1739,6 +1808,8 @@ async def get_correlation_matrix(
 
     Results are cached for 5 minutes to reduce computational load.
     """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
     from core.analysis.correlation import calculate_correlation_matrix
 
     stores = _get_stores()
@@ -1773,14 +1844,19 @@ async def get_correlation_matrix(
                 return cached_result
 
     # Calculate correlation (cache miss or expired)
+    # Run in thread pool since calculate_correlation_matrix is now synchronous
     try:
-        result = await calculate_correlation_matrix(
-            stores=stores,
-            symbols=symbol_list,
-            exchange=exchange,
-            timeframe=timeframe,
-            lookback_days=lookback,
-        )
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(
+                executor,
+                calculate_correlation_matrix,
+                stores,
+                symbol_list,
+                exchange,
+                timeframe,
+                lookback,
+            )
 
         # Update cache
         with _correlation_cache_lock:
