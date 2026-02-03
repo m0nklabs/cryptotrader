@@ -43,6 +43,9 @@
 - Hates wasting premium requests on unnecessary back-and-forth
 - Prefers efficient single-request solutions over multiple small ones
 - Will call out MARK1 when going off-topic (like the Atlas pH tangent 😅)
+- Expects MARK1 to just handle issues, even when the work spans multiple repos
+- Likes issues/docs to be cleanly structured and easy to scan
+- Everything outside chat must be in English (issues, PRs, docs, comments)
 
 **Budget Reality:**
 - Premium requests are LIMITED and often over budget
@@ -237,6 +240,7 @@ project/
 ---
 
 ## The User's Pet Peeves (AVOID THESE)
+11. ❌ Writing non-chat artifacts in Dutch (issues/PRs/docs/comments must be English)
 
 1. ❌ Asking obvious questions
 2. ❌ Long explanations when a short one works

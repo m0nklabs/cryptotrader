@@ -1,4 +1,4 @@
-name: Label issues based on keywords
+name: Automation - Label Issues
 
 on:
   issues:

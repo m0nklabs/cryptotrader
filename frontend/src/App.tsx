@@ -84,6 +84,42 @@ type Signal = {
   price?: number
   change_24h?: number
   rsi?: number
+  score_breakdown?: Array<{
+    code: string
+    contribution: number
+    detail?: string
+  }>
+  score_explanation?: string
+  analysis?: {
+    recommendation: string
+    confidence: number
+    score: number
+    reasoning: string[]
+    bullish_factors: string[]
+    bearish_factors: string[]
+    support_levels: number[]
+    resistance_levels: number[]
+    suggested_entry?: number | null
+    suggested_stop?: number | null
+    suggested_target?: number | null
+    risk_reward_ratio?: number | null
+    indicators?: {
+      rsi?: number
+      ema_20?: number
+      ema_50?: number
+      ema_200?: number
+      macd?: number
+      atr_percent?: number
+      volume_ratio?: number
+    }
+  }
+  llm?: {
+    summary?: string
+    explanation?: string
+    risks?: string
+    confidence?: string
+    model?: string
+  }
   signals: Array<{
     code: string
     side: string
@@ -541,7 +577,19 @@ export default function App() {
 
       setSignalsError(null)
 
-      fetch(`/api/signals?exchange=bitfinex&timeframe=${encodeURIComponent(chartTimeframe)}&limit=20`, { signal: controller.signal })
+      const includeAnalysis = activeView === VIEW_IDS.OPPORTUNITIES
+      const includeLlm = includeAnalysis
+      const analysisLimit = includeAnalysis ? 20 : 5
+      const params = new URLSearchParams({
+        exchange: 'bitfinex',
+        timeframe: chartTimeframe,
+        limit: '20',
+        include_history: includeAnalysis ? 'true' : 'false',
+        include_llm: includeLlm ? 'true' : 'false',
+        analysis_limit: analysisLimit.toString(),
+      })
+
+      fetch(`/api/signals?${params.toString()}`, { signal: controller.signal })
         .then(async (resp) => {
           const bodyText = await resp.text()
           if (!resp.ok) {
@@ -577,6 +625,10 @@ export default function App() {
                 price: s.price != null ? Number(s.price) : undefined,
                 change_24h: s.change_24h != null ? Number(s.change_24h) : undefined,
                 rsi: s.rsi != null ? Number(s.rsi) : undefined,
+                score_breakdown: Array.isArray(s.score_breakdown) ? s.score_breakdown as Signal['score_breakdown'] : undefined,
+                score_explanation: s.score_explanation != null ? String(s.score_explanation) : undefined,
+                analysis: s.analysis && typeof s.analysis === 'object' ? s.analysis as Signal['analysis'] : undefined,
+                llm: s.llm && typeof s.llm === 'object' ? s.llm as Signal['llm'] : undefined,
                 signals: Array.isArray(s.signals) ? s.signals : [],
                 created_at: Number(s.created_at || 0),
               }
@@ -601,7 +653,7 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [chartTimeframe])
+  }, [chartTimeframe, activeView])
 
   // Fetch market watch data
   useEffect(() => {
@@ -1489,7 +1541,7 @@ export default function App() {
                   {wsConnected ? '● Live' : '○ Polling'}
                 </span>
               </div>
-              <div className="min-h-[400px] flex-1 rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
+              <div className="min-h-100 flex-1 rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
                 <CandlestickChart
                   candles={chartCandles.map((c) => ({
                     time: c.t,
@@ -1789,6 +1841,80 @@ export default function App() {
                                 <span>{s.reason}</span>
                               </div>
                             ))}
+                          </div>
+                        )}
+
+                        {sig.score_breakdown && sig.score_breakdown.length > 0 && (
+                          <div className="mt-3 rounded border border-gray-700/60 bg-gray-900/40 p-2 text-[11px] text-gray-300">
+                            <div className="font-semibold text-gray-200">Score breakdown</div>
+                            <div className="mt-1 space-y-0.5">
+                              {sig.score_breakdown.map((item, i) => (
+                                <div key={i} className="flex items-center justify-between">
+                                  <span className="text-gray-400">{item.code}</span>
+                                  <span className="text-gray-200">+{item.contribution.toFixed(1)}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {sig.score_explanation && (
+                              <div className="mt-1 text-gray-500">{sig.score_explanation}</div>
+                            )}
+                          </div>
+                        )}
+
+                        {sig.analysis && (
+                          <div className="mt-3 rounded border border-gray-700/60 bg-gray-900/40 p-2 text-[11px] text-gray-300">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-gray-200">Historical analysis</span>
+                              <span className="text-gray-400">
+                                {sig.analysis.recommendation} • {sig.analysis.confidence}%
+                              </span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-2 text-gray-400">
+                              <div>
+                                Support:{' '}
+                                <span className="text-gray-200">
+                                  {sig.analysis.support_levels?.length ? sig.analysis.support_levels[0].toFixed(2) : '—'}
+                                </span>
+                              </div>
+                              <div>
+                                Resistance:{' '}
+                                <span className="text-gray-200">
+                                  {sig.analysis.resistance_levels?.length ? sig.analysis.resistance_levels[0].toFixed(2) : '—'}
+                                </span>
+                              </div>
+                              <div>
+                                ATR:{' '}
+                                <span className="text-gray-200">
+                                  {sig.analysis.indicators?.atr_percent != null ? `${sig.analysis.indicators.atr_percent.toFixed(2)}%` : '—'}
+                                </span>
+                              </div>
+                              <div>
+                                Volume:{' '}
+                                <span className="text-gray-200">
+                                  {sig.analysis.indicators?.volume_ratio != null ? `${sig.analysis.indicators.volume_ratio.toFixed(1)}x` : '—'}
+                                </span>
+                              </div>
+                            </div>
+                            {sig.analysis.reasoning?.length > 0 && (
+                              <div className="mt-2 space-y-0.5 text-gray-400">
+                                {sig.analysis.reasoning.slice(0, 3).map((reason, i) => (
+                                  <div key={i}>• {reason}</div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {sig.llm?.summary && (
+                          <div className="mt-3 rounded border border-blue-500/30 bg-blue-500/10 p-2 text-[11px] text-blue-100">
+                            <div className="font-semibold text-blue-200">LLM summary</div>
+                            <div className="mt-1 text-blue-100">{sig.llm.summary}</div>
+                            {sig.llm.explanation && (
+                              <div className="mt-1 text-blue-200/80">{sig.llm.explanation}</div>
+                            )}
+                            {sig.llm.risks && (
+                              <div className="mt-1 text-blue-200/70">Risks: {sig.llm.risks}</div>
+                            )}
                           </div>
                         )}
                       </div>

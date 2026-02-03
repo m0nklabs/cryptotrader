@@ -1,7 +1,7 @@
 # Stale issue management
 # Automatically marks and closes stale issues/PRs
 
-name: 'Stale'
+name: Automation - Stale Issues
 
 on:
   schedule:

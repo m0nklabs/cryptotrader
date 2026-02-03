@@ -1,4 +1,4 @@
-name: Cleanup PR Body
+name: Automation - Clean PR Body
 
 on:
   pull_request:

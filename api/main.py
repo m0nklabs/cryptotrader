@@ -62,6 +62,11 @@ _market_cap_cache_source: str = "fallback"  # Track actual source of cached data
 _market_cap_cache_lock = threading.Lock()
 MARKET_CAP_CACHE_TTL = 600  # 10 minutes in seconds
 
+# Signal analysis cache (for LLM + historical analysis)
+_signal_analysis_cache: dict[str, dict[str, Any]] = {}
+_signal_analysis_cache_lock = threading.Lock()
+ANALYSIS_CACHE_TTL = 300  # 5 minutes
+
 # Track application start time for uptime calculation
 _app_start_time: float = time.time()
 
@@ -108,6 +113,27 @@ def _get_stores() -> PostgresStores:
             raise RuntimeError("DATABASE_URL environment variable is required")
         _stores = PostgresStores(config=PostgresConfig(database_url=database_url))
     return _stores
+
+
+def _analysis_cache_key(*, exchange: str, symbol: str, timeframe: str) -> str:
+    return f"{exchange.lower()}:{symbol.upper()}:{timeframe}"
+
+
+def _get_cached_analysis(key: str) -> dict[str, Any] | None:
+    now = time.time()
+    with _signal_analysis_cache_lock:
+        entry = _signal_analysis_cache.get(key)
+        if not entry:
+            return None
+        if now - entry.get("timestamp", 0) > ANALYSIS_CACHE_TTL:
+            _signal_analysis_cache.pop(key, None)
+            return None
+        return entry
+
+
+def _set_cached_analysis(key: str, payload: dict[str, Any]) -> None:
+    with _signal_analysis_cache_lock:
+        _signal_analysis_cache[key] = payload
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -280,6 +306,53 @@ async def get_ingestion_status(
         "schema_ok": schema_ok,
         "db_ok": db_ok,
     }
+
+
+@app.get("/gaps/summary")
+@app.get("/api/gaps/summary")
+async def get_gap_summary() -> dict[str, Any]:
+    """Get candle gap summary stats.
+
+    Returns:
+        - open_gaps: Total unrepaired gaps
+        - repaired_24h: Gaps repaired in the last 24 hours
+        - oldest_open_gap: Oldest unrepaired gap timestamp (ms since epoch) or null
+    """
+    try:
+        stores = _get_stores()
+        engine = stores._get_engine()  # noqa: SLF001
+        _, text = stores._require_sqlalchemy()  # noqa: SLF001
+
+        stmt = text(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE repaired_at IS NULL) AS open_gaps,
+                COUNT(*) FILTER (WHERE repaired_at > NOW() - INTERVAL '24 hours') AS repaired_24h,
+                MIN(expected_open_time) FILTER (WHERE repaired_at IS NULL) AS oldest_open_gap
+            FROM candle_gaps
+            """
+        )
+
+        with engine.begin() as conn:
+            row = conn.execute(stmt).fetchone()
+
+        if not row:
+            return {"open_gaps": 0, "repaired_24h": 0, "oldest_open_gap": None}
+
+        open_gaps, repaired_24h, oldest_open_gap = row
+        oldest_ms = None
+        if oldest_open_gap is not None:
+            oldest_ms = int(_as_utc(oldest_open_gap).timestamp() * 1000)
+
+        return {
+            "open_gaps": int(open_gaps or 0),
+            "repaired_24h": int(repaired_24h or 0),
+            "oldest_open_gap": oldest_ms,
+        }
+
+    except Exception as exc:
+        logger.error(f"Gap summary failed: {exc}")
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/system/status")
@@ -1013,6 +1086,7 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
     signals_list: list[dict[str, Any]] = []
     total_score = 0
     side_votes = {"BUY": 0, "SELL": 0}
+    score_breakdown: list[dict[str, Any]] = []
 
     rsi = indicators.get("rsi")
     ema_9 = indicators.get("ema_9")
@@ -1024,6 +1098,7 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
     if rsi is not None:
         if rsi < 30:
             strength = (30 - rsi) / 30
+            contribution = strength * 40
             signals_list.append(
                 {
                     "code": "RSI_OVERSOLD",
@@ -1033,10 +1108,18 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                     "reason": f"RSI {rsi} < 30 (oversold)",
                 }
             )
-            total_score += strength * 40
+            total_score += contribution
             side_votes["BUY"] += 2
+            score_breakdown.append(
+                {
+                    "code": "RSI_OVERSOLD",
+                    "contribution": round(contribution, 2),
+                    "detail": "Oversold RSI adds momentum score",
+                }
+            )
         elif rsi > 70:
             strength = (rsi - 70) / 30
+            contribution = strength * 40
             signals_list.append(
                 {
                     "code": "RSI_OVERBOUGHT",
@@ -1046,9 +1129,17 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                     "reason": f"RSI {rsi} > 70 (overbought)",
                 }
             )
-            total_score += strength * 40
+            total_score += contribution
             side_votes["SELL"] += 2
+            score_breakdown.append(
+                {
+                    "code": "RSI_OVERBOUGHT",
+                    "contribution": round(contribution, 2),
+                    "detail": "Overbought RSI adds momentum score",
+                }
+            )
         elif rsi < 40:
+            contribution = 10
             signals_list.append(
                 {
                     "code": "RSI_LOW",
@@ -1058,9 +1149,17 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                     "reason": f"RSI {rsi} approaching oversold",
                 }
             )
-            total_score += 10
+            total_score += contribution
             side_votes["BUY"] += 1
+            score_breakdown.append(
+                {
+                    "code": "RSI_LOW",
+                    "contribution": contribution,
+                    "detail": "RSI trending lower adds mild score",
+                }
+            )
         elif rsi > 60:
+            contribution = 10
             signals_list.append(
                 {
                     "code": "RSI_HIGH",
@@ -1070,14 +1169,22 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                     "reason": f"RSI {rsi} approaching overbought",
                 }
             )
-            total_score += 10
+            total_score += contribution
             side_votes["SELL"] += 1
+            score_breakdown.append(
+                {
+                    "code": "RSI_HIGH",
+                    "contribution": contribution,
+                    "detail": "RSI trending higher adds mild score",
+                }
+            )
 
     # EMA crossover signals
     if ema_9 is not None and ema_21 is not None and price is not None:
         ema_diff_pct = (ema_9 - ema_21) / ema_21 * 100
         if ema_9 > ema_21:
             if ema_diff_pct < 1:  # Recent crossover
+                contribution = 25
                 signals_list.append(
                     {
                         "code": "EMA_CROSS_UP",
@@ -1087,9 +1194,17 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                         "reason": "EMA9 crossed above EMA21",
                     }
                 )
-                total_score += 25
+                total_score += contribution
                 side_votes["BUY"] += 2
+                score_breakdown.append(
+                    {
+                        "code": "EMA_CROSS_UP",
+                        "contribution": contribution,
+                        "detail": "Bullish crossover adds trend score",
+                    }
+                )
             else:
+                contribution = 15
                 signals_list.append(
                     {
                         "code": "EMA_BULLISH",
@@ -1099,10 +1214,18 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                         "reason": "EMA9 > EMA21 (bullish trend)",
                     }
                 )
-                total_score += 15
+                total_score += contribution
                 side_votes["BUY"] += 1
+                score_breakdown.append(
+                    {
+                        "code": "EMA_BULLISH",
+                        "contribution": contribution,
+                        "detail": "Bullish EMA alignment adds trend score",
+                    }
+                )
         else:
             if ema_diff_pct > -1:  # Recent crossover
+                contribution = 25
                 signals_list.append(
                     {
                         "code": "EMA_CROSS_DOWN",
@@ -1112,9 +1235,17 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                         "reason": "EMA9 crossed below EMA21",
                     }
                 )
-                total_score += 25
+                total_score += contribution
                 side_votes["SELL"] += 2
+                score_breakdown.append(
+                    {
+                        "code": "EMA_CROSS_DOWN",
+                        "contribution": contribution,
+                        "detail": "Bearish crossover adds trend score",
+                    }
+                )
             else:
+                contribution = 15
                 signals_list.append(
                     {
                         "code": "EMA_BEARISH",
@@ -1124,12 +1255,20 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                         "reason": "EMA9 < EMA21 (bearish trend)",
                     }
                 )
-                total_score += 15
+                total_score += contribution
                 side_votes["SELL"] += 1
+                score_breakdown.append(
+                    {
+                        "code": "EMA_BEARISH",
+                        "contribution": contribution,
+                        "detail": "Bearish EMA alignment adds trend score",
+                    }
+                )
 
     # MACD signals
     if macd is not None:
         if macd > 0:
+            contribution = 15
             signals_list.append(
                 {
                     "code": "MACD_POSITIVE",
@@ -1139,9 +1278,17 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                     "reason": f"MACD positive ({macd})",
                 }
             )
-            total_score += 15
+            total_score += contribution
             side_votes["BUY"] += 1
+            score_breakdown.append(
+                {
+                    "code": "MACD_POSITIVE",
+                    "contribution": contribution,
+                    "detail": "MACD momentum adds score",
+                }
+            )
         else:
+            contribution = 15
             signals_list.append(
                 {
                     "code": "MACD_NEGATIVE",
@@ -1151,8 +1298,15 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
                     "reason": f"MACD negative ({macd})",
                 }
             )
-            total_score += 15
+            total_score += contribution
             side_votes["SELL"] += 1
+            score_breakdown.append(
+                {
+                    "code": "MACD_NEGATIVE",
+                    "contribution": contribution,
+                    "detail": "MACD momentum adds score",
+                }
+            )
 
     if not signals_list:
         return None
@@ -1165,6 +1319,8 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
     else:
         side = "HOLD"
 
+    score_explanation = " + ".join(f"{item['code']} ({item['contribution']})" for item in score_breakdown)
+
     return {
         "symbol": symbol,
         "timeframe": timeframe,
@@ -1175,6 +1331,8 @@ def _generate_signals_for_symbol(symbol: str, timeframe: str, indicators: dict[s
         "change_24h": indicators.get("change_24"),
         "rsi": rsi,
         "created_at": int(time.time() * 1000),
+        "score_breakdown": score_breakdown,
+        "score_explanation": score_explanation,
     }
 
 
@@ -1183,6 +1341,9 @@ async def get_signals(
     exchange: str = Query("bitfinex", description="Exchange name"),
     timeframe: str = Query("1h", description="Timeframe for analysis"),
     limit: int = Query(10, ge=1, le=100, description="Max signals to return"),
+    include_history: bool = Query(False, description="Include historical analysis details"),
+    include_llm: bool = Query(False, description="Include LLM explanation"),
+    analysis_limit: int = Query(5, ge=1, le=50, description="Max signals with analysis"),
 ) -> dict[str, Any]:
     """Get trading signals for all available symbols.
 
@@ -1246,6 +1407,118 @@ async def get_signals(
 
         # Sort by score descending
         signals_list.sort(key=lambda x: x["score"], reverse=True)
+
+        if include_llm:
+            include_history = True
+
+        if include_history:
+            from core.signals.reasoning import SignalReasoner
+
+            reasoner = SignalReasoner(db_url=os.environ.get("DATABASE_URL"))
+            llm_analyst = None
+            llm_available = False
+            if include_llm:
+                try:
+                    from core.signals.llm import OllamaAnalyst
+
+                    llm_analyst = OllamaAnalyst()
+                    llm_available = await llm_analyst.is_available()
+                except Exception as e:
+                    logger.warning(f"LLM availability check failed: {e}")
+
+            for signal in signals_list[: min(analysis_limit, len(signals_list))]:
+                cache_key = _analysis_cache_key(
+                    exchange=exchange,
+                    symbol=str(signal.get("symbol", "")),
+                    timeframe=str(signal.get("timeframe", "")),
+                )
+                cached = _get_cached_analysis(cache_key)
+
+                analysis_payload: dict[str, Any] | None = None
+                if cached and "analysis" in cached:
+                    analysis_payload = cached.get("analysis")
+                    signal["analysis"] = analysis_payload
+                    if include_llm and cached.get("llm"):
+                        signal["llm"] = cached.get("llm")
+
+                if analysis_payload is None or (include_llm and "llm" not in signal):
+                    try:
+                        analysis = await reasoner.analyze(
+                            symbol=str(signal.get("symbol", "")),
+                            timeframe=str(signal.get("timeframe", "")),
+                        )
+                        analysis_payload = {
+                            "recommendation": analysis.recommendation.value,
+                            "confidence": analysis.confidence,
+                            "score": analysis.confidence,
+                            "reasoning": analysis.reasoning,
+                            "bullish_factors": analysis.bullish_factors,
+                            "bearish_factors": analysis.bearish_factors,
+                            "support_levels": [float(s) for s in analysis.support_levels],
+                            "resistance_levels": [float(r) for r in analysis.resistance_levels],
+                            "suggested_entry": float(analysis.suggested_entry)
+                            if analysis.suggested_entry is not None
+                            else None,
+                            "suggested_stop": float(analysis.suggested_stop)
+                            if analysis.suggested_stop is not None
+                            else None,
+                            "suggested_target": float(analysis.suggested_target)
+                            if analysis.suggested_target is not None
+                            else None,
+                            "risk_reward_ratio": analysis.risk_reward_ratio,
+                            "indicators": {
+                                "rsi": analysis.indicators.get("rsi"),
+                                "ema_20": analysis.indicators.get("ema_20"),
+                                "ema_50": analysis.indicators.get("ema_50"),
+                                "ema_200": analysis.indicators.get("ema_200"),
+                                "macd": analysis.indicators.get("macd"),
+                                "atr_percent": analysis.indicators.get("atr_percent"),
+                                "volume_ratio": analysis.indicators.get("volume_ratio"),
+                            },
+                        }
+                        signal["analysis"] = analysis_payload
+
+                        llm_payload: dict[str, Any] | None = None
+                        if include_llm:
+                            if llm_analyst is not None and llm_available:
+                                try:
+                                    llm_response = await llm_analyst.explain(analysis)
+                                    llm_payload = {
+                                        "summary": llm_response.summary,
+                                        "explanation": llm_response.detailed_explanation,
+                                        "risks": llm_response.risk_assessment,
+                                        "confidence": llm_response.confidence_note,
+                                        "model": llm_response.model_used,
+                                    }
+                                except Exception as e:
+                                    llm_payload = {
+                                        "summary": f"LLM error: {e}",
+                                        "explanation": "",
+                                        "risks": "",
+                                        "confidence": "",
+                                        "model": "error",
+                                    }
+                            else:
+                                llm_payload = {
+                                    "summary": "LLM not available",
+                                    "explanation": "",
+                                    "risks": "",
+                                    "confidence": "",
+                                    "model": "unavailable",
+                                }
+
+                        cache_payload = {
+                            "timestamp": time.time(),
+                            "analysis": analysis_payload,
+                        }
+                        if llm_payload is not None:
+                            cache_payload["llm"] = llm_payload
+                        _set_cached_analysis(cache_key, cache_payload)
+
+                        if llm_payload is not None:
+                            signal["llm"] = llm_payload
+                    except Exception as e:
+                        logger.warning(f"Analysis failed for {signal.get('symbol')}: {e}")
 
     except Exception as e:
         logger.warning(f"Failed to generate signals: {e}")
