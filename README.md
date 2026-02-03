@@ -101,7 +101,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 # - API Docs: http://localhost:8000/docs
 
 # Seed sample data (optional)
-docker compose exec api bash -c "export DATABASE_URL=postgresql://cryptotrader:cryptotrader@postgres:5432/cryptotrader && ./scripts/seed-data.sh"
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api bash -c "export DATABASE_URL=postgresql://cryptotrader:cryptotrader@postgres:5432/cryptotrader && ./scripts/seed-data.sh"
 ```
 
 See [docs/DOCKER.md](docs/DOCKER.md) for detailed Docker setup and troubleshooting.

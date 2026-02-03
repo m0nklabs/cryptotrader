@@ -21,9 +21,9 @@ def test_health_status_dataclass():
 
 def test_health_checker_no_database():
     """Test health checker when DATABASE_URL is not set."""
-    checker = HealthChecker(database_url=None)
-
+    # Patch os.environ before creating HealthChecker
     with patch.dict("os.environ", {}, clear=True):
+        checker = HealthChecker(database_url=None)
         result = checker.check_database()
 
     assert result.status == "error"

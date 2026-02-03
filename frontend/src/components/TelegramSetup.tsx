@@ -19,6 +19,10 @@ export function TelegramSetup({ onClose }: TelegramSetupProps) {
     setIsSaving(true);
 
     try {
+      // Fetch current settings to preserve discord_enabled
+      const currentSettingsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/notifications/settings`);
+      const currentSettings = currentSettingsResponse.ok ? await currentSettingsResponse.json() : { discord_enabled: false };
+
       // Note: In production, this should be stored securely on the backend
       // For now, we'll just update the settings with the chat ID
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/notifications/settings`, {
@@ -28,6 +32,7 @@ export function TelegramSetup({ onClose }: TelegramSetupProps) {
         },
         body: JSON.stringify({
           telegram_enabled: true,
+          discord_enabled: currentSettings.discord_enabled,
           telegram_chat_id: chatId,
         }),
       });

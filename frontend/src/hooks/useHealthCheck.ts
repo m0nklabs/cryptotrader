@@ -6,7 +6,7 @@ export function useHealthCheck() {
   return useQuery({
     queryKey: ['health'],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE_URL}/health`);
+      const response = await fetch(`${API_BASE_URL}/system/health`);
       if (!response.ok) {
         throw new Error('Health check failed');
       }

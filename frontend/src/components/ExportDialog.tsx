@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Download, FileText, FileJson } from 'lucide-react';
+import { downloadBlob } from '../lib/download';
 
 interface ExportDialogProps {
   onClose: () => void;
@@ -25,11 +26,11 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
       let url = '';
 
       if (exportType === 'candles') {
-        url = `${API_BASE_URL}/export/candles?symbol=${symbol}&exchange=${exchange}&timeframe=${timeframe}&format=${format}`;
+        url = `${API_BASE_URL}/export/candles?symbol=${encodeURIComponent(symbol)}&exchange=${encodeURIComponent(exchange)}&timeframe=${encodeURIComponent(timeframe)}&format=${encodeURIComponent(format)}`;
       } else if (exportType === 'trades') {
-        url = `${API_BASE_URL}/export/trades?format=${format}`;
+        url = `${API_BASE_URL}/export/trades?format=${encodeURIComponent(format)}`;
       } else if (exportType === 'portfolio') {
-        url = `${API_BASE_URL}/export/portfolio?format=${format}`;
+        url = `${API_BASE_URL}/export/portfolio?format=${encodeURIComponent(format)}`;
       }
 
       const response = await fetch(url);
@@ -42,16 +43,9 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
       const filenameMatch = contentDisposition?.match(/filename="?(.+)"?/);
       const filename = filenameMatch?.[1] || `export_${Date.now()}.${format}`;
 
-      // Download the file
+      // Download the file using shared helper
       const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(downloadUrl);
+      downloadBlob(blob, filename);
 
       onClose();
     } catch (error) {

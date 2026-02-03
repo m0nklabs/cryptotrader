@@ -7,7 +7,7 @@ from fastapi import APIRouter
 
 from core.health import HealthChecker
 
-router = APIRouter(prefix="/health", tags=["health"])
+router = APIRouter(prefix="/system/health", tags=["health"])
 
 # Track API start time
 _api_start_time = time.time()
