@@ -4,9 +4,9 @@
 This script watches for "Copilot finished work on behalf of" comments
 and reruns pending workflow runs for that PR's branch.
 
-It also proactively reruns any workflow runs in `action_required` state for
-`copilot/*` branches. This avoids "action_required with 0 jobs" runs that can
-otherwise linger until a maintainer manually re-runs them.
+It also proactively reruns any workflow runs in `action_required` state.
+This avoids "action_required with 0 jobs" runs that can otherwise linger until
+a maintainer manually re-runs them.
 
 Uses the gh CLI (already authenticated locally).
 
@@ -32,6 +32,7 @@ import logging
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 logging.basicConfig(
@@ -116,7 +117,7 @@ def get_pending_runs(repo: str, branch: str | None = None) -> list[dict]:
                 "api",
                 url,
                 "--jq",
-                "[.workflow_runs[] | {id: .id, name: .name, head_branch: .head_branch}]",
+                "[.workflow_runs[] | {id: .id, name: .name, head_branch: .head_branch, created_at: .created_at}]",
             ],
             check=False,
         )
@@ -284,7 +285,16 @@ def process_copilot_prs(repo: str, state: dict) -> int:
     return total_rerun
 
 
-def process_pending_runs(repo: str, state: dict) -> int:
+def _parse_utc(ts: str) -> datetime | None:
+    """Parse GitHub timestamps like '2026-02-03T19:27:32Z' into UTC datetimes."""
+
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(UTC)
+    except (TypeError, ValueError):
+        return None
+
+
+def process_pending_runs(repo: str, state: dict, *, max_age_hours: int) -> int:
     """Rerun all action_required workflow runs.
 
     GitHub may mark runs as `action_required` (often with 0 jobs) when they were
@@ -296,8 +306,14 @@ def process_pending_runs(repo: str, state: dict) -> int:
     if not pending:
         return 0
 
+    cutoff = datetime.now(tz=UTC) - timedelta(hours=max_age_hours)
+
     total_rerun = 0
     for run in pending:
+        created_at = _parse_utc(run.get("created_at", ""))
+        if created_at is not None and created_at < cutoff:
+            continue
+
         run_id = run["id"]
         if run_id in state.get("rerun_runs", []):
             continue
@@ -335,6 +351,12 @@ def main() -> int:
     parser.add_argument("--daemon", action="store_true", help="Run continuously")
     parser.add_argument("--interval", type=int, default=120, help="Check interval (default: 120s)")
     parser.add_argument("--repo", default=DEFAULT_REPO, help="Repository")
+    parser.add_argument(
+        "--max-age-hours",
+        type=int,
+        default=24,
+        help="Only rerun action_required runs newer than this (default: 24h)",
+    )
     parser.add_argument("--approve-all", action="store_true", help="Rerun all pending now")
     parser.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
     args = parser.parse_args()
@@ -359,7 +381,7 @@ def main() -> int:
             while True:
                 state = load_state()
                 # Always clear any action_required runs.
-                n_pending = process_pending_runs(args.repo, state)
+                n_pending = process_pending_runs(args.repo, state, max_age_hours=args.max_age_hours)
                 n_finished = process_copilot_prs(args.repo, state)
                 save_state(state)
                 n_total = n_pending + n_finished
@@ -370,7 +392,9 @@ def main() -> int:
             logger.info("Stopped")
     else:
         state = load_state()
-        n = process_pending_runs(args.repo, state) + process_copilot_prs(args.repo, state)
+        n = process_pending_runs(args.repo, state, max_age_hours=args.max_age_hours) + process_copilot_prs(
+            args.repo, state
+        )
         save_state(state)
         logger.info(f"Reran {n} run(s)" if n else "No new runs to rerun")
 
