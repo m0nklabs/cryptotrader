@@ -102,7 +102,9 @@ journalctl --user -u cryptotrader-frontend -f
 
 ## Git workflow
 
-- If the user explicitly asks to commit and push changes to GitHub, push directly to the default branch in this repository (no PR/feature branch) unless the user asks otherwise.
+- **ALWAYS check for open PRs before pushing**: Before committing and pushing local changes, check if there are open PRs that might conflict (use `gh pr list` or GitHub API). If an open PR exists, coordinate with it to avoid merge conflicts.
+- If the user explicitly asks to commit and push changes to GitHub, push directly to the default branch in this repository (no PR/feature branch) unless the user asks otherwise or an open PR exists.
+- When resolving merge conflicts during rebase, keep both sections when they add independent features (e.g., different cache declarations, different imports).
 
 ## GitHub Copilot Coding Agent
 
