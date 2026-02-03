@@ -117,8 +117,9 @@ jobs:
         if: steps.decision.outputs.decision == 'request_fixes'
         env:
           COMMENTS_JSON: ${{ steps.comments.outputs.comments_json }}
-          # Local Ollama endpoint (self-hosted runner has access)
+          # Local Ollama via guardian (auth identifies the app)
           OLLAMA_HOST: "http://localhost:11434"
+          OLLAMA_USER: "copilot-review"
         run: |
           # Build structured prompt for better Copilot fix requests
           PROMPT="You are converting GitHub Copilot Reviewer feedback into actionable fix requests.
@@ -141,8 +142,8 @@ jobs:
           Review comments to convert:
           $COMMENTS_JSON"
 
-          # Call local Ollama (qwen3-coder-30b - excellent for code review, FREE)
-          RESPONSE=$(curl -s "${OLLAMA_HOST}/api/generate" \
+          # Call local Ollama via guardian (qwen3-coder-30b - excellent for code review, FREE)
+          RESPONSE=$(curl -s -u "${OLLAMA_USER}:" "${OLLAMA_HOST}/api/generate" \
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg p "$PROMPT" '{model:"qwen3-coder-30b-q4km-32k:latest",prompt:$p,stream:false,options:{num_predict:1500,temperature:0.2}}')")
 
