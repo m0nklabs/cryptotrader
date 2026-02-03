@@ -29,7 +29,7 @@ def export_ohlcv_to_json(
             "symbol": symbol,
             "exchange": exchange,
             "timeframe": timeframe,
-            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
             "row_count": len(candles),
         },
         "data": candles,
@@ -49,7 +49,7 @@ def export_trades_to_json(trades: list[dict[str, Any]]) -> str:
     """
     output = {
         "metadata": {
-            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
             "row_count": len(trades),
         },
         "data": trades,
@@ -72,7 +72,7 @@ def export_portfolio_to_json(
     """
     output = {
         "metadata": {
-            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
             "position_count": len(positions),
         },
         "summary": summary,

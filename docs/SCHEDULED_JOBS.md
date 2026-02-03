@@ -97,7 +97,6 @@ Example timer for gap repair:
 Description=Market data gap repair timer
 
 [Timer]
-OnCalendar=daily
 OnCalendar=02:00:00
 Persistent=true
 
