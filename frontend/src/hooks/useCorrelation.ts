@@ -64,18 +64,14 @@ export function useCorrelation(
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
-          console.debug('Correlation fetch aborted', {
-            symbolKey,
-            exchange,
-            timeframe,
-            lookbackDays,
-          })
+          // Abort is not an error - component unmounted or dependencies changed
           return
         }
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to fetch correlation')
         }
       } finally {
+        // Always check mounted flag before state updates to prevent updates on unmounted components
         if (mounted) {
           setLoading(false)
         }
