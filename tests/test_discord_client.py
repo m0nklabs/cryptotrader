@@ -48,7 +48,8 @@ def test_send_message_failure():
     client = DiscordClient(webhook_url="https://discord.com/webhook/test")
 
     # Mock failed response
-    with patch("core.notifications.discord.requests.post", side_effect=Exception("Network error")):
+    import requests
+    with patch("core.notifications.discord.requests.post", side_effect=requests.exceptions.RequestException("Network error")):
         result = client.send_message("Test message")
 
     assert result is False
