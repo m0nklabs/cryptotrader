@@ -284,11 +284,12 @@ def process_copilot_prs(repo: str, state: dict) -> int:
     return total_rerun
 
 
-def process_pending_copilot_runs(repo: str, state: dict) -> int:
-    """Rerun all action_required workflow runs on copilot/* branches.
+def process_pending_runs(repo: str, state: dict) -> int:
+    """Rerun all action_required workflow runs.
 
-    This is the fast-path fix for runs created by the Copilot actor that require
-    a maintainer re-run to execute on self-hosted runners.
+    GitHub may mark runs as `action_required` (often with 0 jobs) when they were
+    triggered by Copilot/bots and require a maintainer re-run to execute on
+    self-hosted runners. This keeps automation flowing by re-running them.
     """
 
     pending = get_pending_runs(repo)
@@ -297,16 +298,12 @@ def process_pending_copilot_runs(repo: str, state: dict) -> int:
 
     total_rerun = 0
     for run in pending:
-        branch = run.get("head_branch") or ""
-        if not branch.startswith("copilot/"):
-            continue
-
         run_id = run["id"]
         if run_id in state.get("rerun_runs", []):
             continue
 
         if rerun_workflow(run_id):
-            logger.info(f"✅ Rerun: {run['name']} on {branch} (ID: {run_id})")
+            logger.info(f"✅ Rerun: {run['name']} on {run.get('head_branch')} (ID: {run_id})")
             state.setdefault("rerun_runs", []).append(run_id)
             total_rerun += 1
 
@@ -361,8 +358,8 @@ def main() -> int:
         try:
             while True:
                 state = load_state()
-                # Always clear any action_required runs for copilot/* branches.
-                n_pending = process_pending_copilot_runs(args.repo, state)
+                # Always clear any action_required runs.
+                n_pending = process_pending_runs(args.repo, state)
                 n_finished = process_copilot_prs(args.repo, state)
                 save_state(state)
                 n_total = n_pending + n_finished
@@ -373,7 +370,7 @@ def main() -> int:
             logger.info("Stopped")
     else:
         state = load_state()
-        n = process_pending_copilot_runs(args.repo, state) + process_copilot_prs(args.repo, state)
+        n = process_pending_runs(args.repo, state) + process_copilot_prs(args.repo, state)
         save_state(state)
         logger.info(f"Reran {n} run(s)" if n else "No new runs to rerun")
 
