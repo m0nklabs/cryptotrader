@@ -48,8 +48,13 @@ export function useCorrelation(
         const response = await fetch(url, { signal: controller.signal })
 
         if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.detail || `HTTP ${response.status}`)
+          // Distinguish between validation errors and server errors
+          if (response.status === 400) {
+            const errorData = await response.json()
+            throw new Error(`Invalid request: ${errorData.detail || 'Bad request'}`)
+          } else {
+            throw new Error(`Server error (${response.status})`)
+          }
         }
 
         const result = await response.json()

@@ -6,11 +6,13 @@
 
 import { useEffect, useState } from 'react'
 import { fetchSignal, fetchSignalHistory, type OpportunitySignal, type SignalHistory } from '../api/signals'
+import { DEFAULT_REFRESH_INTERVAL_MS } from '../lib/apiConfig'
 import SignalBreakdown from './SignalBreakdown'
 
 type Props = {
   symbol: string
   exchange?: string
+  refreshIntervalMs?: number
 }
 
 export default function OpportunityScore({ symbol, exchange = 'bitfinex' }: Props) {
@@ -49,13 +51,13 @@ export default function OpportunityScore({ symbol, exchange = 'bitfinex' }: Prop
     }
 
     load()
-    const interval = setInterval(load, 30_000) // Refresh every 30s
+    const interval = setInterval(load, refreshIntervalMs)
 
     return () => {
       mounted = false
       clearInterval(interval)
     }
-  }, [symbol, exchange])
+  }, [symbol, exchange, refreshIntervalMs])
 
   if (loading && !signal) {
     return (

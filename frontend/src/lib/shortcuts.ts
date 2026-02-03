@@ -167,7 +167,11 @@ export function matchesShortcut(
   const needsAlt = shortcut.modifiers?.includes('Alt') || false
 
   // For special keys that implicitly require shift (like ? which is Shift+/),
-  // we don't check shift modifier unless explicitly specified in the shortcut definition
+  // we don't check shift modifier unless explicitly specified in the shortcut definition.
+  // This is necessary because keys like '?' are produced by pressing Shift+/, and we want
+  // to match them without requiring the user to specify Shift in the shortcut definition.
+  // Without this, shortcuts for '?' would incorrectly fail to match because the actual
+  // key event has shiftKey=true but the shortcut definition doesn't specify Shift.
   const shouldIgnoreShift = IMPLICIT_SHIFT_KEYS.includes(shortcut.key) && !needsShift
 
   // Modifier matching logic:

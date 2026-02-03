@@ -25,7 +25,7 @@ export default function MultiTimeframeView({ symbol, fetchCandles }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Initialize with default preset and update when symbol changes
+  // Initialize with default preset when symbol changes
   const prevSymbolRef = useRef<string | null>(null)
   useEffect(() => {
     if (prevSymbolRef.current === symbol) {
@@ -34,7 +34,8 @@ export default function MultiTimeframeView({ symbol, fetchCandles }: Props) {
 
     applyPreset('swing', symbol)
     prevSymbolRef.current = symbol
-  }, [symbol, applyPreset])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol]) // applyPreset is from Zustand store and is stable, safe to omit
 
   // Fetch candles for all visible charts
   useEffect(() => {

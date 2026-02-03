@@ -41,7 +41,15 @@ export const useShortcutStore = create<ShortcutState>((set, get) => ({
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
-        const bindings = JSON.parse(saved)
+        let bindings
+        try {
+          bindings = JSON.parse(saved)
+        } catch (parseError) {
+          console.error('Failed to parse shortcuts from localStorage, resetting to defaults')
+          localStorage.removeItem(STORAGE_KEY)
+          return
+        }
+        
         // Validate that the loaded data is an object with string values
         if (typeof bindings === 'object' && bindings !== null && !Array.isArray(bindings)) {
           const validated: Partial<Record<ShortcutAction, string>> = {}

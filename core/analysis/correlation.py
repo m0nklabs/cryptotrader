@@ -122,11 +122,25 @@ def calculate_correlation_matrix(
             col_name = symbol
         combined[col_name] = df["close"]
 
+    # Check for duplicate symbols upfront
+    base_symbols = list(combined.columns)
+    if len(base_symbols) != len(set(base_symbols)):
+        duplicates = [s for s in base_symbols if base_symbols.count(s) > 1]
+        raise ValueError(
+            f"Duplicate symbols detected after base extraction: {duplicates}. "
+            "Use symbols with distinct quote currencies (e.g., BTCUSD + ETHUSD, not BTCUSD + BTCEUR)."
+        )
+
     # Drop NaN values
     combined = combined.dropna()
 
-    if combined.empty or len(combined) < 2:
-        raise ValueError("Insufficient overlapping data points")
+    # Require minimum data points for statistically meaningful correlation
+    MIN_DATA_POINTS = 14  # At least 2 weeks of daily data
+    if combined.empty or len(combined) < MIN_DATA_POINTS:
+        raise ValueError(
+            f"Insufficient overlapping data points. Need at least {MIN_DATA_POINTS} data points, "
+            f"but only {len(combined)} available after alignment."
+        )
 
     # Calculate Pearson correlation
     corr_matrix = combined.corr()

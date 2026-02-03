@@ -4,6 +4,8 @@
  * Client for fetching opportunity signals and scores
  */
 
+import { DEFAULT_API_TIMEOUT_MS } from '../lib/apiConfig'
+
 export type SignalDetail = {
   code: string
   side: string
@@ -33,7 +35,7 @@ export type SignalHistory = {
 export async function fetchSignal(
   symbol: string,
   exchange: string = 'bitfinex',
-  timeoutMs: number = 10000
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS
 ): Promise<OpportunitySignal | null> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
@@ -67,7 +69,7 @@ export async function fetchSignalHistory(
   symbol: string,
   exchange: string = 'bitfinex',
   limit: number = 24,
-  timeoutMs: number = 10000
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS
 ): Promise<SignalHistory[]> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)

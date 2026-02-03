@@ -72,6 +72,11 @@ ANALYSIS_CACHE_TTL = 300  # 5 minutes
 _correlation_cache: dict[str, tuple[dict[str, Any], float]] = {}
 _correlation_cache_lock = threading.Lock()
 CORRELATION_CACHE_TTL = 300  # 5 minutes in seconds (correlations change slowly)
+MAX_CACHE_SIZE = 100  # Maximum number of cached correlation results
+CACHE_EVICTION_SIZE = 50  # Number of entries to keep after eviction
+
+# Shared thread pool for blocking operations (e.g., sync correlation calculation)
+_executor = ThreadPoolExecutor(max_workers=4)
 
 # Track application start time for uptime calculation
 _app_start_time: float = time.time()
@@ -1847,26 +1852,25 @@ async def get_correlation_matrix(
     # Run in thread pool since calculate_correlation_matrix is now synchronous
     try:
         loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor() as executor:
-            result = await loop.run_in_executor(
-                executor,
-                calculate_correlation_matrix,
-                stores,
-                symbol_list,
-                exchange,
-                timeframe,
-                lookback,
-            )
+        result = await loop.run_in_executor(
+            _executor,  # Use shared thread pool for efficiency
+            calculate_correlation_matrix,
+            stores,
+            symbol_list,
+            exchange,
+            timeframe,
+            lookback,
+        )
 
         # Update cache
         with _correlation_cache_lock:
             _correlation_cache[cache_key] = (result, time.time())
-            # Limit cache size to prevent memory issues (keep 50 most recently cached entries by insertion time)
-            if len(_correlation_cache) > 100:
-                # Remove oldest entries, keep only the most recent 50
+            # Limit cache size to prevent memory issues
+            if len(_correlation_cache) > MAX_CACHE_SIZE:
+                # Remove oldest entries, keep only the most recent entries
                 sorted_items = sorted(_correlation_cache.items(), key=lambda x: x[1][1])
                 _correlation_cache.clear()
-                _correlation_cache.update(dict(sorted_items[-50:]))
+                _correlation_cache.update(dict(sorted_items[-CACHE_EVICTION_SIZE:]))
 
         return result
     except ValueError as e:
