@@ -51,7 +51,8 @@ describe('App Component', () => {
   it('renders the main application layout', () => {
     render(<App />)
     // Check that the app container exists with a more specific selector
-    const appElement = document.querySelector('[class*="min-h-screen"]')
+    // The main container uses h-screen, not min-h-screen
+    const appElement = document.querySelector('[class*="h-screen"]')
     expect(appElement).toBeInTheDocument()
   })
 

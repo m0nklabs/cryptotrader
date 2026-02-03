@@ -6,6 +6,8 @@ import OrdersTable from './components/OrdersTable'
 import PositionsTable from './components/PositionsTable'
 import Sidebar from './components/Sidebar'
 import { VIEW_IDS, type ViewId } from './nav'
+import ShortcutHelp from './components/ShortcutHelp'
+import OpportunityScore from './components/OpportunityScore'
 import {
   placeOrder,
   listOrders,
@@ -19,6 +21,8 @@ import {
 import { fetchMarketCap } from './api/marketCap'
 import { createCandleStream, type CandleUpdate } from './api/candleStream'
 import { fetchSystemStatus, type SystemStatus } from './api/systemStatus'
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import type { ShortcutAction } from './lib/shortcuts'
 
 type Theme = 'light' | 'dark'
 
@@ -156,6 +160,7 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [activeView, setActiveView] = useState<ViewId>(VIEW_IDS.DASHBOARD)
   const settingsRef = useRef<HTMLDivElement | null>(null)
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false)
 
   const [chartSymbol, setChartSymbol] = useState<string>('BTCUSD')
   const [chartTimeframe, setChartTimeframe] = useState<string>('1h')
@@ -613,8 +618,8 @@ export default function App() {
               : null
           if (!Array.isArray(signalsData)) throw new Error('Unexpected response format')
 
-          const parsed: Signal[] = signalsData
-            .map((sig) => {
+          const parsed = signalsData
+            .map((sig): Signal | null => {
               if (!sig || typeof sig !== 'object') return null
               const s = sig as Record<string, unknown>
               return {
@@ -995,6 +1000,51 @@ export default function App() {
     })
   }
 
+  // Keyboard shortcuts handler
+  const handleShortcut = useCallback((action: ShortcutAction) => {
+    switch (action) {
+      case 'showHelp':
+        setShortcutHelpOpen(true)
+        break
+      case 'closeModal':
+        setShortcutHelpOpen(false)
+        setSettingsOpen(false)
+        break
+      case 'zoomIn':
+        setChartLimit((prev) => Math.max(60, Math.round(prev * 0.8)))
+        break
+      case 'zoomOut':
+        setChartLimit((prev) => Math.min(2000, Math.round(prev * 1.25)))
+        break
+      case 'jumpToLatest':
+        // Chart already shows latest by default
+        break
+      // Timeframe switching (if timeframe exists)
+      case 'timeframe1':
+        if (timeframesForChartSymbol.includes('1m')) setChartTimeframe('1m')
+        break
+      case 'timeframe2':
+        if (timeframesForChartSymbol.includes('5m')) setChartTimeframe('5m')
+        break
+      case 'timeframe3':
+        if (timeframesForChartSymbol.includes('15m')) setChartTimeframe('15m')
+        break
+      case 'timeframe4':
+        if (timeframesForChartSymbol.includes('1h')) setChartTimeframe('1h')
+        break
+      case 'timeframe5':
+        if (timeframesForChartSymbol.includes('4h')) setChartTimeframe('4h')
+        break
+      case 'timeframe6':
+        if (timeframesForChartSymbol.includes('1d')) setChartTimeframe('1d')
+        break
+      default:
+        break
+    }
+  }, [timeframesForChartSymbol, setChartTimeframe, setChartLimit])
+
+  useKeyboardShortcuts(handleShortcut)
+
   useEffect(() => {
     if (!settingsOpen) return
 
@@ -1363,59 +1413,8 @@ export default function App() {
                 />
               </Panel>
 
-              <Panel title="Opportunities" subtitle="Signals snapshot">
-                {signalsError ? (
-                  <div className="text-xs text-gray-600 dark:text-gray-400">{signalsError}</div>
-                ) : signals.length > 0 ? (
-                  <>
-                    <div className="space-y-2">
-                      {signals.slice(0, 5).map((sig, idx) => {
-                        const sideColor =
-                          sig.side === 'BUY'
-                            ? 'text-green-600 dark:text-green-400'
-                            : sig.side === 'SELL'
-                              ? 'text-red-600 dark:text-red-400'
-                              : 'text-gray-600 dark:text-gray-400'
-                        const scoreColor =
-                          sig.score >= 70
-                            ? 'text-green-600 dark:text-green-400'
-                            : sig.score >= 50
-                              ? 'text-yellow-600 dark:text-yellow-400'
-                              : 'text-gray-600 dark:text-gray-400'
-
-                        return (
-                          <div
-                            key={idx}
-                            className="rounded border border-gray-200 bg-white p-2 text-xs dark:border-gray-800 dark:bg-gray-900"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold text-gray-900 dark:text-gray-100">{sig.symbol}</span>
-                              <span className={sideColor}>{sig.side}</span>
-                            </div>
-                            <div className="mt-1 flex items-center justify-between">
-                              <span className="text-gray-600 dark:text-gray-400">{sig.timeframe}</span>
-                              <span className={scoreColor}>Score: {sig.score}</span>
-                            </div>
-                            {sig.signals.length > 0 && (
-                              <div className="mt-1 space-y-0.5 text-[11px] text-gray-600 dark:text-gray-400">
-                                {sig.signals.map((s, i) => (
-                                  <div key={i}>• {s.code}: {s.reason}</div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Kvp k="Top symbol" v="—" />
-                    <div className="mt-2">
-                      <Kvp k="Score" v="—" />
-                    </div>
-                  </>
-                )}
+              <Panel title="Opportunities" subtitle={`${chartSymbol} opportunity score`}>
+                <OpportunityScore symbol={chartSymbol} exchange="bitfinex" />
               </Panel>
 
               <Panel title="Data Quality" subtitle="Candle gaps">
@@ -1803,7 +1802,7 @@ export default function App() {
                         key={idx}
                         className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 hover:bg-gray-800 transition-colors cursor-pointer"
                         onClick={() => {
-                          setSelectedSymbol(sig.symbol)
+                          setChartSymbol(sig.symbol)
                           setActiveView(VIEW_IDS.CHART)
                         }}
                       >
@@ -1933,6 +1932,9 @@ export default function App() {
           </div>
         </footer>
       </div>
+
+      {/* Shortcut Help Modal */}
+      <ShortcutHelp isOpen={shortcutHelpOpen} onClose={() => setShortcutHelpOpen(false)} />
     </div>
   )
 }

@@ -165,12 +165,38 @@ jobs:
         run: |
           PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
 
-          # Spam protection: check if we posted recently
-          RECENT=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+          # Spam protection: check if Copilot already addressed the feedback
+          # Look for comments indicating work was done after the last fix request
+          LAST_FIX_REQUEST=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
             --jq '[.[] | select(.body | startswith("@copilot Please address"))] | last | .created_at // empty')
 
-          if [ -n "$RECENT" ]; then
-            AGE=$(( $(date +%s) - $(date -d "$RECENT" +%s) ))
+          if [ -n "$LAST_FIX_REQUEST" ]; then
+            # Check if Copilot responded after our last fix request
+            COPILOT_RESPONSE=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+              --jq --arg since "$LAST_FIX_REQUEST" '[.[] | select(.user.login | test("copilot"; "i")) | select(.created_at > $since)] | length')
+
+            if [ "$COPILOT_RESPONSE" -gt 0 ]; then
+              echo "Copilot already responded to the last fix request, checking if new review comments exist..."
+
+              # Get last Copilot review timestamp
+              LAST_REVIEW=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
+                --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last | .submitted_at // empty')
+
+              # Get last Copilot coding agent commit/response
+              LAST_AGENT_RESPONSE=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+                --jq '[.[] | select(.user.login | test("copilot"; "i")) | select(.body | test("Fixed|implemented|commit|✅"; "i"))] | last | .created_at // empty')
+
+              if [ -n "$LAST_REVIEW" ] && [ -n "$LAST_AGENT_RESPONSE" ]; then
+                if [[ "$LAST_AGENT_RESPONSE" > "$LAST_REVIEW" ]]; then
+                  echo "Copilot already addressed the review (agent response: $LAST_AGENT_RESPONSE > review: $LAST_REVIEW)"
+                  echo "Skipping to avoid duplicate fix requests"
+                  exit 0
+                fi
+              fi
+            fi
+
+            # Also check time-based spam protection (1 hour)
+            AGE=$(( $(date +%s) - $(date -d "$LAST_FIX_REQUEST" +%s) ))
             if [ "$AGE" -lt 3600 ]; then
               echo "Already posted fix request within last hour, skipping"
               exit 0

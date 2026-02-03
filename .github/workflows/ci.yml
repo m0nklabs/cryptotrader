@@ -76,23 +76,8 @@ jobs:
     needs: [autofix]
     if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
 
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: cryptotrader_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     env:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/cryptotrader_test
+      DATABASE_URL: postgresql+psycopg2://cryptotrader:cryptotrader@localhost:5432/cryptotrader_test
       BITFINEX_API_KEY: ${{ secrets.BITFINEX_API_KEY }}
       BITFINEX_API_SECRET: ${{ secrets.BITFINEX_API_SECRET }}
       PAPER_TRADING: "true"
@@ -105,6 +90,11 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Create test database
+        run: |
+          psql postgresql://cryptotrader:cryptotrader@localhost:5432/postgres -c "DROP DATABASE IF EXISTS cryptotrader_test;"
+          psql postgresql://cryptotrader:cryptotrader@localhost:5432/postgres -c "CREATE DATABASE cryptotrader_test;"
 
       - name: Install dependencies
         run: |

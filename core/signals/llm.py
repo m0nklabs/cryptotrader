@@ -117,7 +117,7 @@ CONFIDENCE: (your confidence in the analysis)"""
 Symbol: {analysis.symbol}
 Recommendation: {analysis.recommendation.value}
 Confidence: {analysis.confidence}%
-Key factors: {', '.join(analysis.reasoning[:3])}
+Key factors: {", ".join(analysis.reasoning[:3])}
 
 One sentence summary:"""
 
@@ -156,8 +156,8 @@ Bullish factors:
 Bearish factors:
 {chr(10).join(f"- {f}" for f in analysis.bearish_factors)}
 
-Support levels: {', '.join(f'${s:,.0f}' for s in analysis.support_levels)}
-Resistance levels: {', '.join(f'${r:,.0f}' for r in analysis.resistance_levels)}
+Support levels: {", ".join(f"${s:,.0f}" for s in analysis.support_levels)}
+Resistance levels: {", ".join(f"${r:,.0f}" for r in analysis.resistance_levels)}
 
 {f"Suggested entry: ${analysis.suggested_entry:,.2f}" if analysis.suggested_entry else ""}
 {f"Suggested stop: ${analysis.suggested_stop:,.2f}" if analysis.suggested_stop else ""}
@@ -187,13 +187,13 @@ Resistance levels: {', '.join(f'${r:,.0f}' for r in analysis.resistance_levels)}
             ind = analysis.indicators
             indicators_str = f"""
 Indicators:
-- RSI: {ind.get('rsi', 'N/A'):.1f}
-- MACD: {ind.get('macd', 'N/A'):.4f} (Signal: {ind.get('macd_signal', 'N/A'):.4f})
-- EMA20: ${ind.get('ema_20', 0):,.2f}
-- EMA50: ${ind.get('ema_50', 0):,.2f}
-- EMA200: ${ind.get('ema_200', 0):,.2f}
-- ATR: {ind.get('atr_percent', 0):.2f}%
-- Volume ratio: {ind.get('volume_ratio', 1):.1f}x average"""
+- RSI: {ind.get("rsi", "N/A"):.1f}
+- MACD: {ind.get("macd", "N/A"):.4f} (Signal: {ind.get("macd_signal", "N/A"):.4f})
+- EMA20: ${ind.get("ema_20", 0):,.2f}
+- EMA50: ${ind.get("ema_50", 0):,.2f}
+- EMA200: ${ind.get("ema_200", 0):,.2f}
+- ATR: {ind.get("atr_percent", 0):.2f}%
+- Volume ratio: {ind.get("volume_ratio", 1):.1f}x average"""
 
         # Build main prompt
         prompt = f"""Analyze this trading setup and provide your assessment:
@@ -215,14 +215,14 @@ Bearish factors ({len(analysis.bearish_factors)}):
 {chr(10).join(f"- {f}" for f in analysis.bearish_factors)}
 
 Key levels:
-- Support: {', '.join(f'${s:,.0f}' for s in analysis.support_levels) or 'None identified'}
-- Resistance: {', '.join(f'${r:,.0f}' for r in analysis.resistance_levels) or 'None identified'}
+- Support: {", ".join(f"${s:,.0f}" for s in analysis.support_levels) or "None identified"}
+- Resistance: {", ".join(f"${r:,.0f}" for r in analysis.resistance_levels) or "None identified"}
 
 Trade suggestion:
-- Entry: {f'${analysis.suggested_entry:,.2f}' if analysis.suggested_entry else 'N/A'}
-- Stop loss: {f'${analysis.suggested_stop:,.2f}' if analysis.suggested_stop else 'N/A'}
-- Target: {f'${analysis.suggested_target:,.2f}' if analysis.suggested_target else 'N/A'}
-- Risk/Reward: {f'{analysis.risk_reward_ratio:.1f}:1' if analysis.risk_reward_ratio else 'N/A'}
+- Entry: {f"${analysis.suggested_entry:,.2f}" if analysis.suggested_entry else "N/A"}
+- Stop loss: {f"${analysis.suggested_stop:,.2f}" if analysis.suggested_stop else "N/A"}
+- Target: {f"${analysis.suggested_target:,.2f}" if analysis.suggested_target else "N/A"}
+- Risk/Reward: {f"{analysis.risk_reward_ratio:.1f}:1" if analysis.risk_reward_ratio else "N/A"}
 
 """
         if question:
