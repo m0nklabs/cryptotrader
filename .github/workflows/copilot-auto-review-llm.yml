@@ -215,14 +215,12 @@ jobs:
           PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
           REASON="${{ steps.decision.outputs.reason }}"
 
-          # Check if already approved
-          EXISTING=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
-            --jq '[.[] | select(.state == "APPROVED")] | length')
+          # NEVER auto-approve - only humans should approve Copilot PRs
+          # This prevents premature merges when Copilot Reviewer still has comments
+          echo "Skipping auto-approve - human review required for Copilot PRs"
+          echo "Reason that would have triggered approve: $REASON"
 
-          if [ "$EXISTING" -gt 0 ]; then
-            echo "PR already has an approval, skipping"
-            exit 0
-          fi
+          # Instead, just post a comment that the PR looks ready
+          gh pr comment "$PR_NUMBER" --body "✅ **LLM Review**: $REASON
 
-          echo "Approving PR #$PR_NUMBER"
-          gh pr review "$PR_NUMBER" --approve --body "🤖 Auto-approved: $REASON"
+          This PR appears ready for human review. Please review and approve if everything looks good."

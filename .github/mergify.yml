@@ -163,7 +163,14 @@ pull_request_rules:
       - or:
           - author=github-actions[bot]
           - head~=^copilot/
-      - "#approved-reviews-by>=1"
+      # Require HUMAN approval (not bot) - at least one of m0nk111, m0nk1111
+      - or:
+          - approved-reviews-by=m0nk111
+          - approved-reviews-by=m0nk1111
+      # Copilot Reviewer must NOT have outstanding comments (state != COMMENTED)
+      - or:
+          - -review-requested=copilot-pull-request-reviewer[bot]
+          - "#changes-requested-reviews-by=0"
       # Use Copilot CI check (push-triggered) instead of PR checks (which get blocked)
       - or:
           - check-success=Copilot CI
