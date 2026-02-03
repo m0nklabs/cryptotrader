@@ -13,6 +13,7 @@ permissions:
   contents: read
   statuses: write
   checks: write
+  pull-requests: write
 
 jobs:
   ci:
@@ -36,25 +37,29 @@ jobs:
       - name: Pre-commit checks
         id: precommit
         run: |
-          pre-commit run --all-files
+          set -o pipefail
+          pre-commit run --all-files 2>&1 | tee precommit.log
         continue-on-error: true
 
       - name: Ruff lint
         id: ruff
         run: |
-          ruff check . --output-format=github
+          set -o pipefail
+          ruff check . --output-format=github 2>&1 | tee ruff.log
         continue-on-error: true
 
       - name: Ruff format check
         id: format
         run: |
-          ruff format --check .
+          set -o pipefail
+          ruff format --check . 2>&1 | tee format.log
         continue-on-error: true
 
       - name: Run tests
         id: tests
         run: |
-          pytest tests/ -v --tb=short || true
+          set -o pipefail
+          pytest tests/ -v --tb=short 2>&1 | tee pytest.log
         continue-on-error: true
 
       - name: Determine result
@@ -62,7 +67,8 @@ jobs:
         run: |
           if [ "${{ steps.precommit.outcome }}" == "success" ] && \
              [ "${{ steps.ruff.outcome }}" == "success" ] && \
-             [ "${{ steps.format.outcome }}" == "success" ]; then
+             [ "${{ steps.format.outcome }}" == "success" ] && \
+             [ "${{ steps.tests.outcome }}" == "success" ]; then
             echo "passed=true" >> $GITHUB_OUTPUT
           else
             echo "passed=false" >> $GITHUB_OUTPUT
@@ -70,7 +76,7 @@ jobs:
 
       - name: Post status check
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           SHA="${{ github.sha }}"
 
@@ -87,3 +93,75 @@ jobs:
             -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             -f description="$DESC" \
             -f context="Copilot CI"
+
+      - name: Post PR review comment (on failure)
+        if: steps.result.outputs.passed != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref_name }}"
+          SHA="${{ github.sha }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          PR_NUMBER="$(gh pr list --repo "$REPO" --state open --head "$BRANCH" --json number --jq '.[0].number // empty')"
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No open PR found for branch $BRANCH; skipping PR review comment."
+            exit 0
+          fi
+
+          MARKER="<!-- copilot-branch-ci:sha=$SHA -->"
+
+          # Deduplicate: if we've already posted for this SHA, do nothing.
+          if gh api "repos/$REPO/pulls/$PR_NUMBER/reviews?per_page=20" --jq '.[].body // ""' | grep -Fq "$MARKER"; then
+            echo "Review comment already posted for $SHA on PR #$PR_NUMBER; skipping."
+            exit 0
+          fi
+
+          summarize_outcome() {
+            local name="$1"
+            local outcome="$2"
+            if [ "$outcome" = "success" ]; then
+              echo "- $name: ✅ success"
+            else
+              echo "- $name: ❌ $outcome"
+            fi
+          }
+
+          BODY_FILE="ci-review-body.md"
+          {
+            echo "$MARKER"
+            echo "### CI failed for $BRANCH"
+            echo
+            echo "Run: $RUN_URL"
+            echo "SHA: $SHA"
+            echo
+            echo "**Summary**"
+            summarize_outcome "pre-commit" "${{ steps.precommit.outcome }}"
+            summarize_outcome "ruff" "${{ steps.ruff.outcome }}"
+            summarize_outcome "ruff format" "${{ steps.format.outcome }}"
+            summarize_outcome "pytest" "${{ steps.tests.outcome }}"
+            echo
+            echo "**Details (logs)**"
+            echo
+            for f in precommit.log ruff.log format.log pytest.log; do
+              if [ -f "$f" ]; then
+                echo "<details><summary>$f</summary>"
+                echo
+                echo "\`\`\`"
+                tail -n 200 "$f" || true
+                echo "\`\`\`"
+                echo
+                echo "</details>"
+                echo
+              fi
+            done
+          } > "$BODY_FILE"
+
+          gh pr review --repo "$REPO" "$PR_NUMBER" --comment --body-file "$BODY_FILE"
+
+      - name: Fail workflow if checks failed
+        if: steps.result.outputs.passed != 'true'
+        run: exit 1
