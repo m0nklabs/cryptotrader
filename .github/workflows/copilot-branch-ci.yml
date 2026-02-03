@@ -14,6 +14,7 @@ permissions:
   statuses: write
   checks: write
   pull-requests: write
+  issues: write
 
 jobs:
   ci:
@@ -161,6 +162,35 @@ jobs:
           } > "$BODY_FILE"
 
           gh pr review --repo "$REPO" "$PR_NUMBER" --comment --body-file "$BODY_FILE"
+
+          # Trigger Copilot Coding Agent to fix, but avoid spam/loops.
+          FIX_MARKER="<!-- copilot-ci-fix:sha=$SHA -->"
+
+          COMMENTS_JSON="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100")"
+          # If we've already requested a fix for this SHA, skip.
+          if echo "$COMMENTS_JSON" | jq -r '.[].body // ""' | grep -Fq "$FIX_MARKER"; then
+            echo "Fix request already posted for $SHA on PR #$PR_NUMBER; skipping."
+            exit 0
+          fi
+
+          # Hard limit fix cycles to avoid infinite loops.
+          FIX_COUNT="$(echo "$COMMENTS_JSON" | jq -r '.[].body // ""' | grep -c '<!-- copilot-ci-fix:sha=' || true)"
+          if [ "${FIX_COUNT:-0}" -ge 3 ]; then
+            echo "Fix request cycle limit reached ($FIX_COUNT); skipping @copilot trigger."
+            exit 0
+          fi
+
+          FIX_BODY_FILE="ci-fix-request.md"
+          {
+            echo "@copilot please fix the CI failures reported in the CI review comment above."
+            echo
+            echo "Run: $RUN_URL"
+            echo "SHA: $SHA"
+            echo
+            echo "$FIX_MARKER"
+          } > "$FIX_BODY_FILE"
+
+          gh pr comment --repo "$REPO" "$PR_NUMBER" --body-file "$FIX_BODY_FILE"
 
       - name: Fail workflow if checks failed
         if: steps.result.outputs.passed != 'true'
