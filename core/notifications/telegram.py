@@ -39,9 +39,7 @@ class TelegramClient:
         if not self.bot_token:
             logger.warning("TELEGRAM_BOT_TOKEN not configured")
 
-    async def send_message(
-        self, text: str, chat_id: Optional[str] = None, parse_mode: str = "Markdown"
-    ) -> bool:
+    async def send_message(self, text: str, chat_id: Optional[str] = None, parse_mode: str = "Markdown") -> bool:
         """Send a message via Telegram bot.
 
         Args:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import io
 from datetime import datetime, timezone
-from typing import Any, Literal, Optional
+from typing import Any
 
 
 def export_ohlcv_to_csv(

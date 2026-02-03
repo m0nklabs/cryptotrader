@@ -1,7 +1,7 @@
 """Tests for Telegram client."""
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch
 from core.notifications.telegram import TelegramClient
 
 

@@ -1,6 +1,5 @@
 """Tests for CSV export utilities."""
 
-import pytest
 from core.export.csv import export_ohlcv_to_csv, export_trades_to_csv, export_positions_to_csv
 
 

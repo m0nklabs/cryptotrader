@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal, Optional
-from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import StreamingResponse, Response
-import io
+from fastapi import APIRouter, Query
+from fastapi.responses import Response
 
 from core.export import (
     export_ohlcv_to_csv,
@@ -166,9 +165,7 @@ async def export_portfolio(
         media_type = "text/csv"
         extension = "csv"
     else:
-        content = export_portfolio_to_json(
-            positions=sample_positions, summary=sample_summary
-        )
+        content = export_portfolio_to_json(positions=sample_positions, summary=sample_summary)
         media_type = "application/json"
         extension = "json"
 

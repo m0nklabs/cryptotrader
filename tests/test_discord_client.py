@@ -1,6 +1,5 @@
 """Tests for Discord client."""
 
-import pytest
 from unittest.mock import patch, MagicMock
 from core.notifications.discord import DiscordClient
 
@@ -49,7 +48,10 @@ def test_send_message_failure():
 
     # Mock failed response
     import requests
-    with patch("core.notifications.discord.requests.post", side_effect=requests.exceptions.RequestException("Network error")):
+
+    with patch(
+        "core.notifications.discord.requests.post", side_effect=requests.exceptions.RequestException("Network error")
+    ):
         result = client.send_message("Test message")
 
     assert result is False

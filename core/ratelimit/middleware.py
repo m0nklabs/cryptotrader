@@ -28,9 +28,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # - RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset
 
         limit_header = response.headers.get("x-ratelimit-limit") or response.headers.get("ratelimit-limit")
-        remaining_header = response.headers.get("x-ratelimit-remaining") or response.headers.get(
-            "ratelimit-remaining"
-        )
+        remaining_header = response.headers.get("x-ratelimit-remaining") or response.headers.get("ratelimit-remaining")
         reset_header = response.headers.get("x-ratelimit-reset") or response.headers.get("ratelimit-reset")
 
         if limit_header and remaining_header and reset_header:

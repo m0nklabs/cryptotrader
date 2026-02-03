@@ -67,8 +67,8 @@ Gaps are detected during ingestion and logged to `candle_gaps` table.
 
 Query open gaps:
 ```sql
-SELECT * FROM candle_gaps 
-WHERE repaired_at IS NULL 
+SELECT * FROM candle_gaps
+WHERE repaired_at IS NULL
 ORDER BY detected_at DESC;
 ```
 

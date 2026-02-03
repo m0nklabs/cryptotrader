@@ -36,7 +36,7 @@ This guide covers running cryptotrader with Docker Compose for development and p
    ```bash
    # All services
    docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
-   
+
    # Specific service
    docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f api
    ```

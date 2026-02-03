@@ -1,7 +1,6 @@
 """Tests for rate limit tracker."""
 
 import time
-import pytest
 from core.ratelimit.tracker import RateLimitTracker, RateLimitInfo
 
 

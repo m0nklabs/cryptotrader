@@ -87,7 +87,7 @@ class HealthChecker:
                 result = conn.execute(
                     text(
                         """
-                    SELECT 
+                    SELECT
                         MAX(started_at) as last_run,
                         COUNT(*) as total_runs
                     FROM market_data_job_runs

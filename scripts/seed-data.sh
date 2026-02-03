@@ -43,20 +43,20 @@ with engine.begin() as conn:
     for symbol, exchange, base_price, volatility in SYMBOLS:
         current_time = start_time
         price = base_price
-        
+
         count = 0
         while current_time < end_time:
             # Simple random walk for demo data
             import random
             change = Decimal(random.uniform(-0.02, 0.02))  # +/- 2%
             price = price * (Decimal("1") + change)
-            
+
             open_price = price
             high_price = price * Decimal("1.005")  # 0.5% higher
             low_price = price * Decimal("0.995")   # 0.5% lower
             close_price = price * (Decimal("1") + Decimal(random.uniform(-0.005, 0.005)))
             volume = Decimal(random.uniform(100, 1000))
-            
+
             # Insert candle (ignore conflicts for idempotency)
             conn.execute(text("""
                 INSERT INTO candles (
@@ -78,10 +78,10 @@ with engine.begin() as conn:
                 "close": float(close_price),
                 "volume": float(volume),
             })
-            
+
             current_time += timedelta(hours=1)
             count += 1
-        
+
         print(f"✓ Seeded {count} candles for {symbol} on {exchange}")
 
 print("Sample data seeding complete!")

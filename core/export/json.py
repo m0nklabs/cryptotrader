@@ -58,9 +58,7 @@ def export_trades_to_json(trades: list[dict[str, Any]]) -> str:
     return json.dumps(output, indent=2)
 
 
-def export_portfolio_to_json(
-    positions: list[dict[str, Any]], summary: dict[str, Any]
-) -> str:
+def export_portfolio_to_json(positions: list[dict[str, Any]], summary: dict[str, Any]) -> str:
     """Export portfolio snapshot to JSON format.
 
     Args:
