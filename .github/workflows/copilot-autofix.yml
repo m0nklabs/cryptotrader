@@ -1,0 +1,54 @@
+name: Copilot Branch Autofix
+
+# Triggers when copilot-branch-ci fails
+on:
+  workflow_run:
+    workflows: ["Copilot Branch CI"]
+    types: [completed]
+    branches:
+      - 'copilot/**'
+
+permissions:
+  contents: write
+
+jobs:
+  autofix:
+    name: Auto-fix style issues
+    runs-on: [self-hosted, Linux, org]
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fix style issues
+        run: |
+          pip install ruff pre-commit -q
+
+          # Run pre-commit autofixes
+          pre-commit run --all-files || true
+
+          # Additional ruff fixes
+          ruff check --fix . || true
+          ruff format . || true
+
+      - name: Commit and push fixes
+        run: |
+          if git diff --quiet; then
+            echo "No style fixes needed - failure was from something else"
+            exit 1
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "style: auto-fix code style issues"
+            git push
+            echo "✅ Style fixes pushed - CI will re-run automatically"
+          fi
