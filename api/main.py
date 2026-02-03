@@ -1365,19 +1365,19 @@ async def get_signals(
     """
     # Validate input parameters to ensure they only contain expected characters
     import re
-    
+
     if not re.match(r"^[a-z0-9_-]+$", exchange.lower()):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid exchange '{exchange}': must contain only alphanumeric characters, hyphens, and underscores"
+            detail=f"Invalid exchange '{exchange}': must contain only alphanumeric characters, hyphens, and underscores",
         )
-    
+
     if not re.match(r"^[0-9]+[smhd]$", timeframe.lower()):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid timeframe '{timeframe}': must be a number followed by s/m/h/d (e.g., 1h, 4h, 1d)"
+            detail=f"Invalid timeframe '{timeframe}': must be a number followed by s/m/h/d (e.g., 1h, 4h, 1d)",
         )
-    
+
     signals_list: list[dict[str, Any]] = []
 
     try:
