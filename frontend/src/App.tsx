@@ -618,8 +618,8 @@ export default function App() {
               : null
           if (!Array.isArray(signalsData)) throw new Error('Unexpected response format')
 
-          const parsed: Signal[] = signalsData
-            .map((sig) => {
+          const parsed = signalsData
+            .map((sig): Signal | null => {
               if (!sig || typeof sig !== 'object') return null
               const s = sig as Record<string, unknown>
               return {
@@ -1802,7 +1802,7 @@ export default function App() {
                         key={idx}
                         className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 hover:bg-gray-800 transition-colors cursor-pointer"
                         onClick={() => {
-                          setSelectedSymbol(sig.symbol)
+                          setChartSymbol(sig.symbol)
                           setActiveView(VIEW_IDS.CHART)
                         }}
                       >
