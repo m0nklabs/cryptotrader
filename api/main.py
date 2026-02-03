@@ -1759,6 +1759,14 @@ async def get_signals(
     if stores is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
+    # Validate inputs to prevent potential issues
+    if not re.match(r"^[a-zA-Z0-9_-]+$", exchange):
+        raise HTTPException(status_code=400, detail="Invalid exchange format")
+    if symbol and not re.match(r"^[a-zA-Z0-9]+$", symbol):
+        raise HTTPException(status_code=400, detail="Invalid symbol format")
+    if timeframe and not re.match(r"^[0-9]+[mhd]$", timeframe):
+        raise HTTPException(status_code=400, detail="Invalid timeframe format")
+
     try:
         opportunities = stores.get_opportunities(
             exchange=exchange,

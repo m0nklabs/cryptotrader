@@ -25,10 +25,22 @@ export default function CorrelationMatrix({
   const [lookbackDays, setLookbackDays] = useState(30)
   const { data, loading, error } = useCorrelation(symbols, exchange, '1d', lookbackDays)
 
+  // Maximum symbols to prevent performance issues with large matrices
+  const MAX_SYMBOLS = 15
+
   if (symbols.length < 2) {
     return (
       <div className="rounded border border-gray-800 bg-gray-900 p-4 text-center text-sm text-gray-400">
         Select at least 2 symbols to view correlation
+      </div>
+    )
+  }
+
+  if (symbols.length > MAX_SYMBOLS) {
+    return (
+      <div className="rounded border border-gray-800 bg-gray-900 p-4 text-center text-sm text-yellow-400">
+        Too many symbols selected ({symbols.length}). Maximum {MAX_SYMBOLS} symbols allowed for
+        correlation matrix to prevent performance issues.
       </div>
     )
   }
