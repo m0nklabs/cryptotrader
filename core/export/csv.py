@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 
@@ -32,7 +32,7 @@ def export_ohlcv_to_csv(
     output.write(f"# Symbol: {symbol}\n")
     output.write(f"# Exchange: {exchange}\n")
     output.write(f"# Timeframe: {timeframe}\n")
-    output.write(f"# Exported: {datetime.utcnow().isoformat()}Z\n")
+    output.write(f"# Exported: {datetime.now(timezone.utc).isoformat()}\n")
     output.write(f"# Rows: {len(candles)}\n")
 
     # Write header
@@ -67,7 +67,7 @@ def export_trades_to_csv(trades: list[dict[str, Any]]) -> str:
     writer = csv.writer(output)
 
     # Write metadata
-    output.write(f"# Exported: {datetime.utcnow().isoformat()}Z\n")
+    output.write(f"# Exported: {datetime.now(timezone.utc).isoformat()}\n")
     output.write(f"# Rows: {len(trades)}\n")
 
     # Write header
@@ -103,7 +103,7 @@ def export_positions_to_csv(positions: list[dict[str, Any]]) -> str:
     writer = csv.writer(output)
 
     # Write metadata
-    output.write(f"# Exported: {datetime.utcnow().isoformat()}Z\n")
+    output.write(f"# Exported: {datetime.now(timezone.utc).isoformat()}\n")
     output.write(f"# Rows: {len(positions)}\n")
 
     # Write header

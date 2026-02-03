@@ -39,8 +39,8 @@ from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
 from core.types import FeeBreakdown
 
-# Import new route modules
-from api.routes import health, ratelimit, notifications, export as export_routes
+# Import new route modules with aliases to avoid conflicts
+from api.routes import health as health_routes, ratelimit, notifications, export as export_routes
 
 logger = logging.getLogger(__name__)
 
@@ -2019,7 +2019,7 @@ async def get_llm_status() -> dict[str, Any]:
 
 
 # Include new route modules
-app.include_router(health.router)
+app.include_router(health_routes.router)
 app.include_router(ratelimit.router)
 app.include_router(notifications.router)
 app.include_router(export_routes.router)
