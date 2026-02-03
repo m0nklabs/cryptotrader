@@ -1760,7 +1760,7 @@ async def get_correlation_matrix(
 
     Results are cached for 5 minutes to reduce computational load.
     Rate limiting should be handled by reverse proxy or API gateway (not implemented at app level).
-    
+
     Maximum 15 symbols allowed to prevent server overload from expensive matrix calculations.
     """
     import asyncio
