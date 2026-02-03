@@ -95,7 +95,7 @@ class RateLimitTracker:
             limits = list(self._limits.values())
 
         if exchange:
-            limits = [l for l in limits if l.exchange == exchange]
+            limits = [limit for limit in limits if limit.exchange == exchange]
 
         return sorted(limits, key=lambda x: (x.exchange, x.endpoint))
 

@@ -70,7 +70,7 @@ def test_tracker_get_all():
 
     binance_limits = tracker.get_all(exchange="binance")
     assert len(binance_limits) == 2
-    assert all(l.exchange == "binance" for l in binance_limits)
+    assert all(limit.exchange == "binance" for limit in binance_limits)
 
 
 def test_tracker_increment_usage():

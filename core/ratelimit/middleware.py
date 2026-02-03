@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Callable
 
 from fastapi import Request, Response
@@ -16,9 +15,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request and extract rate limit headers from response."""
-        # Track request start time
-        start_time = time.time()
-
         # Call next middleware/endpoint
         response = await call_next(request)
 
