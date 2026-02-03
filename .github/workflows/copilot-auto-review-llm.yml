@@ -116,8 +116,9 @@ jobs:
         id: llm
         if: steps.decision.outputs.decision == 'request_fixes'
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           COMMENTS_JSON: ${{ steps.comments.outputs.comments_json }}
+          # Local Ollama endpoint (self-hosted runner has access)
+          OLLAMA_HOST: "http://localhost:11434"
         run: |
           # Build structured prompt for better Copilot fix requests
           PROMPT="You are converting GitHub Copilot Reviewer feedback into actionable fix requests.
@@ -140,13 +141,12 @@ jobs:
           Review comments to convert:
           $COMMENTS_JSON"
 
-          # Call OpenAI
-          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+          # Call local Ollama (qwen3-coder-30b - excellent for code review, FREE)
+          RESPONSE=$(curl -s "${OLLAMA_HOST}/api/generate" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $OPENAI_API_KEY" \
-            -d "$(jq -n --arg p "$PROMPT" '{model:"gpt-4o-mini",messages:[{role:"user",content:$p}],max_tokens:1500,temperature:0.2}')")
+            -d "$(jq -n --arg p "$PROMPT" '{model:"qwen3-coder-30b-q4km-32k:latest",prompt:$p,stream:false,options:{num_predict:1500,temperature:0.2}}')")
 
-          FIX_MSG=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+          FIX_MSG=$(echo "$RESPONSE" | jq -r '.response // empty')
 
           if [ -z "$FIX_MSG" ]; then
             echo "LLM response empty"
