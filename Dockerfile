@@ -21,16 +21,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user
+RUN useradd -m -u 1000 -s /bin/bash appuser
+
 WORKDIR /app
 
 # Copy installed packages from builder
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application code
-COPY . .
+COPY --chown=appuser:appuser . .
 
 # Ensure scripts are in PATH
-ENV PATH=/root/.local/bin:$PATH
+ENV PATH=/home/appuser/.local/bin:$PATH
+
+# Switch to non-root user
+USER appuser
 
 # Expose API port
 EXPOSE 8000
