@@ -10,7 +10,10 @@ from core.types import ExecutionResult, OrderIntent
 
 @dataclass(frozen=True)
 class Order:
-    """Normalized order record (price is None for market orders)."""
+    """Normalized order record (price is None for market orders).
+
+    Timestamps are expected to be timezone-aware (UTC).
+    """
 
     id: str
     symbol: str
@@ -22,6 +25,7 @@ class Order:
 
     @staticmethod
     def now_timestamp() -> datetime:
+        """Return a timezone-aware timestamp in UTC."""
         return datetime.now(timezone.utc)
 
 
