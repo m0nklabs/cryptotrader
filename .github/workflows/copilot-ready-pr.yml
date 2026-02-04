@@ -7,6 +7,13 @@ on:
     types:
       - completed
 
+  # Periodic scan to avoid marking PRs ready too early.
+  # This ensures we can mark older draft PRs ready even if CI finished < 1h after creation.
+  schedule:
+    - cron: "*/15 * * * *"
+
+  workflow_dispatch:
+
 jobs:
   mark-ready:
     name: Mark Copilot PR as ready for review
@@ -27,6 +34,7 @@ jobs:
         run: |
           BRANCH="${{ github.event.workflow_run.head_branch }}"
           REPO="${{ github.repository }}"
+          MIN_AGE_SECONDS=3600
 
           echo "Looking for draft PR on branch: $BRANCH"
 
@@ -38,6 +46,59 @@ jobs:
             exit 0
           fi
 
+          CREATED_AT=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json createdAt --jq '.createdAt')
+          NOW=$(date +%s)
+          CREATED_TS=$(date -d "$CREATED_AT" +%s)
+          AGE=$(( NOW - CREATED_TS ))
+          if [ "$AGE" -lt "$MIN_AGE_SECONDS" ]; then
+            echo "PR #$PR_NUMBER is too new ($AGE s < $MIN_AGE_SECONDS s). Skipping; schedule will pick it up later."
+            exit 0
+          fi
+
           echo "Found draft PR #$PR_NUMBER, marking as ready for review..."
           gh pr ready "$PR_NUMBER" --repo "$REPO"
           echo "✅ PR #$PR_NUMBER is now ready for review"
+
+  scan-ready:
+    name: Scan Copilot draft PRs (>=1h)
+    runs-on: [self-hosted, Linux, org]
+    if: github.event_name != 'workflow_run'
+    steps:
+      - name: Mark eligible draft PRs ready
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+
+          REPO="${{ github.repository }}"
+          MIN_AGE_SECONDS=3600
+          NOW=$(date +%s)
+
+          PRS=$(gh pr list --repo "$REPO" --state open --json number,isDraft,createdAt,headRefName \
+            --jq '[.[] | select(.isDraft == true) | select(.headRefName | startswith("copilot/"))]')
+
+          COUNT=$(echo "$PRS" | jq 'length')
+          echo "Found $COUNT open draft Copilot PR(s) to evaluate"
+
+          echo "$PRS" | jq -c '.[]' | while read -r pr; do
+            PR_NUMBER=$(echo "$pr" | jq -r '.number')
+            BRANCH=$(echo "$pr" | jq -r '.headRefName')
+            CREATED_AT=$(echo "$pr" | jq -r '.createdAt')
+
+            CREATED_TS=$(date -d "$CREATED_AT" +%s)
+            AGE=$(( NOW - CREATED_TS ))
+            if [ "$AGE" -lt "$MIN_AGE_SECONDS" ]; then
+              echo "PR #$PR_NUMBER too new ($AGE s), skip"
+              continue
+            fi
+
+            # Only mark ready if latest CI run on the branch succeeded.
+            CONCLUSION=$(gh run list --repo "$REPO" --workflow "CI" --branch "$BRANCH" --limit 1 --json conclusion --jq '.[0].conclusion // empty' || true)
+            if [ "$CONCLUSION" != "success" ]; then
+              echo "PR #$PR_NUMBER latest CI conclusion is '$CONCLUSION', skip"
+              continue
+            fi
+
+            echo "Marking PR #$PR_NUMBER ready for review (age=${AGE}s, CI=success)"
+            gh pr ready "$PR_NUMBER" --repo "$REPO" || true
+          done

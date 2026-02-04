@@ -93,17 +93,74 @@ jobs:
           echo "$COMMENTS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Decide with Local LLM (Ollama)
+        id: llm_decision
+        if: steps.review.outputs.has_review == 'true'
+        env:
+          REVIEW_BODY: ${{ steps.review.outputs.review_body }}
+          COMMENT_COUNT: ${{ steps.review.outputs.comment_count }}
+          # Local Ollama via guardian (auth identifies the app)
+          OLLAMA_HOST: "http://localhost:11434"
+          OLLAMA_USER: "copilot-review"
+          OLLAMA_MODEL: "qwen3-coder-30b-q4km-32k:latest"
+        run: |
+          set +e
+
+          PROMPT=$'You are a PR review triage assistant.\n\n'
+          PROMPT+=$'Inputs:\n- Copilot Reviewer review body (text)\n- Copilot Reviewer inline comment count (integer)\n\n'
+          PROMPT+=$'Task:\nDecide whether this PR should be marked as ready for human review or needs fixes.\n\n'
+          PROMPT+=$'Return EXACTLY one line of JSON with this schema:\n{"decision":"approve"|"request_fixes","reason":"short reason"}\n\n'
+          PROMPT+=$'Rules:\n- If the review indicates 0 issues / no new comments, decision=approve.\n- If there are any issues or ambiguity, decision=request_fixes.\n- Keep reason <= 80 characters.\n\n'
+          PROMPT+=$'Review body:\n'
+          PROMPT+="$REVIEW_BODY"
+          PROMPT+=$'\n\nInline comment count:\n'
+          PROMPT+="$COMMENT_COUNT"
+
+          RESPONSE=$(curl -s -u "${OLLAMA_USER}:" "${OLLAMA_HOST}/api/generate" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg m "$OLLAMA_MODEL" --arg p "$PROMPT" '{model:$m,prompt:$p,stream:false,options:{num_predict:200,temperature:0.1}}')")
+
+          TEXT=$(echo "$RESPONSE" | jq -r '.response // empty' | tr -d '\r')
+          JSON_LINE=$(echo "$TEXT" | grep -oP '\{.*\}' | head -1)
+
+          if [ -n "$JSON_LINE" ]; then
+            echo "$JSON_LINE" | jq -e . >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+              DECISION=$(echo "$JSON_LINE" | jq -r '.decision // empty')
+              REASON=$(echo "$JSON_LINE" | jq -r '.reason // empty')
+
+              if [ -n "$DECISION" ] && [ -n "$REASON" ]; then
+                echo "used_local_llm=true" >> $GITHUB_OUTPUT
+                echo "decision=$DECISION" >> $GITHUB_OUTPUT
+                echo "reason=$REASON" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            fi
+          fi
+
+          echo "used_local_llm=false" >> $GITHUB_OUTPUT
+          exit 0
+
       - name: Analyze and decide
         id: decision
         if: steps.review.outputs.has_review == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           REVIEW_BODY: ${{ steps.review.outputs.review_body }}
+          LLM_DECISION: ${{ steps.llm_decision.outputs.decision }}
+          LLM_REASON: ${{ steps.llm_decision.outputs.reason }}
         run: |
+          # Prefer local LLM decision when available
+          if [ -n "$LLM_DECISION" ] && [ -n "$LLM_REASON" ]; then
+            echo "decision=$LLM_DECISION" >> $GITHUB_OUTPUT
+            echo "reason=$LLM_REASON" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           # Check if review indicates no issues
           if echo "$REVIEW_BODY" | grep -qi "generated no new comments\|generated 0 comments\|no issues"; then
             echo "decision=approve" >> $GITHUB_OUTPUT
-            echo "reason=Copilot review found no issues" >> $GITHUB_OUTPUT
+            echo "reason=Copilot Reviewer found no issues" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -111,10 +168,10 @@ jobs:
           COMMENT_NUM=$(echo "$REVIEW_BODY" | grep -oP 'generated \K\d+(?= comment)' || echo "0")
           if [ "$COMMENT_NUM" -eq 0 ]; then
             echo "decision=approve" >> $GITHUB_OUTPUT
-            echo "reason=No review comments from Copilot" >> $GITHUB_OUTPUT
+            echo "reason=No review comments from Copilot Reviewer" >> $GITHUB_OUTPUT
           else
             echo "decision=request_fixes" >> $GITHUB_OUTPUT
-            echo "reason=Copilot review has $COMMENT_NUM comments to address" >> $GITHUB_OUTPUT
+            echo "reason=Copilot Reviewer has $COMMENT_NUM comments to address" >> $GITHUB_OUTPUT
           fi
 
       - name: Generate fix request with LLM
@@ -220,6 +277,7 @@ jobs:
         run: |
           PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
           REASON="${{ steps.decision.outputs.reason }}"
+          USED_LOCAL_LLM="${{ steps.llm_decision.outputs.used_local_llm }}"
 
           # NEVER auto-approve - only humans should approve Copilot PRs
           # This prevents premature merges when Copilot Reviewer still has comments
@@ -227,6 +285,10 @@ jobs:
           echo "Reason that would have triggered approve: $REASON"
 
           # Instead, just post a comment that the PR looks ready
-          gh pr comment "$PR_NUMBER" --body "✅ **LLM Review**: $REASON
+          if [ "$USED_LOCAL_LLM" = "true" ]; then
+            REVIEWED_BY="Reviewed by: Local LLM (Ollama: qwen3-coder-30b)."
+          else
+            REVIEWED_BY="Reviewed by: Heuristics (local LLM unavailable)."
+          fi
 
-          This PR appears ready for human review. Please review and approve if everything looks good."
+          gh pr comment "$PR_NUMBER" --body "✅ **Auto Review**: $REASON\n$REVIEWED_BY\nInputs: Copilot Reviewer feedback.\n\nThis PR appears ready for human review. Please review and approve if everything looks good."
