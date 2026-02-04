@@ -115,12 +115,7 @@ def _build_private_client(*, api_key: Optional[str] = None, api_secret: Optional
 
 
 def _has_valid_credentials(client: BitfinexClient) -> bool:
-    return bool(
-        client.api_key
-        and client.api_secret
-        and client.api_key.strip()
-        and client.api_secret.strip()
-    )
+    return bool(client.api_key and client.api_secret and client.api_key.strip() and client.api_secret.strip())
 
 
 def create_bitfinex_live_executor(
