@@ -246,7 +246,7 @@ class StrategyOrchestrator:
                         "amount": str(notional),
                         "threshold": str(self.config.approval_threshold),
                     }
-                    self.audit_logger.log_decision("approval_required", reason, symbol, context=approval_context)
+                    self.audit_logger.log_decision("decision", reason, symbol, context=approval_context)
                     self.audit_logger.log_trade_rejected(symbol, reason, context=approval_context)
                     return TradeDecision(
                         symbol=symbol,

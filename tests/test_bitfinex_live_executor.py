@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import TypedDict
 from unittest.mock import Mock
 
 import pytest
@@ -12,10 +13,17 @@ from core.execution.interfaces import Order
 from core.types import OrderIntent
 
 
+class SubmitOrderPayload(TypedDict):
+    symbol: str
+    amount: float
+    price: float
+    order_type: str
+
+
 class DummyBitfinexClient(BitfinexClient):
     def __init__(self) -> None:
         super().__init__(api_key="key", api_secret="secret")
-        self.last_payload: dict[str, object] | None = None
+        self.last_payload: SubmitOrderPayload | None = None
 
     def submit_order(
         self,
@@ -26,12 +34,12 @@ class DummyBitfinexClient(BitfinexClient):
         flags: int = 0,
         cid: int | None = None,
     ) -> dict[str, object]:  # type: ignore[override]
-        self.last_payload = {
+        self.last_payload = SubmitOrderPayload(
             "symbol": symbol,
             "amount": amount,
             "price": price,
             "order_type": order_type,
-        }
+        )
         return {"status": "success", "order_id": 1234, "data": []}
 
 
@@ -103,4 +111,7 @@ def test_executor_dry_run_passes_through() -> None:
     intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="BUY", amount=Decimal("1"))
 
     result = executor.execute(intent)
+    adapter.create_order.assert_called_once()
+    called_kwargs = adapter.create_order.call_args.kwargs
+    assert called_kwargs["dry_run"] is True
     assert result.dry_run is True

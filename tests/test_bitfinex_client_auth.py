@@ -209,7 +209,8 @@ class TestBitfinexClientAuth:
         mock_post.return_value = mock_response
 
         client = BitfinexClient(api_key="test_key", api_secret="test_secret")
-        client.cancel_order(999)
+        result = client.cancel_order(999)
 
         _, kwargs = mock_post.call_args
         assert kwargs["json"]["id"] == 999
+        assert result["order_id"] == 999
