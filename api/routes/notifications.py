@@ -46,9 +46,14 @@ async def send_notification(request: SendAlertRequest):
         severity=request.severity,
     )
 
-    # Check if any notification was sent
+    # If no notification channels are configured or no results were produced,
+    # return a 200 response with success=False and an explanatory message.
     if not results:
-        raise HTTPException(status_code=400, detail="No notification channels configured")
+        return {
+            "success": False,
+            "results": {},
+            "message": "No notification channels configured; notification was not sent.",
+        }
 
     success_count = sum(1 for v in results.values() if v)
 

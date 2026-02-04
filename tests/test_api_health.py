@@ -137,16 +137,16 @@ def test_health_endpoint_response_shape(client):
 
 
 def test_health_endpoint_uptime_increases(client):
-    """Test that API uptime increases between calls."""
-    import time
-
+    """Test that API uptime is calculated and is monotonic."""
     response1 = client.get("/system/health")
-    uptime1 = response1.json()["api"]["uptime_seconds"]
-
-    time.sleep(0.1)
-
+    data1 = response1.json()
+    
+    # First call should have uptime >= 0
+    assert data1["api"]["uptime_seconds"] >= 0
+    
+    # Make another call - uptime should be >= the first call (monotonic)
     response2 = client.get("/system/health")
-    uptime2 = response2.json()["api"]["uptime_seconds"]
-
-    # Uptime should increase (or at least not decrease)
-    assert uptime2 >= uptime1
+    data2 = response2.json()
+    
+    # Uptime should be monotonically increasing (or at least not decrease)
+    assert data2["api"]["uptime_seconds"] >= data1["api"]["uptime_seconds"]
