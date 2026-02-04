@@ -150,6 +150,13 @@ jobs:
           LLM_DECISION: ${{ steps.llm_decision.outputs.decision }}
           LLM_REASON: ${{ steps.llm_decision.outputs.reason }}
         run: |
+          # If Copilot Reviewer couldn't review any files, don't generate a fake fix request.
+          if echo "$REVIEW_BODY" | grep -qi "wasn't able to review any files"; then
+            echo "decision=skip" >> $GITHUB_OUTPUT
+            echo "reason=Copilot Reviewer couldn't review any files" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           # Prefer local LLM decision when available
           if [ -n "$LLM_DECISION" ] && [ -n "$LLM_REASON" ]; then
             echo "decision=$LLM_DECISION" >> $GITHUB_OUTPUT
@@ -176,13 +183,21 @@ jobs:
 
       - name: Generate fix request with LLM
         id: llm
-        if: steps.decision.outputs.decision == 'request_fixes'
+        if: steps.decision.outputs.decision == 'request_fixes' && steps.review.outputs.comment_count != '0'
         env:
           COMMENTS_JSON: ${{ steps.comments.outputs.comments_json }}
           # Local Ollama via guardian (auth identifies the app)
           OLLAMA_HOST: "http://localhost:11434"
           OLLAMA_USER: "copilot-review"
         run: |
+          if [ -z "$COMMENTS_JSON" ] || [ "$COMMENTS_JSON" = "[]" ]; then
+            echo "No inline review comments to convert; skipping fix request generation"
+            echo "fix_message=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          ALLOWED_PATHS=$(echo "$COMMENTS_JSON" | jq -r '.[].path' | sort -u | tr '\n' ' ')
+
           # Build structured prompt for better Copilot fix requests
           PROMPT="You are converting GitHub Copilot Reviewer feedback into actionable fix requests.
 
@@ -200,6 +215,7 @@ jobs:
           - Be specific about files and changes
           - Include code suggestions if provided in review
           - Do not skip any review comments
+          - Do NOT invent file paths. Only reference paths from this allowed list: $ALLOWED_PATHS
 
           Review comments to convert:
           $COMMENTS_JSON"
@@ -220,6 +236,23 @@ jobs:
           echo "fix_message<<EOF" >> $GITHUB_OUTPUT
           echo "$FIX_MSG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post note (Copilot Reviewer couldn't review)
+        if: steps.decision.outputs.decision == 'skip'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+          MARKER="<!-- mark1:auto-review:copilot-unable -->"
+
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+            --jq --arg m "$MARKER" '[.[] | select(.body | contains($m))] | length')
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Already posted unable-to-review note, skipping"
+            exit 0
+          fi
+
+          gh pr comment "$PR_NUMBER" --body "⚠️ **Auto Review**: Copilot Reviewer couldn't review any files.\n\nPlease re-request a Copilot Reviewer review (or push a small change) and check repo settings/permissions.\n\n$MARKER"
 
       - name: Post fix request to Copilot
         if: steps.llm.outputs.fix_message != ''
