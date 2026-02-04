@@ -25,16 +25,16 @@ def test_export_candles_csv(client):
             "format": "csv",
         },
     )
-    
+
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/csv; charset=utf-8"
-    
+
     # Check Content-Disposition header for filename
     content_disposition = response.headers.get("content-disposition", "")
     assert "attachment" in content_disposition
     assert "BTCUSD_bitfinex_1h" in content_disposition
     assert ".csv" in content_disposition
-    
+
     # Check that response contains CSV data
     content = response.text
     assert "timestamp" in content  # CSV header uses "timestamp", not "open_time"
@@ -53,16 +53,16 @@ def test_export_candles_json(client):
             "format": "json",
         },
     )
-    
+
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
-    
+
     # Check Content-Disposition header
     content_disposition = response.headers.get("content-disposition", "")
     assert "attachment" in content_disposition
     assert "ETHUSD_kraken_15m" in content_disposition
     assert ".json" in content_disposition
-    
+
     # Check that response contains valid JSON
     data = response.json()
     assert "metadata" in data
@@ -83,7 +83,7 @@ def test_export_candles_requires_symbol(client):
             "format": "csv",
         },
     )
-    
+
     # Should return 422 for missing required parameter
     assert response.status_code == 422
 
@@ -101,7 +101,7 @@ def test_export_candles_with_date_params(client):
             "end": "2024-01-31T23:59:59Z",
         },
     )
-    
+
     # Should succeed even though filtering is not implemented
     assert response.status_code == 200
     # Note: The endpoint currently ignores these parameters
@@ -113,16 +113,16 @@ def test_export_trades_csv(client):
         "/export/trades",
         params={"format": "csv"},
     )
-    
+
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/csv; charset=utf-8"
-    
+
     # Check filename
     content_disposition = response.headers.get("content-disposition", "")
     assert "attachment" in content_disposition
     assert "trades_" in content_disposition
     assert ".csv" in content_disposition
-    
+
     # Check CSV content
     content = response.text
     assert "timestamp" in content
@@ -135,15 +135,15 @@ def test_export_trades_json(client):
         "/export/trades",
         params={"format": "json"},
     )
-    
+
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
-    
+
     # Check filename
     content_disposition = response.headers.get("content-disposition", "")
     assert "trades_" in content_disposition
     assert ".json" in content_disposition
-    
+
     # Check JSON structure
     data = response.json()
     assert "metadata" in data
@@ -163,7 +163,7 @@ def test_export_trades_with_date_params(client):
             "end": "2024-01-31T23:59:59Z",
         },
     )
-    
+
     # Should succeed
     assert response.status_code == 200
 
@@ -174,16 +174,16 @@ def test_export_portfolio_csv(client):
         "/export/portfolio",
         params={"format": "csv"},
     )
-    
+
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/csv; charset=utf-8"
-    
+
     # Check filename
     content_disposition = response.headers.get("content-disposition", "")
     assert "attachment" in content_disposition
     assert "portfolio_" in content_disposition
     assert ".csv" in content_disposition
-    
+
     # Check CSV content
     content = response.text
     assert "symbol" in content
@@ -196,15 +196,15 @@ def test_export_portfolio_json(client):
         "/export/portfolio",
         params={"format": "json"},
     )
-    
+
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
-    
+
     # Check filename
     content_disposition = response.headers.get("content-disposition", "")
     assert "portfolio_" in content_disposition
     assert ".json" in content_disposition
-    
+
     # Check JSON structure
     data = response.json()
     assert "metadata" in data
@@ -225,7 +225,7 @@ def test_export_format_validation(client):
             "format": "xml",  # Invalid format
         },
     )
-    
+
     # Should return 422 for invalid enum value
     assert response.status_code == 422
 
@@ -241,10 +241,10 @@ def test_export_candles_default_values(client):
             # format defaults to "csv"
         },
     )
-    
+
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/csv; charset=utf-8"
-    
+
     # Check that default values are used in filename
     content_disposition = response.headers.get("content-disposition", "")
     assert "bitfinex" in content_disposition
@@ -254,7 +254,7 @@ def test_export_candles_default_values(client):
 def test_export_trades_default_format(client):
     """Test that format defaults to CSV."""
     response = client.get("/export/trades")
-    
+
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/csv; charset=utf-8"
 
@@ -262,6 +262,6 @@ def test_export_trades_default_format(client):
 def test_export_portfolio_default_format(client):
     """Test that format defaults to CSV."""
     response = client.get("/export/portfolio")
-    
+
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/csv; charset=utf-8"

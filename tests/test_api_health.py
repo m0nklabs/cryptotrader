@@ -24,9 +24,7 @@ def test_health_endpoint_all_ok(client):
 
         # Mock check_all to return healthy statuses
         mock_check_all.return_value = {
-            "database": HealthStatus(
-                status="ok", message="Connected", latency_ms=5.2
-            ),
+            "database": HealthStatus(status="ok", message="Connected", latency_ms=5.2),
             "ingestion": HealthStatus(
                 status="ok",
                 message="Active",
@@ -67,9 +65,7 @@ def test_health_endpoint_database_degraded(client):
         from core.health.checker import HealthStatus
 
         mock_check_all.return_value = {
-            "database": HealthStatus(
-                status="degraded", message="Slow response", latency_ms=150.0
-            ),
+            "database": HealthStatus(status="degraded", message="Slow response", latency_ms=150.0),
             "ingestion": HealthStatus(status="ok", message="Active"),
         }
 
@@ -90,9 +86,7 @@ def test_health_endpoint_component_error(client):
         from core.health.checker import HealthStatus
 
         mock_check_all.return_value = {
-            "database": HealthStatus(
-                status="error", message="Connection failed", latency_ms=None
-            ),
+            "database": HealthStatus(status="error", message="Connection failed", latency_ms=None),
             "ingestion": HealthStatus(status="ok", message="Active"),
         }
 
@@ -140,13 +134,13 @@ def test_health_endpoint_uptime_increases(client):
     """Test that API uptime is calculated and is monotonic."""
     response1 = client.get("/system/health")
     data1 = response1.json()
-    
+
     # First call should have uptime >= 0
     assert data1["api"]["uptime_seconds"] >= 0
-    
+
     # Make another call - uptime should be >= the first call (monotonic)
     response2 = client.get("/system/health")
     data2 = response2.json()
-    
+
     # Uptime should be monotonically increasing (or at least not decrease)
     assert data2["api"]["uptime_seconds"] >= data1["api"]["uptime_seconds"]

@@ -18,19 +18,20 @@ def client():
 @pytest.fixture(autouse=True)
 def mock_notification_clients():
     """Mock Telegram and Discord clients to prevent real network calls."""
-    with patch("core.notifications.telegram.TelegramClient") as mock_telegram, \
-         patch("core.notifications.discord.DiscordClient") as mock_discord:
-        
+    with (
+        patch("core.notifications.telegram.TelegramClient") as mock_telegram,
+        patch("core.notifications.discord.DiscordClient") as mock_discord,
+    ):
         # Mock Telegram client
         mock_telegram_instance = AsyncMock()
         mock_telegram_instance.send_message = AsyncMock(return_value=True)
         mock_telegram.return_value = mock_telegram_instance
-        
+
         # Mock Discord client
         mock_discord_instance = AsyncMock()
         mock_discord_instance.send_message = AsyncMock(return_value=True)
         mock_discord.return_value = mock_discord_instance
-        
+
         yield {
             "telegram": mock_telegram_instance,
             "discord": mock_discord_instance,

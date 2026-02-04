@@ -31,7 +31,7 @@ async def export_candles(
     """Export OHLCV candles to CSV or JSON.
 
     Downloads sample candles for the specified symbol, exchange, and timeframe.
-    
+
     Note: Date range filtering (start/end parameters) is not yet implemented.
     Currently returns sample data for demonstration purposes.
     """
@@ -96,7 +96,7 @@ async def export_trades(
     """Export trade history to CSV or JSON.
 
     Downloads sample trades for demonstration purposes.
-    
+
     Note: Date range filtering (start/end parameters) is not yet implemented.
     """
     # TODO: Query database for trades
