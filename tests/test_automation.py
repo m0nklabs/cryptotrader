@@ -22,6 +22,8 @@ from core.automation import (
 )
 from core.automation.orchestrator import OrchestratorConfig, StrategyOrchestrator
 from core.backtest.strategy import Signal
+from core.execution.bitfinex_live import BitfinexLiveExecutor
+from core.execution.interfaces import Order
 from core.types import Candle, OrderIntent
 
 
@@ -778,6 +780,71 @@ class TestApprovalGate:
             price_provider=DummyPriceProvider(),
         )
 
+        # We intentionally call the private _process_symbol here because the public
+        # orchestrator interface does not expose the per-symbol approval decision
+        # in a way that can be asserted in a focused unit test. This test verifies
+        # the approval gate logic in isolation from the full run() orchestration.
         decision = await orchestrator._process_symbol("BTCUSD")  # noqa: SLF001
         assert decision is not None
         assert decision.requires_approval is True
+
+
+class TestExecutorSelection:
+    def test_build_executor_dry_run_defaults_to_paper(self) -> None:
+        config = OrchestratorConfig(dry_run=True, exchange="bitfinex")
+        automation_config = AutomationConfig(enabled=True)
+        orchestrator = StrategyOrchestrator(
+            config=config,
+            automation_config=automation_config,
+            strategy=DummyStrategy("BUY"),
+            candle_provider=DummyCandleProvider(),
+            price_provider=DummyPriceProvider(),
+        )
+
+        assert orchestrator.executor.__class__.__name__ == "PaperExecutor"
+
+    def test_build_executor_live_bitfinex(self) -> None:
+        config = OrchestratorConfig(dry_run=False, exchange="bitfinex")
+        automation_config = AutomationConfig(enabled=True)
+        orchestrator = StrategyOrchestrator(
+            config=config,
+            automation_config=automation_config,
+            strategy=DummyStrategy("BUY"),
+            candle_provider=DummyCandleProvider(),
+            price_provider=DummyPriceProvider(),
+            executor=BitfinexLiveExecutor(adapter=_DummyAdapter(), dry_run=False),
+        )
+
+        assert isinstance(orchestrator.executor, BitfinexLiveExecutor)
+
+    def test_bitfinex_executor_dry_run_flag(self) -> None:
+        executor = BitfinexLiveExecutor(adapter=_DummyAdapter(), dry_run=True)
+        intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="BUY", amount=Decimal("1"))
+
+        result = executor.execute(intent)
+        assert result.dry_run is True
+        assert result.accepted is True
+        assert result.reason == "dry-run"
+
+
+class _DummyAdapter:
+    def create_order(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        amount: Decimal,
+        price: Decimal | None = None,
+        order_type: str = "market",
+        dry_run: bool = True,
+    ) -> Order:
+        fixed_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        return Order(
+            id="dry-run" if dry_run else "live",
+            symbol="BTCUSD",
+            side="BUY",
+            amount=Decimal("1"),
+            price=None,
+            status="dry_run",
+            timestamp=fixed_time,
+        )

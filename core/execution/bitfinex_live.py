@@ -45,8 +45,9 @@ class BitfinexLiveAdapter(ExchangeAdapter):
         if order_type == "limit" and price is None:
             raise ValueError("limit orders require price")
 
+        # submit_order handles symbol normalization (adds 't' prefix if missing).
         result = self.client.submit_order(
-            symbol=f"t{symbol}",
+            symbol=symbol,
             amount=float(signed_amount),
             price=float(price) if price is not None else 0.0,
             order_type="EXCHANGE MARKET" if order_type == "market" else "EXCHANGE LIMIT",
@@ -99,12 +100,13 @@ class BitfinexLiveExecutor:
             )
         except Exception as exc:
             logger.exception("Bitfinex order execution failed")
+            mode = "dry_run" if self.dry_run else "live"
             return ExecutionResult(
                 dry_run=self.dry_run,
                 accepted=False,
-                reason=str(exc),
+                reason=f"{mode} execution error: {exc}",
                 order_id=None,
-                raw={"error": str(exc)},
+                raw={"error": str(exc), "mode": mode},
             )
 
 
@@ -112,9 +114,28 @@ def _build_private_client(*, api_key: Optional[str] = None, api_secret: Optional
     return BitfinexClient(api_key=api_key, api_secret=api_secret)
 
 
-def create_bitfinex_live_executor(*, dry_run: bool = True) -> BitfinexLiveExecutor:
+def _has_valid_credentials(client: BitfinexClient) -> bool:
+    return bool(
+        client.api_key
+        and client.api_secret
+        and client.api_key.strip()
+        and client.api_secret.strip()
+    )
+
+
+def create_bitfinex_live_executor(
+    *,
+    dry_run: bool = True,
+    api_key: Optional[str] = None,
+    api_secret: Optional[str] = None,
+) -> BitfinexLiveExecutor:
     """Convenience factory for Bitfinex live executor."""
 
-    client = _build_private_client()
+    client = _build_private_client(api_key=api_key, api_secret=api_secret)
+    if not dry_run and not _has_valid_credentials(client):
+        raise ValueError(
+            "Bitfinex live trading requires API credentials. Provide api_key/api_secret or set "
+            "BITFINEX_API_KEY and BITFINEX_API_SECRET in the environment."
+        )
     adapter = BitfinexLiveAdapter(client=client)
     return BitfinexLiveExecutor(adapter=adapter, dry_run=dry_run)

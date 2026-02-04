@@ -10,6 +10,8 @@ from core.types import ExecutionResult, OrderIntent
 
 @dataclass(frozen=True)
 class Order:
+    """Normalized order record (price is None for market orders)."""
+
     id: str
     symbol: str
     side: Literal["BUY", "SELL"]
@@ -36,11 +38,19 @@ class ExchangeAdapter(Protocol):
         order_type: Literal["market", "limit"] = "market",
         dry_run: bool = True,
     ) -> Order:
-        """Create an order on the exchange. Defaults to dry-run."""
+        """Create an order on the exchange. Defaults to dry-run.
+
+        Implementations may use blocking I/O; callers should offload to a thread
+        executor when used from async contexts.
+        """
 
 
 class OrderExecutor(Protocol):
     """Protocol for order execution (paper or live)."""
 
     def execute(self, order: OrderIntent) -> ExecutionResult:
-        """Execute an order and return the result."""
+        """Execute an order and return the result.
+
+        Implementations may perform blocking work; prefer running in a thread
+        executor when integrating with async code.
+        """

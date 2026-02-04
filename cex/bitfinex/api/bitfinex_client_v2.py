@@ -18,12 +18,16 @@ Usage:
     ticker = client.get_ticker("tBTCUSD")
 """
 
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
 import requests
 
 from .auth import build_auth_headers
+
+
+logger = logging.getLogger(__name__)
 
 
 class BitfinexClient:
@@ -256,7 +260,8 @@ class BitfinexClient:
         """
         # Build kwargs for optional parameters
         kwargs = {}
-        if limit is not None:
+        # Bitfinex expects a positive limit; ignore zero/negative values.
+        if limit is not None and limit > 0:
             kwargs["limit"] = limit
         if start is not None:
             kwargs["start"] = str(start)
@@ -463,6 +468,8 @@ class BitfinexClient:
                 first = orders[0]
                 if isinstance(first, list) and first:
                     order_id = first[0]
+        if order_id is None:
+            logger.warning("Unexpected Bitfinex submit_order response format: %s", data)
 
         return {
             "status": "success",
@@ -531,6 +538,8 @@ class BitfinexClient:
                         "fee_currency": entry[7] if len(entry) > 7 else None,
                     }
                 )
+        if data and not trades:
+            logger.warning("Unexpected Bitfinex get_order_trades response format: %s", data)
         return trades
 
     def transfer_between_wallets(
@@ -594,7 +603,7 @@ class BitfinexClient:
             kwargs["start"] = str(start)
         if end:
             kwargs["end"] = str(end)
-        if limit:
+        if limit is not None and limit > 0:
             kwargs["limit"] = limit
 
         path = "/auth/r/orders/hist"

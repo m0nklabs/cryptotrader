@@ -143,9 +143,16 @@ class StrategyOrchestrator:
 
     def _build_executor(self) -> OrderExecutor:
         if self.config.dry_run:
+            logger.info("Initializing paper executor (dry_run=True).")
             return PaperExecutor()
         if self.config.exchange == "bitfinex":
+            logger.warning("Initializing Bitfinex executor for live trading (dry_run=False).")
             return create_bitfinex_live_executor(dry_run=False)
+        logger.warning(
+            "Live trading requested (dry_run=%s) for unsupported exchange '%s'. Falling back to PaperExecutor.",
+            self.config.dry_run,
+            self.config.exchange,
+        )
         return PaperExecutor()
 
     def _build_safety_checks(self, symbol: str) -> list[SafetyCheck]:
@@ -228,16 +235,15 @@ class StrategyOrchestrator:
 
             # 5b. Human approval gate for large trades
             if self.config.approval_threshold is not None:
-                notional = self.config.default_position_size
+                notional = intent.amount * Decimal(str(current_price))
                 if notional >= self.config.approval_threshold:
                     reason = f"Trade requires approval: notional {notional} >= {self.config.approval_threshold}"
-                    self.audit_logger.log_decision(
-                        "approval_required",
-                        reason,
-                        symbol,
-                        context={"amount": str(notional), "threshold": str(self.config.approval_threshold)},
-                    )
-                    self.audit_logger.log_trade_rejected(symbol, reason, context={"approval_required": True})
+                    approval_context = {
+                        "amount": str(notional),
+                        "threshold": str(self.config.approval_threshold),
+                    }
+                    self.audit_logger.log_decision("approval_required", reason, symbol, context=approval_context)
+                    self.audit_logger.log_trade_rejected(symbol, reason, context=approval_context)
                     return TradeDecision(
                         symbol=symbol,
                         signal=signal,
