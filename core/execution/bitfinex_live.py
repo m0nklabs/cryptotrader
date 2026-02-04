@@ -60,7 +60,7 @@ class BitfinexLiveAdapter:
         if order_id is None:
             raise RuntimeError(
                 "Bitfinex order submission failed: expected non-null order_id for "
-                f"{'dry-run' if dry_run else 'live'} order but got none. Response: {result!r}"
+                f"live order but got none. Response: {result!r}"
             )
 
         return Order(

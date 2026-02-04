@@ -868,7 +868,7 @@ class _DummyAdapter:
         side: Literal["BUY", "SELL"],
         amount: Decimal,
         price: Decimal | None = None,
-        order_type: str = "market",
+        order_type: Literal["market", "limit"] = "market",
         dry_run: bool = True,
     ) -> Order:
         fixed_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
