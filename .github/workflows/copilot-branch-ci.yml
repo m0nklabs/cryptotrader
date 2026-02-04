@@ -28,7 +28,7 @@ jobs:
       ci_passed: ${{ steps.result.outputs.passed }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Run header
         uses: ./.github/actions/run-header
@@ -36,7 +36,7 @@ jobs:
           title: "Copilot Branch CI"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"

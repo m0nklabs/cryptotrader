@@ -62,7 +62,7 @@ jobs:
             core.setOutput('prs', JSON.stringify(prNumbers));
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           token: ${{ steps.generate-token.outputs.token }}
           fetch-depth: 0
