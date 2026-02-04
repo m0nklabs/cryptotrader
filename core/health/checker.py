@@ -9,6 +9,9 @@ from typing import Literal, Optional
 from sqlalchemy import create_engine, text
 import os
 
+# Module-level engine singleton to avoid creating engines on every request
+_engine_cache: dict[str, any] = {}
+
 
 @dataclass
 class HealthStatus:
@@ -31,6 +34,17 @@ class HealthChecker:
         """
         self.database_url = database_url or os.environ.get("DATABASE_URL")
 
+    def _get_engine(self):
+        """Get or create a cached database engine."""
+        if not self.database_url:
+            return None
+
+        if self.database_url not in _engine_cache:
+            _engine_cache[self.database_url] = create_engine(
+                self.database_url, echo=False, pool_pre_ping=True
+            )
+        return _engine_cache[self.database_url]
+
     def check_database(self) -> HealthStatus:
         """Check database connectivity and measure latency."""
         if not self.database_url:
@@ -40,7 +54,12 @@ class HealthChecker:
             )
 
         try:
-            engine = create_engine(self.database_url, echo=False, pool_pre_ping=True)
+            engine = self._get_engine()
+            if not engine:
+                return HealthStatus(
+                    status="error",
+                    message="Failed to create database engine",
+                )
 
             # Measure query latency
             start_time = time.time()
@@ -80,7 +99,12 @@ class HealthChecker:
             )
 
         try:
-            engine = create_engine(self.database_url, echo=False, pool_pre_ping=True)
+            engine = self._get_engine()
+            if not engine:
+                return HealthStatus(
+                    status="degraded",
+                    message="Failed to create database engine",
+                )
 
             # Check if market_data_job_runs table exists and has recent entries
             with engine.begin() as conn:

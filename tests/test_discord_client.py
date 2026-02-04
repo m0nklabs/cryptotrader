@@ -35,7 +35,7 @@ def test_send_message_success():
     mock_response = MagicMock()
     mock_response.status_code = 204
 
-    with patch("core.notifications.discord.requests.post", return_value=mock_response) as mock_post:
+    with patch("requests.post", return_value=mock_response) as mock_post:
         result = client.send_message("Test message")
 
     assert result is True
@@ -50,7 +50,7 @@ def test_send_message_failure():
     import requests
 
     with patch(
-        "core.notifications.discord.requests.post", side_effect=requests.exceptions.RequestException("Network error")
+        "requests.post", side_effect=requests.exceptions.RequestException("Network error")
     ):
         result = client.send_message("Test message")
 
@@ -64,7 +64,7 @@ def test_send_alert_colors():
     mock_response = MagicMock()
     mock_response.status_code = 204
 
-    with patch("core.notifications.discord.requests.post", return_value=mock_response) as mock_post:
+    with patch("requests.post", return_value=mock_response) as mock_post:
         # Test green
         client.send_alert("Title", "Message", color="green")
         call_args = mock_post.call_args[1]["json"]

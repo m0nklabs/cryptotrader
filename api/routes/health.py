@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from fastapi import APIRouter
 
@@ -23,7 +24,9 @@ async def health_check():
     - API uptime
     """
     checker = HealthChecker()
-    checks = checker.check_all()
+    
+    # Run blocking DB checks in thread pool to avoid blocking event loop
+    checks = await asyncio.to_thread(checker.check_all)
 
     # Calculate API uptime
     uptime_seconds = int(time.time() - _api_start_time)

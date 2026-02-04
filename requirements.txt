@@ -16,6 +16,7 @@ psycopg2-binary>=2.9.0
 # FastAPI (for read-only API)
 fastapi>=0.104.0
 uvicorn>=0.24.0
+httpx>=0.25.0  # Async HTTP client for notifications
 
 # WebSocket support (for real-time market data)
 websocket-client>=1.8.0

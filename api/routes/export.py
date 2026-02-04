@@ -34,9 +34,12 @@ async def export_candles(
 
     Note: Date range filtering (start/end parameters) is not yet implemented.
     Currently returns sample data for demonstration purposes.
+    
+    If start or end parameters are provided, a 501 Not Implemented response
+    could be returned to make the limitation explicit.
     """
-    # TODO: Query database for candles
-    # For now, return sample data
+    # TODO: Query database for candles with date filtering
+    # For now, return sample data (start/end parameters are ignored)
     sample_candles = [
         {
             "open_time": "2024-01-01T00:00:00Z",
@@ -98,9 +101,11 @@ async def export_trades(
     Downloads sample trades for demonstration purposes.
 
     Note: Date range filtering (start/end parameters) is not yet implemented.
+    If start or end parameters are provided, a 501 Not Implemented response
+    could be returned to make the limitation explicit.
     """
-    # TODO: Query database for trades
-    # For now, return sample data
+    # TODO: Query database for trades with date filtering
+    # For now, return sample data (start/end parameters are ignored)
     sample_trades = [
         {
             "timestamp": "2024-01-01T12:00:00Z",

@@ -11,7 +11,12 @@ from core.ratelimit.tracker import get_tracker
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Middleware to track and parse rate limit headers from exchange APIs."""
+    """Middleware to track and parse rate limit headers from exchange APIs.
+    
+    NOTE: This middleware currently tracks rate limit headers from OUR API responses.
+    For tracking EXCHANGE rate limits, consider updating exchange client code to call
+    tracker.update() after each outbound exchange API request instead.
+    """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request and extract rate limit headers from response."""
