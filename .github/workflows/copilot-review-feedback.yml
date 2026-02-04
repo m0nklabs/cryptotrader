@@ -71,6 +71,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           PR_NUMBER="${{ steps.pr-info.outputs.number }}"
+          MARKER="<!-- mark1:review-feedback-summary:v2 -->"
 
           # Get timestamp of Copilot's last "addressed" response
           COPILOT_ADDRESSED_AT=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
@@ -91,18 +92,17 @@ jobs:
           COMMENT_COUNT=$(echo "$COMMENTS" | jq 'length')
           echo "Found $COMMENT_COUNT new review comments"
 
-          # Check if we already notified about these (avoid spam)
-          LAST_COMMENT=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
-            --jq '[.[] | select(.body | contains("implement these suggestions"))] | last // empty')
+          LAST_REVIEW_COMMENT_AT=$(echo "$COMMENTS" | jq -r 'map(.created_at) | max // empty')
+          echo "last_review_comment_at=$LAST_REVIEW_COMMENT_AT" >> $GITHUB_OUTPUT
 
-          if [ -n "$LAST_COMMENT" ] && [ "$COMMENT_COUNT" -gt 0 ]; then
-            LAST_NOTIFY=$(echo "$LAST_COMMENT" | jq -r '.created_at // empty')
-            LAST_REVIEW_COMMENT=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
-              --jq '[.[] | select(.user.login | test("copilot"; "i"))] | last | .created_at // empty')
-
-            if [ -n "$LAST_NOTIFY" ] && [ -n "$LAST_REVIEW_COMMENT" ]; then
-              if [[ "$LAST_NOTIFY" > "$LAST_REVIEW_COMMENT" ]]; then
-                echo "Already notified about these comments"
+          # Check if we already posted a summary after the latest review comment (avoid spam)
+          if [ "$COMMENT_COUNT" -gt 0 ] && [ -n "$LAST_REVIEW_COMMENT_AT" ]; then
+            LAST_SUMMARY=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+              --jq --arg m "$MARKER" '[.[] | select(.body | contains($m))] | last // empty')
+            if [ -n "$LAST_SUMMARY" ] && [ "$LAST_SUMMARY" != "null" ]; then
+              LAST_SUMMARY_AT=$(echo "$LAST_SUMMARY" | jq -r '.created_at // empty')
+              if [ -n "$LAST_SUMMARY_AT" ] && [[ "$LAST_SUMMARY_AT" > "$LAST_REVIEW_COMMENT_AT" ]]; then
+                echo "Already posted summary after latest review comment"
                 echo "should_notify=false" >> $GITHUB_OUTPUT
                 exit 0
               fi
@@ -122,21 +122,34 @@ jobs:
             echo "should_notify=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Notify Copilot agent to implement suggestions
+      - name: Post review suggestions summary (no agent trigger)
         if: steps.check-comments.outputs.should_notify == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           PR_NUMBER="${{ steps.pr-info.outputs.number }}"
+          MARKER="<!-- mark1:review-feedback-summary:v2 -->"
+          COUNT="${{ steps.check-comments.outputs.count }}"
+          FORMATTED="${{ steps.check-comments.outputs.formatted }}"
 
           cat <<'COMMENT_EOF' > /tmp/comment.md
-          @copilot The Copilot code reviewer left suggestions. Please implement these code review suggestions and push a commit.
+          🧾 **Copilot Reviewer suggestions detected** (summary only; no auto-trigger)
 
-          _Auto-forwarded from Copilot code review_
+          If you want the coding agent to implement these, add a new comment starting with:
+          `@copilot please implement the Copilot Reviewer suggestions for PR #${PR_NUMBER}`
+
+          <!-- mark1:review-feedback-summary:v2 -->
           COMMENT_EOF
 
+          {
+            echo "";
+            echo "Count: $COUNT";
+            echo "";
+            echo "$FORMATTED";
+          } >> /tmp/comment.md
+
           gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body-file /tmp/comment.md
-          echo "Notified Copilot to implement suggestions on PR #$PR_NUMBER"
+          echo "Posted Copilot Reviewer suggestions summary on PR #$PR_NUMBER"
 
       - name: Summary
         run: |

@@ -303,7 +303,7 @@ jobs:
           echo "${{ steps.llm.outputs.fix_message }}" > fix_request.md
           gh pr comment "$PR_NUMBER" -F fix_request.md
 
-      - name: Auto-approve PR
+      - name: Record approve decision (no PR comment)
         if: steps.decision.outputs.decision == 'approve'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
@@ -317,11 +317,16 @@ jobs:
           echo "Skipping auto-approve - human review required for Copilot PRs"
           echo "Reason that would have triggered approve: $REASON"
 
-          # Instead, just post a comment that the PR looks ready
+          # Avoid noisy PR comments for "approve" decisions.
           if [ "$USED_LOCAL_LLM" = "true" ]; then
-            REVIEWED_BY="Reviewed by: Local LLM (Ollama: qwen3-coder-30b)."
+            REVIEWED_BY="Local LLM (Ollama: qwen3-coder-30b)"
           else
-            REVIEWED_BY="Reviewed by: Heuristics (local LLM unavailable)."
+            REVIEWED_BY="Heuristics (local LLM unavailable)"
           fi
 
-          gh pr comment "$PR_NUMBER" --body "✅ **Auto Review**: $REASON\n$REVIEWED_BY\nInputs: Copilot Reviewer feedback.\n\nThis PR appears ready for human review. Please review and approve if everything looks good."
+          echo "### Auto Review" >> $GITHUB_STEP_SUMMARY
+          echo "- PR: #$PR_NUMBER" >> $GITHUB_STEP_SUMMARY
+          echo "- Decision: approve" >> $GITHUB_STEP_SUMMARY
+          echo "- Reason: $REASON" >> $GITHUB_STEP_SUMMARY
+          echo "- Reviewed by: $REVIEWED_BY" >> $GITHUB_STEP_SUMMARY
+          echo "- Inputs: Copilot Reviewer feedback" >> $GITHUB_STEP_SUMMARY
