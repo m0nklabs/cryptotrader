@@ -89,7 +89,7 @@ def test_export_candles_requires_symbol(client):
 
 
 def test_export_candles_with_date_params(client):
-    """Test /export/candles accepts start/end parameters (not yet implemented)."""
+    """Test /export/candles returns 501 when date parameters are provided."""
     response = client.get(
         "/export/candles",
         params={
@@ -102,9 +102,10 @@ def test_export_candles_with_date_params(client):
         },
     )
 
-    # Should succeed even though filtering is not implemented
-    assert response.status_code == 200
-    # Note: The endpoint currently ignores these parameters
+    # Should return 501 Not Implemented since date filtering is not yet implemented
+    assert response.status_code == 501
+    data = response.json()
+    assert "not yet implemented" in data["detail"].lower()
 
 
 def test_export_trades_csv(client):
@@ -154,7 +155,7 @@ def test_export_trades_json(client):
 
 
 def test_export_trades_with_date_params(client):
-    """Test /export/trades accepts start/end parameters (not yet implemented)."""
+    """Test /export/trades returns 501 when date parameters are provided."""
     response = client.get(
         "/export/trades",
         params={
@@ -164,8 +165,10 @@ def test_export_trades_with_date_params(client):
         },
     )
 
-    # Should succeed
-    assert response.status_code == 200
+    # Should return 501 Not Implemented
+    assert response.status_code == 501
+    data = response.json()
+    assert "not yet implemented" in data["detail"].lower()
 
 
 def test_export_portfolio_csv(client):

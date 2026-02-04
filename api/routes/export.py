@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Literal, Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import Response
 
 from core.export import (
@@ -35,11 +35,18 @@ async def export_candles(
     Note: Date range filtering (start/end parameters) is not yet implemented.
     Currently returns sample data for demonstration purposes.
 
-    If start or end parameters are provided, a 501 Not Implemented response
-    could be returned to make the limitation explicit.
+    Returns 501 Not Implemented if start or end parameters are provided,
+    making the limitation explicit to prevent reliance on incomplete functionality.
     """
+    # Return 501 if date filtering is requested but not implemented
+    if start is not None or end is not None:
+        raise HTTPException(
+            status_code=501,
+            detail="Date range filtering is not yet implemented. Currently returns sample data only.",
+        )
+
     # TODO: Query database for candles with date filtering
-    # For now, return sample data (start/end parameters are ignored)
+    # For now, return sample data
     sample_candles = [
         {
             "open_time": "2024-01-01T00:00:00Z",
@@ -101,11 +108,17 @@ async def export_trades(
     Downloads sample trades for demonstration purposes.
 
     Note: Date range filtering (start/end parameters) is not yet implemented.
-    If start or end parameters are provided, a 501 Not Implemented response
-    could be returned to make the limitation explicit.
+    Returns 501 Not Implemented if start or end parameters are provided.
     """
+    # Return 501 if date filtering is requested but not implemented
+    if start is not None or end is not None:
+        raise HTTPException(
+            status_code=501,
+            detail="Date range filtering is not yet implemented. Currently returns sample data only.",
+        )
+
     # TODO: Query database for trades with date filtering
-    # For now, return sample data (start/end parameters are ignored)
+    # For now, return sample data
     sample_trades = [
         {
             "timestamp": "2024-01-01T12:00:00Z",

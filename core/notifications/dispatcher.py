@@ -76,8 +76,15 @@ class NotificationDispatcher:
                     title=title, message=message, chat_id=self.config.telegram_chat_id
                 )
                 results["telegram"] = success
+                if success:
+                    logger.info(f"Telegram notification sent successfully: title='{title}'")
+                else:
+                    logger.warning(f"Telegram notification failed: title='{title}'")
             except Exception as exc:
-                logger.error(f"Telegram notification failed: {exc}")
+                logger.error(
+                    f"Telegram notification error: {exc.__class__.__name__}: {str(exc)} | title='{title}'",
+                    exc_info=False,  # Don't log full stack trace
+                )
                 results["telegram"] = False
 
         # Send to Discord
@@ -85,8 +92,15 @@ class NotificationDispatcher:
             try:
                 success = self.discord.send_alert(title=title, message=message, color=color)
                 results["discord"] = success
+                if success:
+                    logger.info(f"Discord notification sent successfully: title='{title}'")
+                else:
+                    logger.warning(f"Discord notification failed: title='{title}'")
             except Exception as exc:
-                logger.error(f"Discord notification failed: {exc}")
+                logger.error(
+                    f"Discord notification error: {exc.__class__.__name__}: {str(exc)} | title='{title}'",
+                    exc_info=False,  # Don't log full stack trace
+                )
                 results["discord"] = False
 
         return results

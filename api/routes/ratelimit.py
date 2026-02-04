@@ -2,16 +2,45 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
+from typing import Optional, List, Literal
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
 from core.ratelimit import get_tracker
 
 router = APIRouter(prefix="/ratelimit", tags=["ratelimit"])
 
 
-@router.get("/status")
+class RateLimitStatus(BaseModel):
+    """Rate limit status for a single exchange/endpoint."""
+
+    exchange: str
+    endpoint: str
+    limit: int
+    used: int
+    remaining: int
+    usage_percent: float
+    reset_at: float
+    reset_in_seconds: int
+    status: Literal["ok", "warning", "critical"]
+    window_seconds: int
+
+
+class RateLimitStatusResponse(BaseModel):
+    """Response for rate limit status endpoint."""
+
+    limits: List[RateLimitStatus]
+    count: int
+
+
+class ExchangesResponse(BaseModel):
+    """Response for exchanges endpoint."""
+
+    exchanges: List[str]
+    count: int
+
+
+@router.get("/status", response_model=RateLimitStatusResponse)
 async def get_rate_limit_status(
     exchange: Optional[str] = Query(None, description="Filter by exchange"),
 ):
@@ -51,7 +80,7 @@ async def get_rate_limit_status(
     }
 
 
-@router.get("/exchanges")
+@router.get("/exchanges", response_model=ExchangesResponse)
 async def get_exchanges():
     """Get list of exchanges with rate limit tracking."""
     tracker = get_tracker()

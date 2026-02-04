@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -28,11 +28,35 @@ class NotificationSettingsRequest(BaseModel):
     telegram_chat_id: Optional[str] = None
 
 
+class NotificationResponse(BaseModel):
+    """Response from notification send."""
+
+    success: bool
+    results: Dict[str, bool]
+    message: str
+
+
+class NotificationSettingsResponse(BaseModel):
+    """Response with notification settings."""
+
+    telegram_enabled: bool
+    discord_enabled: bool
+    telegram_configured: bool
+    discord_configured: bool
+
+
+class NotificationSettingsUpdateResponse(BaseModel):
+    """Response from updating notification settings."""
+
+    success: bool
+    settings: Dict[str, bool]
+
+
 # Global notification config (in-memory for now)
 _notification_config = NotificationConfig()
 
 
-@router.post("/send")
+@router.post("/send", response_model=NotificationResponse)
 async def send_notification(request: SendAlertRequest):
     """Send a notification to configured channels.
 
@@ -64,17 +88,18 @@ async def send_notification(request: SendAlertRequest):
     }
 
 
-@router.get("/settings")
+@router.get("/settings", response_model=NotificationSettingsResponse)
 async def get_notification_settings():
     """Get current notification settings."""
     return {
         "telegram_enabled": _notification_config.telegram_enabled,
         "discord_enabled": _notification_config.discord_enabled,
         "telegram_configured": _notification_config.telegram_chat_id is not None,
+        "discord_configured": True,  # Discord only needs webhook URL from env
     }
 
 
-@router.post("/settings")
+@router.post("/settings", response_model=NotificationSettingsUpdateResponse)
 async def update_notification_settings(request: NotificationSettingsRequest):
     """Update notification settings."""
     global _notification_config
