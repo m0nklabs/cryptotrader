@@ -40,9 +40,7 @@ class HealthChecker:
             return None
 
         if self.database_url not in _engine_cache:
-            _engine_cache[self.database_url] = create_engine(
-                self.database_url, echo=False, pool_pre_ping=True
-            )
+            _engine_cache[self.database_url] = create_engine(self.database_url, echo=False, pool_pre_ping=True)
         return _engine_cache[self.database_url]
 
     def check_database(self) -> HealthStatus:

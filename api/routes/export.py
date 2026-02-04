@@ -34,7 +34,7 @@ async def export_candles(
 
     Note: Date range filtering (start/end parameters) is not yet implemented.
     Currently returns sample data for demonstration purposes.
-    
+
     If start or end parameters are provided, a 501 Not Implemented response
     could be returned to make the limitation explicit.
     """

@@ -9,6 +9,7 @@ import logging
 
 try:
     import httpx
+
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
@@ -44,7 +45,7 @@ class DiscordClient:
         """Get or create async HTTP client."""
         if not HTTPX_AVAILABLE:
             raise RuntimeError("httpx not available, install with: pip install httpx")
-        
+
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=10.0)
         return self._client
@@ -77,6 +78,7 @@ class DiscordClient:
 
         try:
             import requests
+
             response = requests.post(
                 self.webhook_url,
                 json=payload,
@@ -127,6 +129,7 @@ class DiscordClient:
                 # Fallback to sync requests in thread
                 import asyncio
                 import requests
+
                 response = await asyncio.to_thread(
                     requests.post,
                     self.webhook_url,
@@ -134,7 +137,7 @@ class DiscordClient:
                     timeout=10,
                 )
                 response.raise_for_status()
-            
+
             logger.info("Discord message sent successfully")
             return True
         except Exception as exc:
@@ -176,6 +179,7 @@ class DiscordClient:
 
         try:
             import requests
+
             response = requests.post(
                 self.webhook_url,
                 json=payload,
@@ -233,6 +237,7 @@ class DiscordClient:
                 # Fallback to sync requests in thread
                 import asyncio
                 import requests
+
                 response = await asyncio.to_thread(
                     requests.post,
                     self.webhook_url,
@@ -240,13 +245,13 @@ class DiscordClient:
                     timeout=10,
                 )
                 response.raise_for_status()
-            
+
             logger.info("Discord alert sent successfully")
             return True
         except Exception as exc:
             logger.error(f"Failed to send Discord alert: {exc}")
             return False
-    
+
     async def close(self):
         """Close the HTTP client."""
         if self._client:

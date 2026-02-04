@@ -24,7 +24,7 @@ async def health_check():
     - API uptime
     """
     checker = HealthChecker()
-    
+
     # Run blocking DB checks in thread pool to avoid blocking event loop
     checks = await asyncio.to_thread(checker.check_all)
 

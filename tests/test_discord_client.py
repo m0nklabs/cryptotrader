@@ -49,9 +49,7 @@ def test_send_message_failure():
     # Mock failed response
     import requests
 
-    with patch(
-        "requests.post", side_effect=requests.exceptions.RequestException("Network error")
-    ):
+    with patch("requests.post", side_effect=requests.exceptions.RequestException("Network error")):
         result = client.send_message("Test message")
 
     assert result is False
