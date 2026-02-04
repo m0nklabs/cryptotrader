@@ -12,6 +12,7 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.90.20",
     "lightweight-charts": "^5.1.0",
     "lucide-react": "^0.563.0",
     "react": "^19.0.0",

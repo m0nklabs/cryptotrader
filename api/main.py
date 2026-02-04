@@ -39,6 +39,12 @@ from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
 from core.types import FeeBreakdown
 
+# Import new route modules with aliases to avoid conflicts
+from api.routes import health as health_routes, ratelimit, notifications, export as export_routes
+
+# Import middleware for rate limit tracking
+from core.ratelimit import RateLimitMiddleware
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -46,6 +52,9 @@ app = FastAPI(
     description="API for candles, health checks, ingestion status, and paper trading",
     version="1.0.0",
 )
+
+# Add middleware for rate limit tracking
+app.add_middleware(RateLimitMiddleware)
 
 # Global store instance (initialized on startup)
 _stores: PostgresStores | None = None
@@ -2013,3 +2022,10 @@ async def get_llm_status() -> dict[str, Any]:
             "error": str(e),
             "host": "http://localhost:11434",
         }
+
+
+# Include new route modules
+app.include_router(health_routes.router)
+app.include_router(ratelimit.router)
+app.include_router(notifications.router)
+app.include_router(export_routes.router)
