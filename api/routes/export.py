@@ -25,13 +25,15 @@ async def export_candles(
     exchange: str = Query("bitfinex", description="Exchange name"),
     timeframe: str = Query("1h", description="Timeframe"),
     format: Literal["csv", "json"] = Query("csv", description="Export format"),
-    start: Optional[str] = Query(None, description="Start date (ISO format)"),
-    end: Optional[str] = Query(None, description="End date (ISO format)"),
+    start: Optional[str] = Query(None, description="Start date (ISO format, not yet implemented)"),
+    end: Optional[str] = Query(None, description="End date (ISO format, not yet implemented)"),
 ):
     """Export OHLCV candles to CSV or JSON.
 
-    Downloads candles for the specified symbol, exchange, and timeframe.
-    Optionally filter by date range.
+    Downloads sample candles for the specified symbol, exchange, and timeframe.
+    
+    Note: Date range filtering (start/end parameters) is not yet implemented.
+    Currently returns sample data for demonstration purposes.
     """
     # TODO: Query database for candles
     # For now, return sample data
@@ -88,12 +90,14 @@ async def export_candles(
 @router.get("/trades")
 async def export_trades(
     format: Literal["csv", "json"] = Query("csv", description="Export format"),
-    start: Optional[str] = Query(None, description="Start date (ISO format)"),
-    end: Optional[str] = Query(None, description="End date (ISO format)"),
+    start: Optional[str] = Query(None, description="Start date (ISO format, not yet implemented)"),
+    end: Optional[str] = Query(None, description="End date (ISO format, not yet implemented)"),
 ):
     """Export trade history to CSV or JSON.
 
-    Downloads all trades, optionally filtered by date range.
+    Downloads sample trades for demonstration purposes.
+    
+    Note: Date range filtering (start/end parameters) is not yet implemented.
     """
     # TODO: Query database for trades
     # For now, return sample data

@@ -48,7 +48,7 @@ async def health_check():
             result[component]["details"] = status.details
 
     # Overall status is worst of all components
-    all_statuses = [result["api"]["status"]] + [v["status"] for v in checks.values()]
+    all_statuses = [result["api"]["status"]] + [v.status for v in checks.values()]
     if "error" in all_statuses:
         overall_status = "error"
     elif "degraded" in all_statuses:

@@ -56,7 +56,14 @@ See: https://github.com/m0nklabs/market-data/issues/12
 
 ### Health Checks
 
-The `/health` API endpoint reports on ingestion status:
+The `/health` API endpoint provides basic service health (database connectivity, latency, and high-level candle counts).
+
+Ingestion and job-level metrics are exposed via:
+- `/system/health` - Aggregated health status including ingestion timers
+- `/ingestion/status` - Detailed ingestion statistics
+- `/system/status` - System status with database connectivity
+
+These endpoints report:
 - Number of ingestion runs in last 24 hours
 - Last successful run timestamp
 - Database connectivity and latency
