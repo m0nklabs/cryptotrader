@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 from fastapi import APIRouter, Query
 from fastapi.responses import Response
@@ -77,7 +77,7 @@ async def export_candles(
         extension = "json"
 
     # Generate filename
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"{symbol}_{exchange}_{timeframe}_{timestamp}.{extension}"
 
     return Response(
@@ -124,7 +124,7 @@ async def export_trades(
         extension = "json"
 
     # Generate filename
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"trades_{timestamp}.{extension}"
 
     return Response(
@@ -174,7 +174,7 @@ async def export_portfolio(
         extension = "json"
 
     # Generate filename
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"portfolio_{timestamp}.{extension}"
 
     return Response(
