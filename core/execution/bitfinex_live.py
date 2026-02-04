@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import Literal
 
 from cex.bitfinex.api.bitfinex_client_v2 import BitfinexClient
 from core.execution.interfaces import ExchangeAdapter, Order
@@ -14,8 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class BitfinexLiveAdapter(ExchangeAdapter):
-    """Live Bitfinex adapter that supports dry-run."""
+class BitfinexLiveAdapter:
+    """Live Bitfinex adapter that supports dry-run.
+
+    The adapter always receives the executor's dry_run flag when called via
+    BitfinexLiveExecutor.execute(), even if credentials are configured.
+    """
 
     client: BitfinexClient
 
@@ -25,7 +29,7 @@ class BitfinexLiveAdapter(ExchangeAdapter):
         symbol: str,
         side: Literal["BUY", "SELL"],
         amount: Decimal,
-        price: Optional[Decimal] = None,
+        price: Decimal | None = None,
         order_type: Literal["market", "limit"] = "market",
         dry_run: bool = True,
     ) -> Order:
@@ -54,7 +58,10 @@ class BitfinexLiveAdapter(ExchangeAdapter):
         )
         order_id = result.get("order_id")
         if order_id is None:
-            raise RuntimeError("Bitfinex order submission failed")
+            raise RuntimeError(
+                "Bitfinex order submission failed: expected non-null order_id for "
+                f"{'dry-run' if dry_run else 'live'} order but got none. Response: {result!r}"
+            )
 
         return Order(
             id=str(order_id),
@@ -69,7 +76,11 @@ class BitfinexLiveAdapter(ExchangeAdapter):
 
 @dataclass(frozen=True)
 class BitfinexLiveExecutor:
-    """Order executor for Bitfinex live trading with dry-run support."""
+    """Order executor for Bitfinex live trading with dry-run support.
+
+    The executor always passes its dry_run flag to the adapter, so adapter
+    credential configuration is independent from execution mode.
+    """
 
     adapter: ExchangeAdapter
     dry_run: bool = True
@@ -110,7 +121,7 @@ class BitfinexLiveExecutor:
             )
 
 
-def _build_private_client(*, api_key: Optional[str] = None, api_secret: Optional[str] = None) -> BitfinexClient:
+def _build_private_client(*, api_key: str | None = None, api_secret: str | None = None) -> BitfinexClient:
     return BitfinexClient(api_key=api_key, api_secret=api_secret)
 
 
@@ -121,16 +132,32 @@ def _has_valid_credentials(client: BitfinexClient) -> bool:
 def create_bitfinex_live_executor(
     *,
     dry_run: bool = True,
-    api_key: Optional[str] = None,
-    api_secret: Optional[str] = None,
+    api_key: str | None = None,
+    api_secret: str | None = None,
 ) -> BitfinexLiveExecutor:
-    """Convenience factory for Bitfinex live executor."""
+    """Convenience factory for :class:`BitfinexLiveExecutor`.
+
+    Builds a private :class:`BitfinexClient`, wraps it in a
+    :class:`BitfinexLiveAdapter`, and returns a :class:`BitfinexLiveExecutor`
+    configured for dry-run (paper trading) or live trading.
+
+    Args:
+        dry_run: When True (default), the executor runs in paper-trading mode.
+        api_key: Optional Bitfinex API key (falls back to environment if omitted).
+        api_secret: Optional Bitfinex API secret (falls back to environment if omitted).
+
+    Returns:
+        BitfinexLiveExecutor configured for the requested execution mode.
+
+    Raises:
+        ValueError: If dry_run is False and no valid API credentials are available.
+    """
 
     client = _build_private_client(api_key=api_key, api_secret=api_secret)
     if not dry_run and not _has_valid_credentials(client):
         raise ValueError(
             "Bitfinex live trading requires API credentials. Provide api_key/api_secret or set "
-            "BITFINEX_API_KEY and BITFINEX_API_SECRET in the environment."
+            "BITFINEX_API_KEY/BITFINEX_API_SECRET in the environment."
         )
     adapter = BitfinexLiveAdapter(client=client)
     return BitfinexLiveExecutor(adapter=adapter, dry_run=dry_run)

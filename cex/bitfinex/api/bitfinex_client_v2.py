@@ -261,8 +261,11 @@ class BitfinexClient:
         # Build kwargs for optional parameters
         kwargs = {}
         # Bitfinex expects a positive limit; ignore zero/negative values.
-        if limit is not None and limit > 0:
-            kwargs["limit"] = limit
+        if limit is not None:
+            if limit <= 0:
+                logger.warning("Ignoring non-positive limit for Bitfinex trades: %s", limit)
+            else:
+                kwargs["limit"] = limit
         if start is not None:
             kwargs["start"] = str(start)
         if end is not None:
@@ -461,15 +464,31 @@ class BitfinexClient:
         response.raise_for_status()
         data = response.json()
 
+        # Expected Bitfinex submit order notification format:
+        # [
+        #   "notify",
+        #   "on-req",
+        #   <notification_id or None>,
+        #   None,
+        #   [
+        #     [
+        #       <order_id>, <gid>, <cid>, <symbol>, <create_time>, ...
+        #     ]
+        #   ]
+        # ]
         order_id = None
         if isinstance(data, list) and len(data) > 4:
-            orders = data[4]
-            if isinstance(orders, list) and orders:
-                first = orders[0]
-                if isinstance(first, list) and first:
-                    order_id = first[0]
+            orders_array = data[4]
+            if isinstance(orders_array, list) and orders_array:
+                first_order = orders_array[0]
+                if isinstance(first_order, list) and first_order:
+                    order_id = first_order[0]
         if order_id is None:
-            logger.warning("Unexpected Bitfinex submit_order response format: %s", data)
+            logger.warning(
+                "Unexpected Bitfinex submit_order response format. response=%s, payload=%s",
+                data,
+                payload,
+            )
 
         return {
             "status": "success",
@@ -603,8 +622,11 @@ class BitfinexClient:
             kwargs["start"] = str(start)
         if end:
             kwargs["end"] = str(end)
-        if limit is not None and limit > 0:
-            kwargs["limit"] = limit
+        if limit is not None:
+            if limit <= 0:
+                logger.warning("Ignoring non-positive limit for Bitfinex orders history: %s", limit)
+            else:
+                kwargs["limit"] = limit
 
         path = "/auth/r/orders/hist"
         signature_path = "/v2/auth/r/orders/hist"
@@ -614,6 +636,7 @@ class BitfinexClient:
         response.raise_for_status()
         data = response.json()
 
+        # Response fields are positional per Bitfinex API docs (order history array).
         orders = []
         for entry in data:
             if isinstance(entry, list) and len(entry) > 13:

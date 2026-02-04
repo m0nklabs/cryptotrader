@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Literal, Optional, Protocol
+from typing import Literal, Protocol
 
 from core.types import ExecutionResult, OrderIntent
 
@@ -19,7 +19,7 @@ class Order:
     symbol: str
     side: Literal["BUY", "SELL"]
     amount: Decimal
-    price: Optional[Decimal]
+    price: Decimal | None
     status: str
     timestamp: datetime
 
@@ -38,7 +38,7 @@ class ExchangeAdapter(Protocol):
         symbol: str,
         side: Literal["BUY", "SELL"],
         amount: Decimal,
-        price: Optional[Decimal] = None,
+        price: Decimal | None = None,
         order_type: Literal["market", "limit"] = "market",
         dry_run: bool = True,
     ) -> Order:

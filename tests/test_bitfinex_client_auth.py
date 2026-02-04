@@ -148,3 +148,68 @@ class TestBitfinexClientAuth:
         # Verify
         assert len(wallets) == 1
         assert wallets[0]["available_balance"] is None
+
+    @patch("cex.bitfinex.api.bitfinex_client_v2.requests.post")
+    def test_submit_order_parses_order_id(self, mock_post: Mock) -> None:
+        """submit_order should parse order_id from notification response."""
+        mock_response = Mock()
+        mock_response.json.return_value = ["notify", "on-req", None, None, [[12345, 0, 0, "tBTCUSD"]]]
+        mock_post.return_value = mock_response
+
+        client = BitfinexClient(api_key="test_key", api_secret="test_secret")
+        result = client.submit_order(symbol="tBTCUSD", amount=1.0, price=100.0)
+
+        assert result["order_id"] == 12345
+
+    @patch("cex.bitfinex.api.bitfinex_client_v2.requests.post")
+    def test_submit_order_logs_unexpected_format(self, mock_post: Mock) -> None:
+        """submit_order should log warning when response format unexpected."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"status": "error"}
+        mock_post.return_value = mock_response
+
+        client = BitfinexClient(api_key="test_key", api_secret="test_secret")
+        result = client.submit_order(symbol="tBTCUSD", amount=1.0, price=100.0)
+
+        assert result["order_id"] is None
+
+    @patch("cex.bitfinex.api.bitfinex_client_v2.requests.post")
+    def test_get_order_trades_parses_entries(self, mock_post: Mock) -> None:
+        """get_order_trades should parse trade list."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            [1, "tBTCUSD", 111, 222, 0.1, 100.0, 0.001, "USD"],
+        ]
+        mock_post.return_value = mock_response
+
+        client = BitfinexClient(api_key="test_key", api_secret="test_secret")
+        trades = client.get_order_trades("tBTCUSD", 222)
+
+        assert trades[0]["order_id"] == 222
+        assert trades[0]["exec_price"] == 100.0
+
+    @patch("cex.bitfinex.api.bitfinex_client_v2.requests.post")
+    def test_get_orders_history_uses_positive_limit(self, mock_post: Mock) -> None:
+        """get_orders_history should ignore non-positive limit values."""
+        mock_response = Mock()
+        mock_response.json.return_value = []
+        mock_post.return_value = mock_response
+
+        client = BitfinexClient(api_key="test_key", api_secret="test_secret")
+        client.get_orders_history(limit=0)
+
+        _, kwargs = mock_post.call_args
+        assert "limit" not in kwargs.get("json", {})
+
+    @patch("cex.bitfinex.api.bitfinex_client_v2.requests.post")
+    def test_cancel_order_posts_payload(self, mock_post: Mock) -> None:
+        """cancel_order should send order id payload."""
+        mock_response = Mock()
+        mock_response.json.return_value = ["success"]
+        mock_post.return_value = mock_response
+
+        client = BitfinexClient(api_key="test_key", api_secret="test_secret")
+        client.cancel_order(999)
+
+        _, kwargs = mock_post.call_args
+        assert kwargs["json"]["id"] == 999

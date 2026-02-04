@@ -97,8 +97,9 @@ class OrchestratorConfig:
     # Paper trading mode (default: True for safety)
     dry_run: bool = True
 
-    # Trades above this notional require human approval (None disables)
-    approval_threshold: Optional[Decimal] = None
+    # Trades above this notional require human approval (None disables).
+    # Approval requests are logged for external handling (no built-in approval flow yet).
+    approval_threshold: Decimal | None = None
 
     # Stop after N iterations (None = run forever)
     max_iterations: Optional[int] = None
@@ -146,7 +147,10 @@ class StrategyOrchestrator:
             logger.info("Initializing paper executor (dry_run=True).")
             return PaperExecutor()
         if self.config.exchange == "bitfinex":
-            logger.warning("Initializing Bitfinex executor for live trading (dry_run=False).")
+            logger.warning(
+                "Initializing Bitfinex executor for live trading (dry_run=False). "
+                "Valid Bitfinex API credentials must be configured."
+            )
             return create_bitfinex_live_executor(dry_run=False)
         logger.warning(
             "Live trading requested (dry_run=%s) for unsupported exchange '%s'. Falling back to PaperExecutor.",

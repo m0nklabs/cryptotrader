@@ -21,6 +21,8 @@ from core.automation import (
     run_safety_checks,
 )
 from core.automation.orchestrator import OrchestratorConfig, StrategyOrchestrator
+from typing import Literal
+
 from core.backtest.strategy import Signal
 from core.execution.bitfinex_live import BitfinexLiveExecutor
 from core.execution.interfaces import Order
@@ -728,8 +730,8 @@ class TestAuditLogger:
 
 
 class DummyStrategy:
-    def __init__(self, side: str):
-        self._side = side
+    def __init__(self, side: Literal["BUY", "SELL"]):
+        self._side: Literal["BUY", "SELL"] = side
 
     def on_candle(self, candle: Candle, indicators: dict) -> Signal | None:
         return Signal(self._side)
@@ -788,6 +790,28 @@ class TestApprovalGate:
         assert decision is not None
         assert decision.requires_approval is True
 
+    @pytest.mark.asyncio
+    async def test_trade_approval_gate_in_live_mode(self) -> None:
+        config = OrchestratorConfig(
+            symbols=["BTCUSD"],
+            dry_run=False,
+            default_position_size=Decimal("1000"),
+            approval_threshold=Decimal("500"),
+        )
+        automation_config = AutomationConfig(enabled=True)
+        orchestrator = StrategyOrchestrator(
+            config=config,
+            automation_config=automation_config,
+            strategy=DummyStrategy("BUY"),
+            candle_provider=DummyCandleProvider(),
+            price_provider=DummyPriceProvider(),
+            executor=BitfinexLiveExecutor(adapter=_DummyAdapter(), dry_run=False),
+        )
+
+        decision = await orchestrator._process_symbol("BTCUSD")  # noqa: SLF001
+        assert decision is not None
+        assert decision.requires_approval is True
+
 
 class TestExecutorSelection:
     def test_build_executor_dry_run_defaults_to_paper(self) -> None:
@@ -826,13 +850,22 @@ class TestExecutorSelection:
         assert result.accepted is True
         assert result.reason == "dry-run"
 
+    def test_bitfinex_executor_live_mode_flag(self) -> None:
+        executor = BitfinexLiveExecutor(adapter=_DummyAdapter(), dry_run=False)
+        intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="SELL", amount=Decimal("2"))
+
+        result = executor.execute(intent)
+        assert result.dry_run is False
+        assert result.accepted is True
+        assert result.reason == "submitted"
+
 
 class _DummyAdapter:
     def create_order(
         self,
         *,
         symbol: str,
-        side: str,
+        side: Literal["BUY", "SELL"],
         amount: Decimal,
         price: Decimal | None = None,
         order_type: str = "market",
@@ -841,10 +874,10 @@ class _DummyAdapter:
         fixed_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
         return Order(
             id="dry-run" if dry_run else "live",
-            symbol="BTCUSD",
-            side="BUY",
-            amount=Decimal("1"),
+            symbol=symbol,
+            side=side,
+            amount=amount,
             price=None,
-            status="dry_run",
+            status="dry_run" if dry_run else "submitted",
             timestamp=fixed_time,
         )
