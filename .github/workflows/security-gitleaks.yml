@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0  # Full history for scanning all commits
 
       - name: Run header
-        uses: ./.github/actions/run-header
+        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
         with:
           title: "Security / Gitleaks"
 

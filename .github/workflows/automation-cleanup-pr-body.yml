@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Run header
-        uses: ./.github/actions/run-header
+        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
         with:
           title: "Automation / Clean PR Body"
 

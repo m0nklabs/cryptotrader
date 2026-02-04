@@ -17,7 +17,7 @@ jobs:
       startsWith(github.event.workflow_run.head_branch, 'copilot/')
     steps:
       - name: Run header
-        uses: ./.github/actions/run-header
+        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
         with:
           title: "Mark Copilot PRs Ready"
 

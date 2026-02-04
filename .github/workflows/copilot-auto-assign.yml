@@ -27,7 +27,7 @@ jobs:
           private_key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Run header
-        uses: ./.github/actions/run-header
+        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
         with:
           title: "Auto-assign Copilot"
 
