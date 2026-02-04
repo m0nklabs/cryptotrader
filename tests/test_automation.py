@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 from core.automation import (
     AuditEvent,
     AuditLogger,
@@ -18,7 +20,9 @@ from core.automation import (
     TradeHistory,
     run_safety_checks,
 )
-from core.types import OrderIntent
+from core.automation.orchestrator import OrchestratorConfig, StrategyOrchestrator
+from core.backtest.strategy import Signal
+from core.types import Candle, OrderIntent
 
 
 # ========== Rules Tests ==========
@@ -719,3 +723,61 @@ class TestAuditLogger:
         assert all(isinstance(item, dict) for item in json_list)
         assert all("timestamp" in item for item in json_list)
         assert all(isinstance(item["timestamp"], str) for item in json_list)
+
+
+class DummyStrategy:
+    def __init__(self, side: str):
+        self._side = side
+
+    def on_candle(self, candle: Candle, indicators: dict) -> Signal | None:
+        return Signal(self._side)
+
+
+class DummyCandleProvider:
+    async def get_latest_candles(self, symbol: str, timeframe: str, limit: int = 100) -> list[Candle]:
+        now = datetime.now(timezone.utc)
+        candles = []
+        for i in range(20):
+            candles.append(
+                Candle(
+                    exchange="bitfinex",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    open_time=now - timedelta(minutes=20 - i),
+                    close_time=now - timedelta(minutes=19 - i),
+                    open=Decimal("100"),
+                    high=Decimal("110"),
+                    low=Decimal("90"),
+                    close=Decimal("100"),
+                    volume=Decimal("1"),
+                )
+            )
+        return candles
+
+
+class DummyPriceProvider:
+    async def get_current_price(self, symbol: str) -> Decimal:
+        return Decimal("100")
+
+
+class TestApprovalGate:
+    @pytest.mark.asyncio
+    async def test_trade_requires_approval(self) -> None:
+        config = OrchestratorConfig(
+            symbols=["BTCUSD"],
+            dry_run=True,
+            default_position_size=Decimal("1000"),
+            approval_threshold=Decimal("500"),
+        )
+        automation_config = AutomationConfig(enabled=True)
+        orchestrator = StrategyOrchestrator(
+            config=config,
+            automation_config=automation_config,
+            strategy=DummyStrategy("BUY"),
+            candle_provider=DummyCandleProvider(),
+            price_provider=DummyPriceProvider(),
+        )
+
+        decision = await orchestrator._process_symbol("BTCUSD")  # noqa: SLF001
+        assert decision is not None
+        assert decision.requires_approval is True

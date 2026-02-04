@@ -437,14 +437,37 @@ class BitfinexClient:
         if not self.api_key or not self.api_secret:
             raise ValueError("API key and secret required for authenticated endpoints")
 
-        result = self.client.rest.auth.submit_order(
-            symbol=symbol, amount=amount, price=price, market_type=order_type, flags=flags, cid=cid
-        )
+        path = "/auth/w/order/submit"
+        signature_path = "/v2/auth/w/order/submit"
+        url = f"{self.BASE_URL}{path}"
+
+        payload: Dict[str, Any] = {
+            "type": order_type,
+            "symbol": symbol if symbol.startswith("t") else f"t{symbol}",
+            "amount": str(amount),
+            "price": str(price) if price is not None else "0",
+            "flags": flags,
+        }
+        if cid is not None:
+            payload["cid"] = cid
+
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        order_id = None
+        if isinstance(data, list) and len(data) > 4:
+            orders = data[4]
+            if isinstance(orders, list) and orders:
+                first = orders[0]
+                if isinstance(first, list) and first:
+                    order_id = first[0]
 
         return {
             "status": "success",
-            "order_id": result[0][0][0] if result and len(result[0]) > 0 else None,
-            "data": result,
+            "order_id": order_id,
+            "data": data,
         }
 
     def cancel_order(self, order_id: int) -> Dict[str, Any]:
@@ -460,8 +483,15 @@ class BitfinexClient:
         if not self.api_key or not self.api_secret:
             raise ValueError("API key and secret required for authenticated endpoints")
 
-        result = self.client.rest.auth.cancel_order(order_id)
-        return {"status": "success", "order_id": order_id, "data": result}
+        path = "/auth/w/order/cancel"
+        signature_path = "/v2/auth/w/order/cancel"
+        url = f"{self.BASE_URL}{path}"
+        payload = {"id": order_id}
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return {"status": "success", "order_id": order_id, "data": data}
 
     def get_order_trades(self, symbol: str, order_id: int) -> List[Dict[str, Any]]:
         """
@@ -477,20 +507,31 @@ class BitfinexClient:
         if not self.api_key or not self.api_secret:
             raise ValueError("API key and secret required for authenticated endpoints")
 
-        trades = self.client.rest.auth.get_order_trades(symbol, order_id)
-        return [
-            {
-                "id": t.id,
-                "symbol": t.symbol,
-                "mts_create": t.mts_create,
-                "order_id": t.order_id,
-                "exec_amount": t.exec_amount,
-                "exec_price": t.exec_price,
-                "fee": t.fee,
-                "fee_currency": t.fee_currency,
-            }
-            for t in trades
-        ]
+        normalized_symbol = symbol if symbol.startswith("t") else f"t{symbol}"
+        path = f"/auth/r/order/{order_id}:{normalized_symbol}"
+        signature_path = f"/v2{path}"
+        url = f"{self.BASE_URL}{path}"
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, {})
+        response = requests.post(url, headers=headers, json={}, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        trades = []
+        for entry in data:
+            if isinstance(entry, list) and len(entry) > 6:
+                trades.append(
+                    {
+                        "id": entry[0],
+                        "symbol": entry[1],
+                        "mts_create": entry[2],
+                        "order_id": entry[3],
+                        "exec_amount": entry[4],
+                        "exec_price": entry[5],
+                        "fee": entry[6] if len(entry) > 6 else None,
+                        "fee_currency": entry[7] if len(entry) > 7 else None,
+                    }
+                )
+        return trades
 
     def transfer_between_wallets(
         self, from_wallet: str, to_wallet: str, currency: str, amount: float
@@ -556,21 +597,31 @@ class BitfinexClient:
         if limit:
             kwargs["limit"] = limit
 
-        orders = self.client.rest.auth.get_orders_history(**kwargs)
-        return [
-            {
-                "id": o.id,
-                "symbol": o.symbol,
-                "amount": o.amount,
-                "amount_orig": o.amount_orig,
-                "type": o.order_type,
-                "status": o.order_status,
-                "price": o.price,
-                "created_at": o.mts_create,
-                "updated_at": o.mts_update,
-            }
-            for o in orders
-        ]
+        path = "/auth/r/orders/hist"
+        signature_path = "/v2/auth/r/orders/hist"
+        url = f"{self.BASE_URL}{path}"
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, kwargs or {})
+        response = requests.post(url, headers=headers, json=kwargs, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        orders = []
+        for entry in data:
+            if isinstance(entry, list) and len(entry) > 13:
+                orders.append(
+                    {
+                        "id": entry[0],
+                        "symbol": entry[3],
+                        "amount": entry[6],
+                        "amount_orig": entry[7],
+                        "type": entry[8],
+                        "status": entry[13],
+                        "price": entry[16] if len(entry) > 16 else None,
+                        "created_at": entry[4],
+                        "updated_at": entry[5],
+                    }
+                )
+        return orders
 
     def get_deposit_address(self, wallet: str, method: str, op_renew: int = 0) -> Dict[str, Any]:
         """
