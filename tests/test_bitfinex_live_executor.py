@@ -95,7 +95,7 @@ def test_adapter_converts_signed_amounts() -> None:
 
     adapter.create_order(symbol="BTCUSD", side="SELL", amount=Decimal("2"), dry_run=False)
     assert client.last_payload is not None
-    assert client.last_payload["amount"] == -2.0
+    assert client.last_payload["amount"] == "-2"
 
 
 def test_executor_handles_adapter_error() -> None:
