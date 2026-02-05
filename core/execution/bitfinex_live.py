@@ -52,8 +52,8 @@ class BitfinexLiveAdapter:
         # submit_order handles symbol normalization (adds 't' prefix if missing).
         result = self.client.submit_order(
             symbol=symbol,
-            amount=float(signed_amount),
-            price=float(price) if price is not None else 0.0,
+            amount=str(signed_amount),
+            price=str(price) if price is not None else "0",
             order_type="EXCHANGE MARKET" if order_type == "market" else "EXCHANGE LIMIT",
         )
         order_id = result.get("order_id")

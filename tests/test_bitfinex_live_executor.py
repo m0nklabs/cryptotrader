@@ -15,8 +15,8 @@ from core.types import OrderIntent
 
 class SubmitOrderPayload(TypedDict):
     symbol: str
-    amount: float
-    price: float
+    amount: str | float
+    price: str | float
     order_type: str
 
 
@@ -28,8 +28,8 @@ class DummyBitfinexClient(BitfinexClient):
     def submit_order(
         self,
         symbol: str,
-        amount: float,
-        price: float = None,
+        amount: str | float,
+        price: str | float | None = None,
         order_type: str = "EXCHANGE LIMIT",
         flags: int = 0,
         cid: int | None = None,
@@ -45,7 +45,7 @@ class DummyBitfinexClient(BitfinexClient):
 
 def test_create_bitfinex_live_executor_requires_credentials() -> None:
     with pytest.raises(ValueError):
-        create_bitfinex_live_executor(dry_run=False, api_key="", api_secret="")
+        create_bitfinex_live_executor(dry_run=False, api_key=" ", api_secret=" ")
 
 
 def test_create_bitfinex_live_executor_dry_run_allows_missing_credentials() -> None:
