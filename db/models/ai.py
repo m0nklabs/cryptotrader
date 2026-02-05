@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Float, Integer, Text, ForeignKey, Index, DateTime
+from sqlalchemy import Boolean, Column, Float, Integer, Text, ForeignKey, Index, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 
@@ -35,7 +35,7 @@ class SystemPrompt(Base):
     content = Column(Text, nullable=False)
     description = Column(Text, nullable=False, default="")
     is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     __table_args__ = (
         Index("idx_system_prompts_role", "role", "is_active"),
@@ -63,7 +63,7 @@ class AIRoleConfig(Base):
     enabled = Column(Boolean, nullable=False, default=True)
     fallback_provider = Column(Text, nullable=True)
     fallback_model = Column(Text, nullable=True)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     def __repr__(self) -> str:
         return f"<AIRoleConfig(name={self.name}, provider={self.provider}, model={self.model})>"
@@ -88,7 +88,7 @@ class AIUsageLog(Base):
     symbol = Column(Text, nullable=False, default="")
     success = Column(Boolean, nullable=False, default=True)
     error = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     __table_args__ = (
         Index("idx_ai_usage_log_created", "created_at"),
@@ -118,7 +118,7 @@ class AIDecision(Base):
     vetoed_by = Column(Text, nullable=True)
     total_cost_usd = Column(Float, nullable=False, default=0.0)
     total_latency_ms = Column(Float, nullable=False, default=0.0)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     __table_args__ = (
         Index("idx_ai_decisions_symbol", "symbol", "created_at"),

@@ -50,7 +50,7 @@ async def update_role_config(
     Only updates fields that are provided (not None).
     Returns the updated config or None if not found.
     """
-    values = {"updated_at": datetime.utcnow()}
+    values = {"updated_at": func.now()}
     if provider is not None:
         values["provider"] = provider
     if model is not None:
