@@ -120,7 +120,11 @@ async def main() -> int:
     """Main seeding function."""
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
-        print("❌ ERROR: DATABASE_URL environment variable is not set")
+        print(
+            "❌ ERROR: DATABASE_URL environment variable is not set.\n"
+            "   Expected format: postgresql://user:password@host:port/database\n"
+            "   Async format is also supported: postgresql+asyncpg://user:password@host:port/database"
+        )
         return 1
 
     # Convert to async URL if needed

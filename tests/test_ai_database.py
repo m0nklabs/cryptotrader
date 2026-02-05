@@ -45,9 +45,11 @@ async def db_session():
     if not database_url:
         pytest.skip("DATABASE_URL not set")
 
-    # Convert to async URL
-    if database_url.startswith("postgresql://"):
+    # Convert to async URL if needed
+    if database_url.startswith("postgresql://") and "asyncpg" not in database_url:
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgres://") and "asyncpg" not in database_url:
+        database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
 
     engine = create_async_engine(database_url, echo=False)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

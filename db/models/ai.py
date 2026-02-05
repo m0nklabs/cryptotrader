@@ -10,7 +10,7 @@ These models map to the tables created by db/migrations/001_ai_tables.sql:
 from __future__ import annotations
 
 
-from sqlalchemy import Boolean, Column, Float, Integer, Text, ForeignKey, Index, DateTime, func
+from sqlalchemy import BigInteger, Boolean, Column, Float, Integer, Text, ForeignKey, Index, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 
@@ -75,7 +75,7 @@ class AIUsageLog(Base):
 
     __tablename__ = "ai_usage_log"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     role = Column(Text, nullable=False)
     provider = Column(Text, nullable=False)
     model = Column(Text, nullable=False)
@@ -106,12 +106,12 @@ class AIDecision(Base):
 
     __tablename__ = "ai_decisions"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     symbol = Column(Text, nullable=False)
     timeframe = Column(Text, nullable=False)
     final_action = Column(Text, nullable=False)  # BUY|SELL|NEUTRAL|VETO
     final_confidence = Column(Float, nullable=False, default=0.0)
-    verdicts = Column(JSONB, nullable=False, default=list)  # list of RoleVerdict dicts
+    verdicts = Column(JSONB, nullable=False, default=lambda: [])  # list of RoleVerdict dicts
     reasoning = Column(Text, nullable=False, default="")
     vetoed_by = Column(Text, nullable=True)
     total_cost_usd = Column(Float, nullable=False, default=0.0)

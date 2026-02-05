@@ -243,7 +243,7 @@ async def get_usage_summary(
         func.sum(AIUsageLog.tokens_out).label("total_tokens_out"),
         func.sum(AIUsageLog.cost_usd).label("total_cost"),
         func.avg(AIUsageLog.latency_ms).label("avg_latency"),
-        func.sum(func.cast(AIUsageLog.success, Integer)).label("successful_requests"),
+        func.sum(AIUsageLog.success).label("successful_requests"),
     )
 
     # Apply filters
@@ -327,7 +327,17 @@ async def get_decisions(
     limit: int = 100,
     offset: int = 0,
 ) -> Sequence[AIDecision]:
-    """Get AI decisions with optional filters."""
+    """Get AI decisions with optional filters.
+
+    The number of returned records is capped to avoid excessive memory usage.
+    """
+    # Enforce a sensible upper bound to prevent memory exhaustion
+    max_limit = 1000
+    if limit < 1:
+        limit = 100
+    elif limit > max_limit:
+        limit = max_limit
+
     query = select(AIDecision)
 
     if symbol:
