@@ -859,7 +859,7 @@ class TestExecutorSelection:
             strategy=DummyStrategy("BUY"),
             candle_provider=DummyCandleProvider(),
             price_provider=DummyPriceProvider(),
-            executor=BitfinexLiveExecutor(adapter=_DummyAdapter(), dry_run=False),
+            executor=BitfinexLiveExecutor(adapter=DummyAdapter(), dry_run=False),
         )
 
         assert isinstance(orchestrator.executor, BitfinexLiveExecutor)

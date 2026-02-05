@@ -239,14 +239,14 @@ class StrategyOrchestrator:
 
             # 5b. Human approval gate for large trades
             if self.config.approval_threshold is not None:
-                notional = intent.amount * Decimal(str(current_price))
+                notional = intent.amount * current_price
                 if notional >= self.config.approval_threshold:
                     reason = f"Trade requires approval: notional {notional} >= {self.config.approval_threshold}"
                     approval_context = {
                         "amount": str(notional),
                         "threshold": str(self.config.approval_threshold),
                     }
-                    self.audit_logger.log_decision("decision", reason, symbol, context=approval_context)
+                    self.audit_logger.log_decision("approval_required", reason, symbol, context=approval_context)
                     self.audit_logger.log_trade_rejected(symbol, reason, context=approval_context)
                     return TradeDecision(
                         symbol=symbol,

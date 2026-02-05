@@ -53,6 +53,11 @@ def test_create_bitfinex_live_executor_dry_run_allows_missing_credentials() -> N
     assert isinstance(executor, BitfinexLiveExecutor)
 
 
+def test_create_bitfinex_live_executor_with_credentials() -> None:
+    executor = create_bitfinex_live_executor(dry_run=False, api_key="key", api_secret="secret")
+    assert isinstance(executor, BitfinexLiveExecutor)
+
+
 def test_adapter_raises_on_limit_without_price() -> None:
     adapter = BitfinexLiveAdapter(client=DummyBitfinexClient())
     with pytest.raises(ValueError, match="limit orders require price"):
@@ -72,6 +77,15 @@ def test_adapter_raises_when_order_id_missing() -> None:
     adapter = BitfinexLiveAdapter(client=client)
 
     with pytest.raises(RuntimeError, match="order_id"):
+        adapter.create_order(symbol="BTCUSD", side="BUY", amount=Decimal("1"), dry_run=False)
+
+
+def test_adapter_raises_when_submit_order_fails() -> None:
+    client = DummyBitfinexClient()
+    client.submit_order = Mock(side_effect=RuntimeError("boom"))  # type: ignore[assignment]
+    adapter = BitfinexLiveAdapter(client=client)
+
+    with pytest.raises(RuntimeError, match="boom"):
         adapter.create_order(symbol="BTCUSD", side="BUY", amount=Decimal("1"), dry_run=False)
 
 
