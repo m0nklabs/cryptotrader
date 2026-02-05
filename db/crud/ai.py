@@ -9,10 +9,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Sequence
 
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update, and_, Integer, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.ai.types import RoleName, ProviderName, SystemPrompt as SystemPromptType
 from db.models.ai import AIDecision, AIRoleConfig, AIUsageLog, SystemPrompt
 
 
@@ -127,7 +126,7 @@ async def get_active_prompt(db: AsyncSession, role: str) -> SystemPrompt | None:
     """Get the active prompt for a role (highest version with is_active=True)."""
     result = await db.execute(
         select(SystemPrompt)
-        .where(and_(SystemPrompt.role == role, SystemPrompt.is_active == True))
+        .where(and_(SystemPrompt.role == role, SystemPrompt.is_active))
         .order_by(SystemPrompt.version.desc())
         .limit(1)
     )
@@ -240,8 +239,6 @@ async def get_usage_summary(
 
     Returns aggregate statistics: total requests, total cost, avg latency, success rate.
     """
-    from sqlalchemy import func
-
     query = select(
         func.count(AIUsageLog.id).label("total_requests"),
         func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
