@@ -32,6 +32,8 @@ from core.automation.safety import (
     run_safety_checks,
 )
 from core.backtest.strategy import Signal, Strategy
+from core.execution.interfaces import OrderExecutor
+from core.execution.bitfinex_live import create_bitfinex_live_executor
 from core.execution.paper import PaperExecutor
 from core.types import Candle, ExecutionResult, OrderIntent
 
@@ -60,14 +62,6 @@ class PriceProvider(Protocol):
         ...
 
 
-class OrderExecutor(Protocol):
-    """Protocol for order execution (paper or live)."""
-
-    def execute(self, order: OrderIntent) -> ExecutionResult:
-        """Execute an order and return the result."""
-        ...
-
-
 @dataclass
 class TradeDecision:
     """Represents a trading decision from the orchestrator."""
@@ -78,6 +72,7 @@ class TradeDecision:
     safety_result: SafetyResult
     execution_result: Optional[ExecutionResult] = None
     reason: str = ""
+    requires_approval: bool = False
 
 
 @dataclass
@@ -101,6 +96,10 @@ class OrchestratorConfig:
 
     # Paper trading mode (default: True for safety)
     dry_run: bool = True
+
+    # Trades above this notional require human approval (None disables).
+    # Approval requests are logged for external handling (no built-in approval flow yet).
+    approval_threshold: Decimal | None = None
 
     # Stop after N iterations (None = run forever)
     max_iterations: Optional[int] = None
@@ -132,7 +131,7 @@ class StrategyOrchestrator:
         self.strategy = strategy
         self.candle_provider = candle_provider
         self.price_provider = price_provider
-        self.executor = executor or PaperExecutor()
+        self.executor = executor or self._build_executor()
         self.audit_logger = audit_logger or AuditLogger()
 
         # State
@@ -142,6 +141,23 @@ class StrategyOrchestrator:
         self.current_balance: Decimal = Decimal("10000")  # Initial balance
         self._running = False
         self._iteration = 0
+
+    def _build_executor(self) -> OrderExecutor:
+        if self.config.dry_run:
+            logger.info("Initializing paper executor (dry_run=True).")
+            return PaperExecutor()
+        if self.config.exchange == "bitfinex":
+            logger.warning(
+                "Initializing Bitfinex executor for live trading (dry_run=False). "
+                "Valid Bitfinex API credentials must be configured."
+            )
+            return create_bitfinex_live_executor(dry_run=False)
+        logger.warning(
+            "Live trading requested (dry_run=%s) for unsupported exchange '%s'. Falling back to PaperExecutor.",
+            self.config.dry_run,
+            self.config.exchange,
+        )
+        return PaperExecutor()
 
     def _build_safety_checks(self, symbol: str) -> list[SafetyCheck]:
         """Build the list of safety checks for a symbol."""
@@ -220,6 +236,26 @@ class StrategyOrchestrator:
                     safety_result=safety_result,
                     reason=f"Safety check failed: {safety_result.reason}",
                 )
+
+            # 5b. Human approval gate for large trades
+            if self.config.approval_threshold is not None:
+                notional = intent.amount * current_price
+                if notional >= self.config.approval_threshold:
+                    reason = f"Trade requires approval: notional {notional} >= {self.config.approval_threshold}"
+                    approval_context = {
+                        "amount": str(notional),
+                        "threshold": str(self.config.approval_threshold),
+                    }
+                    self.audit_logger.log_decision("approval_required", reason, symbol, context=approval_context)
+                    self.audit_logger.log_trade_deferred(symbol, reason, context=approval_context)
+                    return TradeDecision(
+                        symbol=symbol,
+                        signal=signal,
+                        timestamp=datetime.now(timezone.utc),
+                        safety_result=safety_result,
+                        reason=reason,
+                        requires_approval=True,
+                    )
 
             # 6. Execute order
             if self.config.dry_run:

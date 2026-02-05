@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 from core.automation import (
     AuditEvent,
     AuditLogger,
@@ -18,7 +20,13 @@ from core.automation import (
     TradeHistory,
     run_safety_checks,
 )
-from core.types import OrderIntent
+from core.automation.orchestrator import OrchestratorConfig, StrategyOrchestrator
+from typing import Literal
+
+from core.backtest.strategy import Signal
+from core.execution.bitfinex_live import BitfinexLiveExecutor
+from core.execution.interfaces import Order
+from core.types import Candle, OrderIntent
 
 
 # ========== Rules Tests ==========
@@ -719,3 +727,176 @@ class TestAuditLogger:
         assert all(isinstance(item, dict) for item in json_list)
         assert all("timestamp" in item for item in json_list)
         assert all(isinstance(item["timestamp"], str) for item in json_list)
+
+
+class DummyStrategy:
+    def __init__(self, side: Literal["BUY", "SELL"]):
+        self._side: Literal["BUY", "SELL"] = side
+
+    def on_candle(self, candle: Candle, indicators: dict) -> Signal | None:
+        return Signal(self._side)
+
+
+class DummyCandleProvider:
+    async def get_latest_candles(self, symbol: str, timeframe: str, limit: int = 100) -> list[Candle]:
+        now = datetime.now(timezone.utc)
+        candles = []
+        for i in range(20):
+            candles.append(
+                Candle(
+                    exchange="bitfinex",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    open_time=now - timedelta(minutes=20 - i),
+                    close_time=now - timedelta(minutes=19 - i),
+                    open=Decimal("100"),
+                    high=Decimal("110"),
+                    low=Decimal("90"),
+                    close=Decimal("100"),
+                    volume=Decimal("1"),
+                )
+            )
+        return candles
+
+
+class DummyPriceProvider:
+    async def get_current_price(self, symbol: str) -> Decimal:
+        return Decimal("100")
+
+
+class DummyAdapter:
+    def create_order(
+        self,
+        *,
+        symbol: str,
+        side: Literal["BUY", "SELL"],
+        amount: Decimal,
+        price: Decimal | None = None,
+        order_type: Literal["market", "limit"] = "market",
+        dry_run: bool = True,
+    ) -> Order:
+        fixed_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        return Order(
+            id="dry-run" if dry_run else "live",
+            symbol=symbol,
+            side=side,
+            amount=amount,
+            price=None,
+            status="dry_run" if dry_run else "submitted",
+            timestamp=fixed_time,
+        )
+
+
+class TestApprovalGate:
+    @pytest.mark.asyncio
+    async def test_trade_requires_approval(self) -> None:
+        config = OrchestratorConfig(
+            symbols=["BTCUSD"],
+            dry_run=True,
+            default_position_size=Decimal("1000"),
+            approval_threshold=Decimal("500"),
+        )
+        automation_config = AutomationConfig(enabled=True)
+        orchestrator = StrategyOrchestrator(
+            config=config,
+            automation_config=automation_config,
+            strategy=DummyStrategy("BUY"),
+            candle_provider=DummyCandleProvider(),
+            price_provider=DummyPriceProvider(),
+        )
+
+        decisions = await orchestrator.run_once()
+        assert decisions
+        assert decisions[0].requires_approval is True
+
+    @pytest.mark.asyncio
+    async def test_trade_approval_gate_in_live_mode(self) -> None:
+        config = OrchestratorConfig(
+            symbols=["BTCUSD"],
+            dry_run=False,
+            default_position_size=Decimal("1000"),
+            approval_threshold=Decimal("500"),
+        )
+        automation_config = AutomationConfig(enabled=True)
+        orchestrator = StrategyOrchestrator(
+            config=config,
+            automation_config=automation_config,
+            strategy=DummyStrategy("BUY"),
+            candle_provider=DummyCandleProvider(),
+            price_provider=DummyPriceProvider(),
+            executor=BitfinexLiveExecutor(adapter=DummyAdapter(), dry_run=False),
+        )
+
+        decisions = await orchestrator.run_once()
+        assert decisions
+        assert decisions[0].requires_approval is True
+
+    @pytest.mark.asyncio
+    async def test_trade_no_approval_below_threshold(self) -> None:
+        config = OrchestratorConfig(
+            symbols=["BTCUSD"],
+            dry_run=True,
+            default_position_size=Decimal("100"),
+            approval_threshold=Decimal("500"),
+        )
+        automation_config = AutomationConfig(enabled=True)
+        orchestrator = StrategyOrchestrator(
+            config=config,
+            automation_config=automation_config,
+            strategy=DummyStrategy("BUY"),
+            candle_provider=DummyCandleProvider(),
+            price_provider=DummyPriceProvider(),
+            executor=BitfinexLiveExecutor(adapter=DummyAdapter(), dry_run=True),
+        )
+
+        decisions = await orchestrator.run_once()
+        assert decisions
+        assert decisions[0].requires_approval is False
+        assert decisions[0].execution_result is not None
+
+
+class TestExecutorSelection:
+    def test_build_executor_dry_run_defaults_to_paper(self) -> None:
+        config = OrchestratorConfig(dry_run=True, exchange="bitfinex")
+        automation_config = AutomationConfig(enabled=True)
+        orchestrator = StrategyOrchestrator(
+            config=config,
+            automation_config=automation_config,
+            strategy=DummyStrategy("BUY"),
+            candle_provider=DummyCandleProvider(),
+            price_provider=DummyPriceProvider(),
+        )
+
+        assert orchestrator.executor.__class__.__name__ == "PaperExecutor"
+
+    def test_build_executor_live_bitfinex(self) -> None:
+        config = OrchestratorConfig(dry_run=False, exchange="bitfinex")
+        automation_config = AutomationConfig(enabled=True)
+        orchestrator = StrategyOrchestrator(
+            config=config,
+            automation_config=automation_config,
+            strategy=DummyStrategy("BUY"),
+            candle_provider=DummyCandleProvider(),
+            price_provider=DummyPriceProvider(),
+            executor=BitfinexLiveExecutor(adapter=DummyAdapter(), dry_run=False),
+        )
+
+        assert isinstance(orchestrator.executor, BitfinexLiveExecutor)
+
+    def test_bitfinex_executor_dry_run_flag(self) -> None:
+        executor = BitfinexLiveExecutor(adapter=DummyAdapter(), dry_run=True)
+        intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="BUY", amount=Decimal("1"))
+
+        result = executor.execute(intent)
+        assert result.dry_run is True
+        assert result.accepted is True
+        assert result.reason == "dry-run"
+
+    def test_bitfinex_executor_live_mode_flag(self) -> None:
+        executor = BitfinexLiveExecutor(adapter=DummyAdapter(), dry_run=False)
+        intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="SELL", amount=Decimal("2"))
+
+        result = executor.execute(intent)
+        assert result.dry_run is False
+        assert result.accepted is True
+        assert result.reason == "submitted"

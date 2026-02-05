@@ -19,6 +19,7 @@ EventType = Literal[
     "rule_violation",
     "trade_executed",
     "trade_rejected",
+    "trade_deferred",
     "kill_switch",
     "error",
 ]
@@ -153,6 +154,21 @@ class AuditLogger:
         event = AuditEvent(
             event_type="trade_rejected",
             message=f"Trade rejected for {symbol}: {reason}",
+            severity="warning",
+            context={"symbol": symbol, "reason": reason, **(context or {})},
+        )
+        self.log(event)
+
+    def log_trade_deferred(
+        self,
+        symbol: str,
+        reason: str,
+        context: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Log a deferred trade awaiting approval."""
+        event = AuditEvent(
+            event_type="trade_deferred",
+            message=f"Trade deferred for {symbol}: {reason}",
             severity="warning",
             context={"symbol": symbol, "reason": reason, **(context or {})},
         )
