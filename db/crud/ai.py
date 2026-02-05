@@ -169,9 +169,7 @@ async def activate_prompt(db: AsyncSession, prompt_id: str) -> SystemPrompt | No
         return None
 
     # Deactivate all prompts for this role
-    await db.execute(
-        update(SystemPrompt).where(SystemPrompt.role == prompt.role).values(is_active=False)
-    )
+    await db.execute(update(SystemPrompt).where(SystemPrompt.role == prompt.role).values(is_active=False))
 
     # Activate the target prompt
     await db.execute(update(SystemPrompt).where(SystemPrompt.id == prompt_id).values(is_active=True))

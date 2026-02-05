@@ -61,12 +61,13 @@ async def test_role_config_crud(db_session):
     """Test full CRUD cycle for role configurations."""
     # Create a test role config
     test_role = "test_screener"
-    
+
     # Delete if exists (cleanup from previous runs)
     from sqlalchemy import text
+
     await db_session.execute(text("DELETE FROM ai_role_configs WHERE name = :name"), {"name": test_role})
     await db_session.commit()
-    
+
     config = await create_role_config(
         db_session,
         name=test_role,
@@ -106,6 +107,7 @@ async def test_role_config_crud(db_session):
 
     # Clean up
     from sqlalchemy import text
+
     await db_session.execute(text("DELETE FROM ai_role_configs WHERE name = :name"), {"name": test_role})
     await db_session.commit()
 
@@ -168,9 +170,8 @@ async def test_prompt_versioning(db_session):
 
     # Clean up
     from sqlalchemy import text
-    await db_session.execute(
-        text("DELETE FROM system_prompts WHERE role = :role"), {"role": test_role}
-    )
+
+    await db_session.execute(text("DELETE FROM system_prompts WHERE role = :role"), {"role": test_role})
     await db_session.commit()
 
 

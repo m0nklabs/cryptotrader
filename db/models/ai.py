@@ -9,7 +9,6 @@ These models map to the tables created by db/migrations/001_ai_tables.sql:
 
 from __future__ import annotations
 
-from datetime import datetime
 
 from sqlalchemy import Boolean, Column, Float, Integer, Text, ForeignKey, Index, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -18,6 +17,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
+
     pass
 
 
@@ -37,9 +37,7 @@ class SystemPrompt(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    __table_args__ = (
-        Index("idx_system_prompts_role", "role", "is_active"),
-    )
+    __table_args__ = (Index("idx_system_prompts_role", "role", "is_active"),)
 
     def __repr__(self) -> str:
         return f"<SystemPrompt(id={self.id}, role={self.role}, v{self.version}, active={self.is_active})>"

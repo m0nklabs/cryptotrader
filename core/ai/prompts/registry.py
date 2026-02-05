@@ -224,4 +224,3 @@ class PromptRegistry:
         cls._prompts.clear()
         cls._db_loaded = False
         cls._db_enabled = False
-
