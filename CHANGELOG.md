@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-02-05
+### Multi-Brain AI Architecture (Epic 3 — #205)
+- Add `core/ai/` module skeleton — Role-Based Mixture of Agents architecture
+- Add provider adapters: DeepSeek (R1/V3.2), OpenAI (o3-mini), xAI (Grok 4), Ollama (local)
+- Add agent roles: Screener, Tactical, Fundamental, Strategist with domain-specific prompts
+- Add `LLMRouter` for parallel role dispatch with usage tracking
+- Add `ConsensusEngine` with weighted voting and hard VETO support
+- Add `PromptRegistry` with versioning and default system prompts (from research doc 08)
+- Add frontend skeleton: `AiConfigPanel.tsx`, `aiStore.ts`, `api/ai.ts` (12 TypeScript types + 6 API functions)
+- Add DB migration `001_ai_tables.sql`: `system_prompts`, `ai_role_configs`, `ai_usage_log`, `ai_decisions`
+- Add AI provider env vars to `.env.example` (DEEPSEEK, OPENAI, XAI, GOOGLE, OLLAMA)
+- Update `docs/ARCHITECTURE.md` with AI pipeline step and module reference
+- Update `docs/ROADMAP_V2.md` — Epic 3 upgraded to 🟠 High with full architecture breakdown
+- Research basis: m0nklabs/market-data PR #14 (8 benchmark docs)
+
 ## 2026-02-02
 ### Frontend Improvements
 - Add Market Watch view with live price updates, 24h change %, RSI, and EMA trend indicators

@@ -12,7 +12,7 @@ This document defines the comprehensive roadmap for cryptotrader v2, organized b
 |------|----------|-------------|--------|
 | [Epic 1: Backtesting & Validation](#epic-1-backtesting--validation) | 🔴 Critical | Prove profitability before live trading | 📋 Planned |
 | [Epic 2: Execution & Automation](#epic-2-execution--automation) | 🟠 High | Live execution with multi-exchange support | 🚧 In Progress |
-| [Epic 3: AI & LLM Integration](#epic-3-ai--llm-integration) | 🟡 Medium | AI-enhanced scoring and analysis | 📋 Planned |
+| [Epic 3: AI & LLM Integration](#epic-3-ai--llm-integration) | � High | Multi-Brain agent architecture | 🚧 In Progress |
 | [Epic 4: Frontend Observability](#epic-4-frontend-observability) | 🟡 Medium | Real-time transparency and visualization | 📋 Planned |
 | [Epic 5: Portfolio & Wallet](#epic-5-portfolio--wallet) | 🟡 Medium | Portfolio tracking and PnL monitoring | 📋 Planned |
 | [Epic 6: Infrastructure & Operations](#epic-6-infrastructure--operations) | 🟢 Low | DevOps, automation, and reliability | 🚧 Partial |
@@ -85,35 +85,67 @@ This document defines the comprehensive roadmap for cryptotrader v2, organized b
 
 ## Epic 3: AI & LLM Integration
 
-**Priority**: 🟡 Medium
-**Goal**: Leverage LLMs for qualitative analysis and opportunity scoring.
+**Priority**: � High (upgraded from Medium — research complete, skeleton committed)
+**Goal**: Multi-Brain agent architecture — multiple specialized LLMs collaborating via consensus for trading analysis.
+**Tracking issue**: [#205](https://github.com/m0nklabs/cryptotrader/issues/205)
+**Research basis**: [m0nklabs/market-data PR #14](https://github.com/m0nklabs/market-data/pull/14) — 8 research docs
+
+### Architecture
+
+```
+LLMRouter → [Screener(V3.2) | Tactical(R1) | Fundamental(Grok4) | Strategist(o3-mini)]
+         → ConsensusEngine (weighted voting + VETO)
+         → Final Decision (BUY/SELL/NEUTRAL)
+```
 
 ### Issues
 
 | Issue | Title | Status | Description |
 |-------|-------|--------|-------------|
-| — | Ollama Integration | 📋 Planned | Local LLM support via Ollama |
-| — | API Provider Integration | 📋 Planned | OpenAI/Anthropic API support |
-| — | LLM Scoring Engine | 📋 Planned | Rate opportunities with reasoning |
-| — | Sentiment Analysis | 📋 Planned | Extract sentiment from market context |
-| — | Signal Explanation | 📋 Planned | Human-readable LLM explanations for signals |
+| #205 | Multi-Brain AI Implementation | 🚧 Skeleton | Parent issue — full architecture |
+| — | Provider Adapters (P1.1) | 🚧 Skeleton | DeepSeek, OpenAI, xAI, Ollama adapters |
+| — | Role Implementation (P1.2) | 🚧 Skeleton | Screener, Tactical, Fundamental, Strategist |
+| — | Prompt Registry (P1.3) | 🚧 Skeleton | Versioned prompts with DB backend |
+| — | Consensus Engine (P1.4) | 🚧 Skeleton | Weighted voting with VETO support |
+| — | AI API Endpoints (P2) | 📋 Planned | REST API for config, evaluation, usage |
+| — | AI Database Tables (P3) | 🚧 Skeleton | system_prompts, role_configs, usage_log, decisions |
+| — | AI Frontend Panel (P4) | 🚧 Skeleton | Config panel, evaluation UI, usage dashboard |
+| — | Signal Pipeline Integration (P5) | 📋 Planned | Connect to existing scoring + execution |
+| — | AI Testing Suite (P6) | 📋 Planned | Unit + integration tests |
+| — | Observability & Safety (P7) | 📋 Planned | Budget caps, audit trail, fallback monitoring |
+
+### Default Role → Provider Mapping
+
+| Role | Provider | Model | Cost/1M input | Weight |
+|------|----------|-------|---------------|--------|
+| Screener | DeepSeek | V3.2 | $0.27 | 0.5 |
+| Tactical | DeepSeek | R1 | $0.55 | 1.5 |
+| Fundamental | xAI | Grok 4 | $3.00 | 1.0 |
+| Strategist | OpenAI | o3-mini | $1.10 | 1.2 |
+
+**Estimated cost**: ~$0.034/evaluation → ~$102/month at 100 evals/day.
 
 ### Acceptance Criteria
 
-- [ ] Configure Ollama endpoint for local LLM
-- [ ] Configure API keys for cloud providers
-- [ ] Generate qualitative score (0-100) with reasoning
-- [ ] Fallback behavior when LLM unavailable
+- [ ] Configure roles with any LLM provider via UI or API
+- [ ] Versioned system prompts per role (create, activate, A/B test)
+- [ ] Weighted consensus with hard VETO (Strategist can block trades)
+- [ ] Full cost tracking per request (tokens, USD, latency)
+- [ ] Budget caps (daily/monthly spend limits)
+- [ ] Fallback chain (primary → fallback provider on failure)
+- [ ] Audit trail for every AI decision
+- [ ] Paper-trading integration (AI verdict → auto paper order)
 
-### Example Output
+### Skeleton Status (committed [`c79f765`](https://github.com/m0nklabs/cryptotrader/commit/c79f765))
 
-```json
-{
-  "score": 75,
-  "reasoning": "Bullish divergence confirmed by RSI (25) indicating oversold conditions. MACD showing momentum shift with histogram turning positive. Volume remains below average which may limit upside. Recommend cautious entry with tight stop.",
-  "confidence": "medium",
-  "model": "llama3:8b"
-}
+```
+core/ai/
+├── types.py, consensus.py, router.py
+├── providers/ (base, deepseek, openai, xai, ollama)
+├── roles/ (base, screener, tactical, fundamental, strategist)
+└── prompts/ (registry, defaults)
+frontend/src/ → api/ai.ts, stores/aiStore.ts, components/AiConfigPanel.tsx
+db/migrations/ → 001_ai_tables.sql
 ```
 
 ### Dependencies
@@ -251,14 +283,14 @@ Epic 1 (Backtesting)
     ↓
 Epic 2 (Execution) ←──── Epic 5 (Portfolio)
     ↓
-Epic 3 (AI/LLM)
+Epic 3 (AI/LLM) ←── market-data research (PR #14)
     ↓
 Epic 4 (Frontend) ←──── Epic 5 (Portfolio)
     ↓
 Epic 6 (Infrastructure) — ongoing
 ```
 
-**Critical Path**: Backtesting & Validation → Execution & Automation → AI & LLM Integration → Frontend Observability
+**Critical Path**: Backtesting → Execution → **AI Multi-Brain (#205)** → Frontend
 
 ---
 

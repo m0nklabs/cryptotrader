@@ -2,7 +2,7 @@
 
 This document tracks implemented features, their current status, and detailed documentation.
 
-**Last updated**: December 2024
+**Last updated**: February 2026
 
 ---
 
@@ -365,6 +365,17 @@ npm run dev
 ## 📋 Planned (Open Issues)
 
 See [GitHub Issues](https://github.com/m0nklabs/cryptotrader/issues) for the full backlog.
+
+### AI & Multi-Brain (#205)
+- #205 - Multi-Brain AI Architecture (skeleton committed, 7 phases planned)
+  - Provider adapters: DeepSeek, OpenAI, xAI, Ollama (skeleton ✅)
+  - Agent roles: Screener, Tactical, Fundamental, Strategist (skeleton ✅)
+  - Consensus engine with weighted voting + VETO (skeleton ✅)
+  - Versioned prompt registry with DB backend (skeleton ✅)
+  - AI API endpoints (planned)
+  - AI frontend config panel (skeleton ✅)
+  - Signal pipeline integration (planned)
+  - Testing + observability (planned)
 
 ### High Priority
 - #108 - Automated tests + CI pipeline

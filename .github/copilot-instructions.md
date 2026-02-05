@@ -154,6 +154,14 @@ When implementing features, use these technologies:
 - **DevContainer**: Python 3.12 + Node 20 + PostgreSQL 16
 - **CI**: GitHub Actions (when added)
 
+### AI / Multi-Brain (`core/ai/`)
+- **Architecture**: Role-Based Mixture of Agents (Router → Roles → Consensus)
+- **Providers**: DeepSeek R1/V3.2, OpenAI o3-mini, xAI Grok 4, Ollama (local)
+- **HTTP client**: httpx (async, shared with exchange adapters)
+- **Prompt storage**: PostgreSQL (versioned per role)
+- **Tracking issue**: #205
+- **Research**: m0nklabs/market-data PR #14 (8 benchmark docs)
+
 ## Code Patterns
 
 ### Async Database Access
@@ -207,6 +215,10 @@ cryptotrader/
 │   ├── exchanges/    # Exchange-specific implementations
 │   └── websocket/    # WebSocket handlers
 ├── core/             # Business logic
+│   ├── ai/           # Multi-Brain LLM orchestration (#205)
+│   │   ├── providers/ # LLM adapters (deepseek, openai, xai, ollama)
+│   │   ├── roles/     # Agent roles (screener, tactical, fundamental, strategist)
+│   │   └── prompts/   # Versioned system prompt registry
 │   ├── analysis/     # Technical analysis
 │   ├── execution/    # Order execution
 │   ├── indicators/   # TA indicators

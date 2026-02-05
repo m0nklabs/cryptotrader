@@ -30,12 +30,20 @@ Notes:
    - Produce human-readable reasons ("why")
    - Aggregate into a confidence score (0-100)
 
-4. **Execution (paper by default)**
+4. **AI / Multi-Brain Analysis** (optional, configurable)
+   - Route signals through specialized LLM agents (Screener → Tactical → Fundamental → Strategist)
+   - Each role runs on its own provider (DeepSeek R1, Grok 4, o3-mini, Ollama, etc.)
+   - Consensus engine aggregates verdicts via weighted voting + VETO
+   - Versioned system prompts per role, stored in DB
+   - Full cost/token tracking per request
+   - See `core/ai/` module and [issue #205](https://github.com/m0nklabs/cryptotrader/issues/205)
+
+5. **Execution (paper by default)**
    - Convert signals into orders
    - Apply safety checks
    - Log intent + outcome
 
-5. **Fees & costs (always-on)**
+6. **Fees & costs (always-on)**
    - Model maker/taker fees, funding, withdrawal/deposit fees (where applicable)
    - Include spread + slippage assumptions
    - Compute net edge thresholds before executing
@@ -218,6 +226,7 @@ Operational notes (ports + service wiring) live in `docs/OPERATIONS.md`.
 
 The v2 core is being built as a set of small, delegatable modules:
 
+- `core/ai/`: Multi-Brain LLM orchestration (providers, roles, prompts, router, consensus)
 - `core/market_data/`: OHLCV ingestion + normalization (provider interfaces)
 - `core/fees/`: fee/cost estimation and minimum edge thresholds
 - `core/signals/`: signal aggregation and scoring
