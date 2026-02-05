@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Sequence
 
-from sqlalchemy import select, update, and_, Integer, func
+from sqlalchemy import select, update, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models.ai import AIDecision, AIRoleConfig, AIUsageLog, SystemPrompt
