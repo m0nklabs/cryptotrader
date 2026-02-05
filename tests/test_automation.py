@@ -764,6 +764,29 @@ class DummyPriceProvider:
         return Decimal("100")
 
 
+class DummyAdapter:
+    def create_order(
+        self,
+        *,
+        symbol: str,
+        side: Literal["BUY", "SELL"],
+        amount: Decimal,
+        price: Decimal | None = None,
+        order_type: Literal["market", "limit"] = "market",
+        dry_run: bool = True,
+    ) -> Order:
+        fixed_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        return Order(
+            id="dry-run" if dry_run else "live",
+            symbol=symbol,
+            side=side,
+            amount=amount,
+            price=None,
+            status="dry_run" if dry_run else "submitted",
+            timestamp=fixed_time,
+        )
+
+
 class TestApprovalGate:
     @pytest.mark.asyncio
     async def test_trade_requires_approval(self) -> None:
@@ -782,13 +805,9 @@ class TestApprovalGate:
             price_provider=DummyPriceProvider(),
         )
 
-        # We intentionally call the private _process_symbol here because the public
-        # orchestrator interface does not expose the per-symbol approval decision
-        # in a way that can be asserted in a focused unit test. This test verifies
-        # the approval gate logic in isolation from the full run() orchestration.
-        decision = await orchestrator._process_symbol("BTCUSD")  # noqa: SLF001
-        assert decision is not None
-        assert decision.requires_approval is True
+        decisions = await orchestrator.run_once()
+        assert decisions
+        assert decisions[0].requires_approval is True
 
     @pytest.mark.asyncio
     async def test_trade_approval_gate_in_live_mode(self) -> None:
@@ -808,9 +827,9 @@ class TestApprovalGate:
             executor=BitfinexLiveExecutor(adapter=DummyAdapter(), dry_run=False),
         )
 
-        decision = await orchestrator._process_symbol("BTCUSD")  # noqa: SLF001
-        assert decision is not None
-        assert decision.requires_approval is True
+        decisions = await orchestrator.run_once()
+        assert decisions
+        assert decisions[0].requires_approval is True
 
     @pytest.mark.asyncio
     async def test_trade_no_approval_below_threshold(self) -> None:
@@ -830,10 +849,10 @@ class TestApprovalGate:
             executor=BitfinexLiveExecutor(adapter=DummyAdapter(), dry_run=True),
         )
 
-        decision = await orchestrator._process_symbol("BTCUSD")  # noqa: SLF001
-        assert decision is not None
-        assert decision.requires_approval is False
-        assert decision.execution_result is not None
+        decisions = await orchestrator.run_once()
+        assert decisions
+        assert decisions[0].requires_approval is False
+        assert decisions[0].execution_result is not None
 
 
 class TestExecutorSelection:
@@ -882,25 +901,3 @@ class TestExecutorSelection:
         assert result.accepted is True
         assert result.reason == "submitted"
 
-
-class DummyAdapter:
-    def create_order(
-        self,
-        *,
-        symbol: str,
-        side: Literal["BUY", "SELL"],
-        amount: Decimal,
-        price: Decimal | None = None,
-        order_type: Literal["market", "limit"] = "market",
-        dry_run: bool = True,
-    ) -> Order:
-        fixed_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        return Order(
-            id="dry-run" if dry_run else "live",
-            symbol=symbol,
-            side=side,
-            amount=amount,
-            price=None,
-            status="dry_run" if dry_run else "submitted",
-            timestamp=fixed_time,
-        )
