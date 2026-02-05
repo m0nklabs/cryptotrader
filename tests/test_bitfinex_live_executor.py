@@ -35,10 +35,10 @@ class DummyBitfinexClient(BitfinexClient):
         cid: int | None = None,
     ) -> dict[str, object]:  # type: ignore[override]
         self.last_payload = SubmitOrderPayload(
-            "symbol": symbol,
-            "amount": amount,
-            "price": price,
-            "order_type": order_type,
+            symbol=symbol,
+            amount=amount,
+            price=price,
+            order_type=order_type,
         )
         return {"status": "success", "order_id": 1234, "data": []}
 
