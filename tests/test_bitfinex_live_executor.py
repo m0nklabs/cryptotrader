@@ -22,9 +22,8 @@ class SubmitOrderPayload(TypedDict):
 
 class DummyBitfinexClient(BitfinexClient):
     def __init__(self) -> None:
-        # Avoid loading credentials from environment variables in tests.
-        self.api_key = "key"
-        self.api_secret = "secret"
+        # Provide explicit credentials so the base initializer does not read env vars.
+        super().__init__(api_key="key", api_secret="secret")
         self.last_payload: SubmitOrderPayload | None = None
 
     def submit_order(
