@@ -900,4 +900,3 @@ class TestExecutorSelection:
         assert result.dry_run is False
         assert result.accepted is True
         assert result.reason == "submitted"
-
