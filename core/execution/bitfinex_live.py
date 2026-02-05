@@ -19,6 +19,7 @@ class BitfinexLiveAdapter:
 
     The adapter always receives the executor's dry_run flag when called via
     BitfinexLiveExecutor.execute(), even if credentials are configured.
+    This adapter submits EXCHANGE (spot) orders only; margin trading is out of scope.
     """
 
     client: BitfinexClient
