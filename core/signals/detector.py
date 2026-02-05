@@ -5,6 +5,7 @@ Detects patterns:
 - MACD crossover
 - Stochastic overbought/oversold
 - Bollinger Bands breakout
+- High/Low channel breakout
 - ATR volatility
 - Golden/death cross (MA crossover)
 - Volume spike
@@ -28,6 +29,7 @@ from typing import Sequence
 
 from core.indicators.atr import generate_atr_signal
 from core.indicators.bollinger import generate_bollinger_signal
+from core.indicators.high_low import generate_high_low_signal
 from core.indicators.macd import generate_macd_signal
 from core.indicators.rsi import generate_rsi_signal
 from core.indicators.stochastic import generate_stochastic_signal
@@ -422,6 +424,35 @@ def detect_bollinger_signal(
     return None
 
 
+def detect_high_low_signal(
+    candles: Sequence[Candle],
+    *,
+    period: int = 20,
+    breakout_buffer_bps: float = 0.0,
+) -> IndicatorSignal | None:
+    """Detect High/Low channel breakout/breakdown.
+
+    Args:
+        candles: Sequence of OHLCV candles.
+        period: Lookback window for the channel.
+        breakout_buffer_bps: Optional buffer in bps to reduce noise.
+
+    Returns:
+        IndicatorSignal for BUY/SELL, or None if neutral/insufficient data.
+    """
+    if len(candles) < period + 1:
+        return None
+
+    try:
+        signal = generate_high_low_signal(candles, period=period, breakout_buffer_bps=breakout_buffer_bps)
+        if signal.side in ("BUY", "SELL"):
+            return signal
+    except Exception:
+        return None
+
+    return None
+
+
 def detect_atr_signal(
     candles: Sequence[Candle],
     *,
@@ -497,6 +528,11 @@ def detect_signals(
     bb_signal = detect_bollinger_signal(candles)
     if bb_signal:
         signals.append(bb_signal)
+
+    # Detect High/Low channel breakout
+    hl_signal = detect_high_low_signal(candles)
+    if hl_signal:
+        signals.append(hl_signal)
 
     # Detect ATR (volatility)
     atr_signal = detect_atr_signal(candles)

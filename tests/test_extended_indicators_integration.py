@@ -149,6 +149,6 @@ def test_detect_signals_weights_updated() -> None:
     if opportunity:
         assert len(opportunity.signals) > 0
         # Verify various indicator codes could be present
-        valid_codes = {"RSI", "MACD", "STOCHASTIC", "BOLLINGER", "ATR", "MA_CROSS", "VOLUME_SPIKE"}
+        valid_codes = {"RSI", "MACD", "STOCHASTIC", "BOLLINGER", "HIGH_LOW", "ATR", "MA_CROSS", "VOLUME_SPIKE"}
         for sig in opportunity.signals:
             assert sig.code in valid_codes

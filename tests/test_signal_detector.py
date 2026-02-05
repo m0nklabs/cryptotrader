@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from core.signals.detector import detect_ma_crossover, detect_rsi_signal, detect_signals, detect_volume_spike
+from core.signals.detector import (
+    detect_high_low_signal,
+    detect_ma_crossover,
+    detect_rsi_signal,
+    detect_signals,
+    detect_volume_spike,
+)
 from core.types import Candle
 
 
@@ -159,3 +165,29 @@ def test_detect_signals_insufficient_data():
     )
 
     assert opportunity is None
+
+
+def test_detect_high_low_signal_breakout_returns_buy() -> None:
+    """High/Low breakout should return BUY signal."""
+    candles = [_make_candle(close=100.0, idx=i) for i in range(25)]
+    candles.append(_make_candle(close=120.0, idx=25))
+
+    signal = detect_high_low_signal(candles, period=20)
+
+    assert signal is not None
+    assert signal.code == "HIGH_LOW"
+    assert signal.side == "BUY"
+    assert signal.strength > 0
+
+
+def test_detect_high_low_signal_breakdown_returns_sell() -> None:
+    """High/Low breakdown should return SELL signal."""
+    candles = [_make_candle(close=100.0, idx=i) for i in range(25)]
+    candles.append(_make_candle(close=80.0, idx=25))
+
+    signal = detect_high_low_signal(candles, period=20)
+
+    assert signal is not None
+    assert signal.code == "HIGH_LOW"
+    assert signal.side == "SELL"
+    assert signal.strength > 0
