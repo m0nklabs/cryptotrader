@@ -54,9 +54,10 @@ def _redact_database_url(value: str) -> str:
         parts = urlsplit(normalized)
     except ValueError:
         return "***"
-    netloc = "***"
-    redacted_path = "/***" if parts.path and parts.path not in ("/", "") else parts.path
-    return urlunsplit((parts.scheme, netloc, redacted_path, "", ""))
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = "***@" + netloc.split("@", 1)[1]
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def _get_test_engine() -> AsyncEngine:
@@ -75,7 +76,7 @@ def _get_test_engine() -> AsyncEngine:
     if "://" not in database_url:
         candidate = f"postgresql+asyncpg://{database_url}"
         parsed = urlsplit(candidate)
-        if not parsed.netloc or not parsed.path:
+        if not parsed.netloc:
             raise ValueError(
                 f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
