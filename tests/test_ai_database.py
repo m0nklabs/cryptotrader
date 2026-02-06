@@ -46,6 +46,7 @@ _async_session_maker: sessionmaker | None = None
 
 
 def _redact_database_url(value: str) -> str:
+    """Redact credentials from a database URL for safe error messages."""
     normalized = value
     if "://" not in normalized:
         normalized = f"postgresql+asyncpg://{normalized}"
@@ -70,17 +71,12 @@ def _get_test_engine() -> AsyncEngine:
     # Convert to async URL if needed
     # Ensure we always use postgresql+asyncpg:// scheme
     if "://" not in database_url:
-        if "/" not in database_url:
+        if "/" not in database_url or database_url.endswith("/"):
             raise ValueError(
                 f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
             )
-        host_part, path_part = database_url.split("/", 1)
-        if not path_part:
-            raise ValueError(
-                f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
-                "Expected host:port/dbname or user:pass@host:port/dbname"
-            )
+        host_part, _path_part = database_url.split("/", 1)
         if "@" in host_part:
             userinfo, host = host_part.split("@", 1)
             if not userinfo or not host:
