@@ -97,7 +97,7 @@ class PriceWebSocketManager:
         async with self._lock:
             connections = list(self._connections.items())
 
-        failures: list[WebSocketLike] = []
+        failed_websockets: list[WebSocketLike] = []
         for websocket, state in connections:
             if state.exchange != exchange or symbol not in state.symbols:
                 continue
@@ -109,9 +109,9 @@ class PriceWebSocketManager:
                 await websocket.send_json(update)
             except Exception:
                 logger.warning("Failed to send price update to websocket", exc_info=True)
-                failures.append(websocket)
+                failed_websockets.append(websocket)
 
-        for websocket in failures:
+        for websocket in failed_websockets:
             await self.disconnect(websocket)
 
     async def broadcast_status(self, *, exchange: str, status: str) -> None:
@@ -119,7 +119,7 @@ class PriceWebSocketManager:
         async with self._lock:
             connections = list(self._connections.items())
 
-        failures: list[WebSocketLike] = []
+        failed_websockets: list[WebSocketLike] = []
         for websocket, state in connections:
             if state.exchange != exchange:
                 continue
@@ -127,9 +127,9 @@ class PriceWebSocketManager:
                 await websocket.send_json(payload)
             except Exception:
                 logger.warning("Failed to send status update to websocket", exc_info=True)
-                failures.append(websocket)
+                failed_websockets.append(websocket)
 
-        for websocket in failures:
+        for websocket in failed_websockets:
             await self.disconnect(websocket)
 
     async def _refresh_exchange_stream(self, exchange: str) -> None:
