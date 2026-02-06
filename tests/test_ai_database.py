@@ -44,6 +44,12 @@ _test_engine: AsyncEngine | None = None
 _async_session_maker: sessionmaker | None = None
 
 
+def _redact_database_url(value: str) -> str:
+    if "@" in value:
+        return "***@" + value.split("@", 1)[1]
+    return value
+
+
 def _get_test_engine() -> AsyncEngine:
     """Get or create the test database engine (singleton)."""
     global _test_engine, _async_session_maker
@@ -60,7 +66,7 @@ def _get_test_engine() -> AsyncEngine:
     if "://" not in database_url:
         if "/" not in database_url:
             raise ValueError(
-                f"Unsupported DATABASE_URL format: {database_url}. "
+                f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
             )
         database_url = f"postgresql+asyncpg://{database_url}"
@@ -72,7 +78,7 @@ def _get_test_engine() -> AsyncEngine:
     elif not database_url.startswith("postgresql+asyncpg://"):
         # If it doesn't match any expected pattern, fail clearly
         raise ValueError(
-            f"Unsupported DATABASE_URL format: {database_url}. "
+            f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
             "Expected postgresql://, postgres://, or postgresql+asyncpg://"
         )
 
