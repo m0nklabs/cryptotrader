@@ -126,14 +126,14 @@ class PostgresStores(
         engine = self._get_engine()
         _, text = self._require_sqlalchemy()
 
-        params: dict[str, Any] = {"exchanges": list(exchanges), "timeframe": timeframe}
-        where_clause = "exchange = ANY(:exchanges) AND timeframe = :timeframe"
-        if symbols:
-            params["symbols"] = list(symbols)
-            where_clause = f"{where_clause} AND symbol = ANY(:symbols)"
+        params: dict[str, Any] = {
+            "exchanges": list(exchanges),
+            "timeframe": timeframe,
+            "symbols": list(symbols) if symbols else [],
+        }
 
         stmt = text(
-            f"""
+            """
             SELECT exchange, symbol, close
             FROM (
                 SELECT
@@ -145,7 +145,12 @@ class PostgresStores(
                         ORDER BY open_time DESC
                     ) AS rn
                 FROM candles
-                WHERE {where_clause}
+                WHERE exchange = ANY(:exchanges)
+                  AND timeframe = :timeframe
+                  AND (
+                      cardinality(:symbols::text[]) = 0
+                      OR symbol = ANY(:symbols::text[])
+                  )
             ) t
             WHERE rn = 1
             """
