@@ -114,17 +114,11 @@ def test_redact_database_url_masks_credentials() -> None:
 
 
 def test_redact_database_url_without_credentials() -> None:
-    assert (
-        _redact_database_url("postgresql+asyncpg://localhost:5432/db")
-        == "postgresql+asyncpg://localhost:5432/db"
-    )
+    assert _redact_database_url("postgresql+asyncpg://localhost:5432/db") == "postgresql+asyncpg://localhost:5432/db"
 
 
 def test_redact_database_url_bare_format() -> None:
-    assert (
-        _redact_database_url("user:pass@localhost:5432/db")
-        == "postgresql+asyncpg://***@localhost:5432/db"
-    )
+    assert _redact_database_url("user:pass@localhost:5432/db") == "postgresql+asyncpg://***@localhost:5432/db"
 
 
 def test_normalize_database_url_accepts_bare_format() -> None:
