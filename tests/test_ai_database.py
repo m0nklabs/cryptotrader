@@ -13,10 +13,12 @@ Requires DATABASE_URL to be set and PostgreSQL running.
 from __future__ import annotations
 
 import os
+
 import pytest
 import pytest_asyncio
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from core.ai.types import RoleName
@@ -37,10 +39,18 @@ from db.crud.ai import (
     get_decisions,
 )
 
+# Module-level engine to avoid creating multiple engines
+_test_engine: AsyncEngine | None = None
+_async_session_maker: sessionmaker | None = None
 
-@pytest_asyncio.fixture
-async def db_session():
-    """Create an async database session for testing."""
+
+def _get_test_engine() -> AsyncEngine:
+    """Get or create the test database engine (singleton)."""
+    global _test_engine, _async_session_maker
+    
+    if _test_engine is not None:
+        return _test_engine
+    
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         pytest.skip("DATABASE_URL not set")
@@ -51,7 +61,19 @@ async def db_session():
     elif database_url.startswith("postgres://") and "asyncpg" not in database_url:
         database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
 
-    engine = create_async_engine(database_url, echo=False)
+    _test_engine = create_async_engine(database_url, echo=False)
+    _async_session_maker = sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
+    
+    return _test_engine
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Create an async database session for testing.
+    
+    Uses a module-level engine to avoid connection pool exhaustion.
+    """
+    engine = _get_test_engine()
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
@@ -119,62 +141,64 @@ async def test_prompt_versioning(db_session):
     """Test prompt creation, versioning, and activation."""
     test_role = "test_tactical"
 
-    # Get next version (should start at 1 if no prompts exist for this role)
-    next_ver = await get_next_version(db_session, test_role)
-    assert next_ver >= 1
+    try:
+        # Get next version (should start at 1 if no prompts exist for this role)
+        next_ver = await get_next_version(db_session, test_role)
+        assert next_ver >= 1
 
-    # Create first prompt
-    prompt1 = await create_prompt(
-        db_session,
-        prompt_id=f"{test_role}_v{next_ver}",
-        role=test_role,
-        version=next_ver,
-        content="Test prompt version 1",
-        description="First test prompt",
-        is_active=True,
-    )
-    assert prompt1.version == next_ver
-    assert prompt1.is_active is True
+        # Create first prompt
+        prompt1 = await create_prompt(
+            db_session,
+            prompt_id=f"{test_role}_v{next_ver}",
+            role=test_role,
+            version=next_ver,
+            content="Test prompt version 1",
+            description="First test prompt",
+            is_active=True,
+        )
+        assert prompt1.version == next_ver
+        assert prompt1.is_active is True
 
-    # Create second version
-    next_ver2 = await get_next_version(db_session, test_role)
-    assert next_ver2 == next_ver + 1
+        # Create second version
+        next_ver2 = await get_next_version(db_session, test_role)
+        assert next_ver2 == next_ver + 1
 
-    prompt2 = await create_prompt(
-        db_session,
-        prompt_id=f"{test_role}_v{next_ver2}",
-        role=test_role,
-        version=next_ver2,
-        content="Test prompt version 2",
-        description="Second test prompt",
-        is_active=False,
-    )
-    assert prompt2.version == next_ver2
+        prompt2 = await create_prompt(
+            db_session,
+            prompt_id=f"{test_role}_v{next_ver2}",
+            role=test_role,
+            version=next_ver2,
+            content="Test prompt version 2",
+            description="Second test prompt",
+            is_active=False,
+        )
+        assert prompt2.version == next_ver2
 
-    # Get all prompts for the role
-    prompts = await get_prompts(db_session, role=test_role)
-    assert len(prompts) >= 2
+        # Get all prompts for the role
+        prompts = await get_prompts(db_session, role=test_role)
+        assert len(prompts) >= 2
 
-    # Get active prompt (should be v1)
-    active = await get_active_prompt(db_session, test_role)
-    assert active is not None
-    assert active.version == next_ver
+        # Get active prompt (should be v1)
+        active = await get_active_prompt(db_session, test_role)
+        assert active is not None
+        assert active.version == next_ver
 
-    # Activate v2
-    activated = await activate_prompt(db_session, prompt2.id)
-    assert activated is not None
-    assert activated.is_active is True
+        # Activate v2
+        activated = await activate_prompt(db_session, prompt2.id)
+        assert activated is not None
+        assert activated.is_active is True
 
-    # Verify v1 is now inactive
-    active_now = await get_active_prompt(db_session, test_role)
-    assert active_now is not None
-    assert active_now.version == next_ver2
-
-    # Clean up
-    from sqlalchemy import text
-
-    await db_session.execute(text("DELETE FROM system_prompts WHERE role = :role"), {"role": test_role})
-    await db_session.commit()
+        # Verify v1 is now inactive
+        active_now = await get_active_prompt(db_session, test_role)
+        assert active_now is not None
+        assert active_now.version == next_ver2
+    finally:
+        # Clean up
+        try:
+            await db_session.execute(text("DELETE FROM system_prompts WHERE role = :role"), {"role": test_role})
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
 
 
 @pytest.mark.asyncio

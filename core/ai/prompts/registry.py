@@ -14,6 +14,7 @@ The registry uses a write-through cache:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -36,6 +37,7 @@ class PromptRegistry:
     _prompts: dict[str, SystemPrompt] = {}  # keyed by prompt id
     _db_enabled: bool = False
     _db_loaded: bool = False
+    _activation_lock: asyncio.Lock = asyncio.Lock()  # Prevent race conditions in activate_prompt
 
     @classmethod
     async def load_from_db(cls, db: AsyncSession) -> None:
@@ -152,34 +154,38 @@ class PromptRegistry:
         """Activate a prompt and deactivate all others for the same role (write-through).
 
         Returns the activated prompt or None if not found.
+        
+        Uses a lock to prevent race conditions when multiple concurrent requests
+        try to activate different prompts for the same role.
         """
         if not cls._db_enabled:
             raise RuntimeError("DB backend is not enabled. Call load_from_db() first.")
 
-        from db.crud.ai import activate_prompt as db_activate_prompt
+        async with cls._activation_lock:
+            from db.crud.ai import activate_prompt as db_activate_prompt
 
-        # Write to DB
-        db_prompt = await db_activate_prompt(db, prompt_id)
-        if not db_prompt:
-            return None
+            # Write to DB
+            db_prompt = await db_activate_prompt(db, prompt_id)
+            if not db_prompt:
+                return None
 
-        # Update cache: deactivate all prompts for this role, then activate the target
-        prompt_role = db_prompt.role
-        for p_id, p in cls._prompts.items():
-            if p.role.value == prompt_role:
-                # Create new dataclass with updated is_active
-                cls._prompts[p_id] = SystemPrompt(
-                    id=p.id,
-                    role=p.role,
-                    version=p.version,
-                    content=p.content,
-                    description=p.description,
-                    is_active=(p.id == prompt_id),
-                    created_at=p.created_at,
-                )
+            # Update cache: deactivate all prompts for this role, then activate the target
+            prompt_role = db_prompt.role
+            for p_id, p in cls._prompts.items():
+                if p.role.value == prompt_role:
+                    # Create new dataclass with updated is_active
+                    cls._prompts[p_id] = SystemPrompt(
+                        id=p.id,
+                        role=p.role,
+                        version=p.version,
+                        content=p.content,
+                        description=p.description,
+                        is_active=(p.id == prompt_id),
+                        created_at=p.created_at,
+                    )
 
-        logger.info("Activated prompt %s (role=%s)", prompt_id, prompt_role)
-        return cls._prompts.get(prompt_id)
+            logger.info("Activated prompt %s (role=%s)", prompt_id, prompt_role)
+            return cls._prompts.get(prompt_id)
 
     @classmethod
     def get(cls, prompt_id: str) -> SystemPrompt | None:

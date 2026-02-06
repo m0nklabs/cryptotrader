@@ -21,13 +21,27 @@ from db.models.ai import AIDecision, AIRoleConfig, AIUsageLog, SystemPrompt
 
 
 async def get_role_configs(db: AsyncSession) -> Sequence[AIRoleConfig]:
-    """Get all role configurations."""
+    """Get all role configurations.
+    
+    Returns:
+        Sequence of AIRoleConfig objects with all fields populated including
+        provider, model, system_prompt_id, temperature, max_tokens, weight,
+        enabled status, fallback settings, and updated_at timestamp.
+    """
     result = await db.execute(select(AIRoleConfig))
     return result.scalars().all()
 
 
 async def get_role_config(db: AsyncSession, role_name: str) -> AIRoleConfig | None:
-    """Get a specific role configuration."""
+    """Get a specific role configuration.
+    
+    Args:
+        role_name: Name of the role (e.g., "tactical", "screener")
+        
+    Returns:
+        AIRoleConfig object if found, None otherwise. Contains all configuration
+        fields including provider assignment, model, and system prompt reference.
+    """
     result = await db.execute(select(AIRoleConfig).where(AIRoleConfig.name == role_name))
     return result.scalars().first()
 
@@ -89,7 +103,24 @@ async def create_role_config(
     fallback_provider: str | None = None,
     fallback_model: str | None = None,
 ) -> AIRoleConfig:
-    """Create a new role configuration."""
+    """Create a new role configuration.
+    
+    Args:
+        name: Role name (e.g., "tactical", "screener")
+        provider: Provider name (e.g., "deepseek", "openai")
+        model: Model identifier
+        system_prompt_id: Optional reference to system prompt
+        temperature: Sampling temperature (0.0-1.0)
+        max_tokens: Maximum tokens for generation
+        weight: Consensus weight for this role
+        enabled: Whether role is active
+        fallback_provider: Optional fallback provider
+        fallback_model: Optional fallback model
+        
+    Returns:
+        Newly created AIRoleConfig with all fields populated including
+        auto-generated updated_at timestamp.
+    """
     config = AIRoleConfig(
         name=name,
         provider=provider,
@@ -103,8 +134,12 @@ async def create_role_config(
         fallback_model=fallback_model,
     )
     db.add(config)
-    await db.commit()
-    await db.refresh(config)
+    try:
+        await db.commit()
+        await db.refresh(config)
+    except Exception:
+        await db.rollback()
+        raise
     return config
 
 
@@ -142,7 +177,11 @@ async def create_prompt(
     description: str = "",
     is_active: bool = True,
 ) -> SystemPrompt:
-    """Create a new system prompt version."""
+    """Create a new system prompt version.
+    
+    Note: prompt_id should follow the format "{role}_v{version}" (e.g., "tactical_v1").
+    This convention ensures consistency across the system but is not strictly enforced.
+    """
     prompt = SystemPrompt(
         id=prompt_id,
         role=role,
@@ -152,8 +191,12 @@ async def create_prompt(
         is_active=is_active,
     )
     db.add(prompt)
-    await db.commit()
-    await db.refresh(prompt)
+    try:
+        await db.commit()
+        await db.refresh(prompt)
+    except Exception:
+        await db.rollback()
+        raise
     return prompt
 
 
@@ -174,8 +217,12 @@ async def activate_prompt(db: AsyncSession, prompt_id: str) -> SystemPrompt | No
     # Activate the target prompt
     await db.execute(update(SystemPrompt).where(SystemPrompt.id == prompt_id).values(is_active=True))
 
-    await db.commit()
-    await db.refresh(prompt)
+    try:
+        await db.commit()
+        await db.refresh(prompt)
+    except Exception:
+        await db.rollback()
+        raise
     return prompt
 
 
@@ -220,8 +267,12 @@ async def log_usage(
         error=error,
     )
     db.add(log)
-    await db.commit()
-    await db.refresh(log)
+    try:
+        await db.commit()
+        await db.refresh(log)
+    except Exception:
+        await db.rollback()
+        raise
     return log
 
 
@@ -315,8 +366,12 @@ async def log_decision(
         total_latency_ms=total_latency_ms,
     )
     db.add(decision)
-    await db.commit()
-    await db.refresh(decision)
+    try:
+        await db.commit()
+        await db.refresh(decision)
+    except Exception:
+        await db.rollback()
+        raise
     return decision
 
 
