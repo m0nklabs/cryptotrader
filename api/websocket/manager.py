@@ -4,7 +4,6 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-import contextlib
 from typing import Awaitable, Callable, Protocol
 
 from api.websocket.binance import BinanceWebSocketClient
@@ -201,8 +200,10 @@ class PriceWebSocketManager:
             await asyncio.wait_for(task, timeout=self.shutdown_timeout_seconds)
         except asyncio.TimeoutError:
             task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            try:
                 await task
+            except asyncio.CancelledError:
+                logger.debug("WebSocket task cancelled during shutdown")
         except asyncio.CancelledError:
             return
 
