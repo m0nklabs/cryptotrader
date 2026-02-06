@@ -43,7 +43,13 @@ class MockWebSocket {
   }
 }
 
-function HookHarness({ url, onMessage, subscribeMessage }: { url: string; onMessage: (data: unknown) => void; subscribeMessage?: Record<string, unknown> }) {
+type HookHarnessProps = {
+  url: string
+  onMessage: (data: unknown) => void
+  subscribeMessage?: Record<string, unknown>
+}
+
+function HookHarness({ url, onMessage, subscribeMessage }: HookHarnessProps) {
   useWebSocket({
     url,
     onMessage,

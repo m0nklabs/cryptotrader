@@ -107,7 +107,7 @@ async def test_binance_stream_prices_reports_disconnect_on_error() -> None:
             stop_event.set()
 
     async def on_price(update: dict[str, object]) -> None:
-        return None
+        pass
 
     client = BinanceWebSocketClient()
     with (
@@ -173,7 +173,7 @@ async def test_bitfinex_stream_prices_reports_disconnect_on_error() -> None:
             stop_event.set()
 
     async def on_price(update: dict[str, object]) -> None:
-        return None
+        pass
 
     client = BitfinexWebSocketClient()
     with (

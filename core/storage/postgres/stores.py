@@ -126,32 +126,49 @@ class PostgresStores(
         engine = self._get_engine()
         _, text = self._require_sqlalchemy()
 
-        symbol_filter = ""
         params: dict[str, Any] = {"exchanges": list(exchanges), "timeframe": timeframe}
         if symbols:
             params["symbols"] = list(symbols)
-            symbol_filter = "AND symbol = ANY(:symbols)"
-
-        stmt = text(
-            f"""
-            SELECT exchange, symbol, close
-            FROM (
-                SELECT
-                    exchange,
-                    symbol,
-                    close,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY exchange, symbol
-                        ORDER BY open_time DESC
-                    ) AS rn
-                FROM candles
-                WHERE exchange = ANY(:exchanges)
-                  AND timeframe = :timeframe
-                  {symbol_filter}
-            ) t
-            WHERE rn = 1
-            """
-        )
+            stmt = text(
+                """
+                SELECT exchange, symbol, close
+                FROM (
+                    SELECT
+                        exchange,
+                        symbol,
+                        close,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY exchange, symbol
+                            ORDER BY open_time DESC
+                        ) AS rn
+                    FROM candles
+                    WHERE exchange = ANY(:exchanges)
+                      AND timeframe = :timeframe
+                      AND symbol = ANY(:symbols)
+                ) t
+                WHERE rn = 1
+                """
+            )
+        else:
+            stmt = text(
+                """
+                SELECT exchange, symbol, close
+                FROM (
+                    SELECT
+                        exchange,
+                        symbol,
+                        close,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY exchange, symbol
+                            ORDER BY open_time DESC
+                        ) AS rn
+                    FROM candles
+                    WHERE exchange = ANY(:exchanges)
+                      AND timeframe = :timeframe
+                ) t
+                WHERE rn = 1
+                """
+            )
 
         with engine.begin() as conn:
             rows = conn.execute(stmt, params).fetchall()
