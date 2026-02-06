@@ -64,7 +64,7 @@ def _normalize_database_url(database_url: str) -> str:
     if "://" not in database_url:
         candidate = f"postgresql+asyncpg://{database_url}"
         parsed = urlsplit(candidate)
-        if not parsed.netloc:
+        if not parsed.netloc or parsed.path in {"", "/"}:
             raise ValueError(
                 f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
@@ -125,9 +125,10 @@ def test_normalize_database_url_accepts_bare_format() -> None:
     assert _normalize_database_url("localhost:5432/testdb") == "postgresql+asyncpg://localhost:5432/testdb"
 
 
-def test_normalize_database_url_rejects_empty_bare_format() -> None:
+@pytest.mark.parametrize("value", ["", "localhost:5432"])
+def test_normalize_database_url_rejects_empty_bare_format(value: str) -> None:
     with pytest.raises(ValueError):
-        _normalize_database_url("")
+        _normalize_database_url(value)
 
 
 @pytest_asyncio.fixture
