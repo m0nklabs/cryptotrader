@@ -71,12 +71,17 @@ def _get_test_engine() -> AsyncEngine:
     # Convert to async URL if needed
     # Ensure we always use postgresql+asyncpg:// scheme
     if "://" not in database_url:
-        if "/" not in database_url or database_url.endswith("/"):
+        if "/" not in database_url:
             raise ValueError(
                 f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
             )
-        host_part, _path_part = database_url.split("/", 1)
+        host_part, path_part = database_url.split("/", 1)
+        if not host_part or not path_part:
+            raise ValueError(
+                f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
+                "Expected host:port/dbname or user:pass@host:port/dbname"
+            )
         if "@" in host_part:
             userinfo, host = host_part.split("@", 1)
             if not userinfo or not host:
@@ -84,11 +89,6 @@ def _get_test_engine() -> AsyncEngine:
                     f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                     "Expected host:port/dbname or user:pass@host:port/dbname"
                 )
-        elif not host_part:
-            raise ValueError(
-                f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
-                "Expected host:port/dbname or user:pass@host:port/dbname"
-            )
         database_url = f"postgresql+asyncpg://{database_url}"
     if database_url.startswith("postgresql://"):
         if "+asyncpg" not in database_url:
