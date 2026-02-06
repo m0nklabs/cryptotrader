@@ -13,12 +13,14 @@ Requires DATABASE_URL to be set and PostgreSQL running.
 from __future__ import annotations
 
 import os
+from pathlib import Path
+from typing import Iterable
 
 import pytest
 import pytest_asyncio
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from core.ai.types import RoleName
@@ -39,18 +41,68 @@ from db.crud.ai import (
     get_decisions,
 )
 
-# Module-level singletons to avoid creating multiple engines/sessions
-_test_engine: AsyncEngine | None = None
-_async_session_maker: sessionmaker | None = None
+
+def _iter_sql_statements(sql: str) -> Iterable[str]:
+    """Split a SQL script into executable statements.
+
+    Supports:
+    - `--` line comments
+    - quoted strings (single and double quotes)
+
+    This is intentionally simple and designed for our migration SQL (no $$ quoting).
+    """
+
+    buf: list[str] = []
+    in_single = False
+    in_double = False
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+
+        # Handle -- comments (only when not in quotes)
+        if not in_single and not in_double and ch == "-" and i + 1 < len(sql) and sql[i + 1] == "-":
+            while i < len(sql) and sql[i] not in ("\n", "\r"):
+                i += 1
+            continue
+
+        if ch == "'" and not in_double:
+            # Toggle single quote state unless escaped by doubling ''
+            if in_single and i + 1 < len(sql) and sql[i + 1] == "'":
+                buf.append("''")
+                i += 2
+                continue
+            in_single = not in_single
+            buf.append(ch)
+            i += 1
+            continue
+
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            buf.append(ch)
+            i += 1
+            continue
+
+        if ch == ";" and not in_single and not in_double:
+            stmt = "".join(buf).strip()
+            buf = []
+            if stmt:
+                yield stmt
+            i += 1
+            continue
+
+        buf.append(ch)
+        i += 1
+
+    tail = "".join(buf).strip()
+    if tail:
+        yield tail
 
 
-def _get_test_engine() -> AsyncEngine:
-    """Get or create the test database engine (singleton)."""
-    global _test_engine, _async_session_maker
+def _get_test_database_url() -> str:
+    """Get DATABASE_URL normalized to asyncpg.
 
-    if _test_engine is not None:
-        return _test_engine
-
+    CI may use psycopg2 (sync) URL format, but these tests use SQLAlchemy async.
+    """
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         pytest.skip("DATABASE_URL not set")
@@ -70,35 +122,55 @@ def _get_test_engine() -> AsyncEngine:
     else:
         pytest.skip(f"Unsupported DATABASE_URL format: {database_url}")
 
-    _test_engine = create_async_engine(database_url, echo=False)
-
-    # Verify asyncpg is importable — CI may not have it installed
+    # Verify asyncpg is importable (required for SQLAlchemy async engine)
     try:
         import asyncpg  # noqa: F401
     except ImportError:
-        _test_engine = None
         pytest.skip("asyncpg not installed — skipping async DB tests")
 
-    _async_session_maker = sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
+    return database_url
 
-    return _test_engine
+
+@pytest.fixture(autouse=True)
+def _reset_prompt_registry_state() -> None:
+    """Reset PromptRegistry global state between tests for isolation."""
+    PromptRegistry._prompts = {}
+    PromptRegistry._db_enabled = False
+    PromptRegistry._db_loaded = False
+    PromptRegistry._activation_lock = None
 
 
 @pytest_asyncio.fixture
 async def db_session():
     """Create an async database session for testing.
 
-    Uses a module-level engine to avoid connection pool exhaustion.
-    """
-    engine = _get_test_engine()
-    # Reuse the cached session maker if available
-    if _async_session_maker is not None:
-        async_session = _async_session_maker
-    else:
-        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    Creates a fresh engine per test to avoid event-loop cross-contamination
+    under pytest-asyncio strict mode (default loop scope is function).
 
-    async with async_session() as session:
-        yield session
+    Also applies the AI tables migration to the CI-created database.
+    """
+    database_url = _get_test_database_url()
+    engine = create_async_engine(database_url, echo=False)
+
+    migrations_sql_path = Path(__file__).resolve().parents[1] / "db" / "migrations" / "001_ai_tables.sql"
+    migration_sql = migrations_sql_path.read_text(encoding="utf-8")
+
+    async with engine.begin() as conn:
+        # Apply migration (idempotent)
+        for stmt in _iter_sql_statements(migration_sql):
+            await conn.execute(text(stmt))
+
+        # Ensure a clean DB state per test
+        await conn.execute(
+            text("TRUNCATE system_prompts, ai_role_configs, ai_usage_log, ai_decisions " "RESTART IDENTITY CASCADE")
+        )
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with async_session() as session:
+            yield session
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
