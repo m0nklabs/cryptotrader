@@ -162,7 +162,7 @@ async def db_session():
 
         # Ensure a clean DB state per test
         await conn.execute(
-            text("TRUNCATE system_prompts, ai_role_configs, ai_usage_log, ai_decisions " "RESTART IDENTITY CASCADE")
+            text("TRUNCATE system_prompts, ai_role_configs, ai_usage_log, ai_decisions RESTART IDENTITY CASCADE")
         )
 
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
