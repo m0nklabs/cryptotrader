@@ -205,8 +205,20 @@ class DeepSeekProvider(LLMProvider):
                         except json.JSONDecodeError:
                             continue
         except httpx.HTTPStatusError as e:
-            # Classify HTTP errors
-            error = classify_http_error(e.response.status_code, str(e))
+            # Classify HTTP errors, including a truncated response body for debugging
+            status_code = e.response.status_code if e.response is not None else None
+            message = str(e)
+            try:
+                if e.response is not None:
+                    body_text = e.response.text or ""
+                    if body_text:
+                        # Truncate body to avoid huge logs but keep it useful
+                        preview = body_text[:512]
+                        message = f"{message} | body: {preview}"
+            except Exception:
+                # If reading the body fails for any reason, fall back to the base message
+                pass
+            error = classify_http_error(status_code, message)
             raise error
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
             # Network errors are transient

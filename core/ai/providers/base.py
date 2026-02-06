@@ -67,8 +67,8 @@ class TokenBucket:
         Args:
             tokens: Number of tokens to acquire (default 1)
         """
-        async with self._bucket_lock:
-            while True:
+        while True:
+            async with self._bucket_lock:
                 now = time.monotonic()
                 elapsed = now - self.last_update
 
@@ -86,14 +86,16 @@ class TokenBucket:
                     )
                     return
 
-                # Wait until we have enough tokens
+                # Calculate wait time but release lock before sleeping
                 wait_time = (tokens - self.tokens) / self.rate_per_second
                 logger.debug(
                     "Rate limit reached for %s, waiting %.2fs",
                     self.provider.value,
                     wait_time,
                 )
-                await asyncio.sleep(min(wait_time, 1.0))  # Cap sleep at 1s for responsiveness
+
+            # Sleep outside the lock to allow other coroutines to acquire tokens
+            await asyncio.sleep(min(wait_time, 1.0))  # Cap sleep at 1s for responsiveness
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +321,16 @@ class LLMProvider(ABC):
         try:
             resp = await client.request(method, url, **kwargs)
             resp.raise_for_status()
-            return resp.json()
+            try:
+                return resp.json()
+            except (json.JSONDecodeError, ValueError) as e:
+                # Malformed or non-JSON response bodies are typically transient
+                # (proxy errors, gateway timeouts with HTML, etc.)
+                text_snippet = resp.text[:200] if hasattr(resp, "text") else ""
+                raise TransientError(
+                    f"{method} {url} returned invalid JSON: {e}; body snippet: {text_snippet}",
+                    status_code=resp.status_code,
+                ) from e
         except httpx.HTTPStatusError as e:
             # Classify the error
             error = classify_http_error(
