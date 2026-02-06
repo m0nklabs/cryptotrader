@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class TokenBucket:
     """Token bucket rate limiter (singleton per provider).
-    
+
     Bitfinex-style global singleton pattern — one bucket per provider.
     Allows burst traffic up to the capacity, then refills at a steady rate.
     """
@@ -34,7 +34,7 @@ class TokenBucket:
 
     def __init__(self, rate_per_minute: int, provider: ProviderName) -> None:
         """Initialize token bucket.
-        
+
         Args:
             rate_per_minute: Requests per minute allowed
             provider: Provider name for this bucket
@@ -56,7 +56,7 @@ class TokenBucket:
 
     async def acquire(self, tokens: int = 1) -> None:
         """Acquire tokens (wait if necessary).
-        
+
         Args:
             tokens: Number of tokens to acquire (default 1)
         """
@@ -64,7 +64,7 @@ class TokenBucket:
             while True:
                 now = time.monotonic()
                 elapsed = now - self.last_update
-                
+
                 # Refill tokens based on elapsed time
                 self.tokens = min(self.capacity, self.tokens + elapsed * self.rate_per_second)
                 self.last_update = now
@@ -119,30 +119,30 @@ class PermanentError(LLMError):
 
 def classify_http_error(status_code: int, message: str) -> LLMError:
     """Classify HTTP errors as transient or permanent.
-    
+
     Args:
         status_code: HTTP status code
         message: Error message
-        
+
     Returns:
         Appropriate LLMError subclass
     """
     # Transient errors (retry-able)
     if status_code in {429, 502, 503, 504}:
         return TransientError(message, status_code)
-    
+
     # Permanent errors (not retry-able)
     if status_code in {400, 401, 403, 404}:
         return PermanentError(message, status_code)
-    
+
     # Default to transient for 5xx (except those explicitly handled)
     if 500 <= status_code < 600:
         return TransientError(message, status_code)
-    
+
     # 4xx errors default to permanent
     if 400 <= status_code < 500:
         return PermanentError(message, status_code)
-    
+
     # Unknown - treat as transient to be safe
     return TransientError(message, status_code)
 
@@ -159,20 +159,21 @@ def with_retry(
     jitter: bool = True,
 ) -> Callable:
     """Decorator for exponential backoff with jitter.
-    
+
     Args:
         max_retries: Maximum number of retry attempts
         base_delay: Initial delay in seconds
         max_delay: Maximum delay in seconds
         jitter: Whether to add random jitter to delays
-        
+
     Returns:
         Decorated async function with retry logic
     """
+
     def decorator(func: Callable) -> Callable:
         async def wrapper(*args, **kwargs) -> Any:
             last_error: Exception | None = None
-            
+
             for attempt in range(max_retries + 1):
                 try:
                     return await func(*args, **kwargs)
@@ -186,12 +187,12 @@ def with_retry(
                             e,
                         )
                         raise
-                    
+
                     # Calculate delay with exponential backoff
-                    delay = min(base_delay * (2 ** attempt), max_delay)
+                    delay = min(base_delay * (2**attempt), max_delay)
                     if jitter:
-                        delay *= (0.5 + random.random())  # Randomize between 50%-150% of delay
-                    
+                        delay *= 0.5 + random.random()  # Randomize between 50%-150% of delay
+
                     logger.warning(
                         "Transient error in %s (attempt %d/%d): %s. Retrying in %.2fs",
                         func.__name__,
@@ -208,11 +209,12 @@ def with_retry(
                     # Unknown errors - treat as permanent for safety
                     logger.error("Unexpected error in %s: %s", func.__name__, e)
                     raise PermanentError(str(e))
-            
+
             # Should not reach here, but just in case
             raise last_error or Exception("Retry logic error")
-        
+
         return wrapper
+
     return decorator
 
 
@@ -223,30 +225,30 @@ def with_retry(
 
 def validate_json_response(raw_text: str, required_keys: list[str] | None = None) -> dict[str, Any] | None:
     """Validate and parse JSON response from LLM.
-    
+
     Args:
         raw_text: Raw response text from LLM
         required_keys: Optional list of required keys in the JSON
-        
+
     Returns:
         Parsed JSON dict, or None if invalid
-        
+
     Raises:
         PermanentError: If JSON is malformed and required
     """
     if not raw_text or not raw_text.strip():
         return None
-    
+
     try:
         parsed = json.loads(raw_text)
-        
+
         # Validate required keys if specified
         if required_keys:
             missing = [key for key in required_keys if key not in parsed]
             if missing:
                 logger.warning("JSON response missing required keys: %s", missing)
                 return None
-        
+
         return parsed
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse JSON response: %s", e)
@@ -288,16 +290,16 @@ class LLMProvider(ABC):
         **kwargs,
     ) -> dict[str, Any]:
         """Make HTTP request with retry and error handling.
-        
+
         Args:
             client: HTTP client to use
             method: HTTP method (GET, POST, etc.)
             url: Request URL
             **kwargs: Additional request arguments
-            
+
         Returns:
             Parsed JSON response
-            
+
         Raises:
             TransientError: For retry-able errors
             PermanentError: For non-retry-able errors
@@ -364,17 +366,17 @@ class LLMProvider(ABC):
         max_tokens: int | None = None,
     ):
         """Stream chat-completion response (optional, provider-specific).
-        
+
         Args:
             request: The AI request (role, user prompt, context).
             system_prompt: The system prompt to prepend.
             model: Override the provider's default model.
             temperature: Override the default temperature.
             max_tokens: Override the default max tokens.
-            
+
         Yields:
             Chunks of response text as they arrive.
-            
+
         Note:
             Default implementation falls back to non-streaming complete().
             Providers that support streaming should override this method.

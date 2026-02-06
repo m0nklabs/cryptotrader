@@ -157,14 +157,14 @@ class DeepSeekProvider(LLMProvider):
         max_tokens: int | None = None,
     ):
         """Stream chat-completion response from DeepSeek.
-        
+
         Args:
             request: The AI request (role, user prompt, context).
             system_prompt: The system prompt to prepend.
             model: Override the provider's default model.
             temperature: Override the default temperature.
             max_tokens: Override the default max tokens.
-        
+
         Yields:
             str: Text chunks as they arrive from the API.
         """
