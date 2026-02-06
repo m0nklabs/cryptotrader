@@ -13,6 +13,7 @@ Requires DATABASE_URL to be set and PostgreSQL running.
 from __future__ import annotations
 
 import os
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 import pytest_asyncio
@@ -45,9 +46,14 @@ _async_session_maker: sessionmaker | None = None
 
 
 def _redact_database_url(value: str) -> str:
-    if "@" in value:
-        return "***@" + value.split("@", 1)[1]
-    return value
+    normalized = value
+    if "://" not in normalized:
+        normalized = f"postgresql+asyncpg://{normalized}"
+    parts = urlsplit(normalized)
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = "***@" + netloc.split("@", 1)[1]
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def _get_test_engine() -> AsyncEngine:
@@ -65,6 +71,24 @@ def _get_test_engine() -> AsyncEngine:
     # Ensure we always use postgresql+asyncpg:// scheme
     if "://" not in database_url:
         if "/" not in database_url:
+            raise ValueError(
+                f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
+                "Expected host:port/dbname or user:pass@host:port/dbname"
+            )
+        host_part, path_part = database_url.split("/", 1)
+        if not path_part:
+            raise ValueError(
+                f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
+                "Expected host:port/dbname or user:pass@host:port/dbname"
+            )
+        if "@" in host_part:
+            userinfo, host = host_part.split("@", 1)
+            if not userinfo or not host:
+                raise ValueError(
+                    f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
+                    "Expected host:port/dbname or user:pass@host:port/dbname"
+                )
+        elif not host_part:
             raise ValueError(
                 f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
