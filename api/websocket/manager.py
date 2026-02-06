@@ -49,6 +49,8 @@ class ExchangeState:
 class PriceWebSocketManager:
     """Manage WebSocket subscribers and exchange streaming tasks."""
 
+    shutdown_timeout_seconds = 1.0
+
     def __init__(
         self,
         *,
@@ -186,7 +188,7 @@ class PriceWebSocketManager:
 
     async def _await_task(self, task: asyncio.Task) -> None:
         try:
-            await asyncio.wait_for(task, timeout=1.0)
+            await asyncio.wait_for(task, timeout=self.shutdown_timeout_seconds)
         except asyncio.TimeoutError:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
