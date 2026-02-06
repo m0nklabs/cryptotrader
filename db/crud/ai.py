@@ -231,14 +231,14 @@ async def activate_prompt(db: AsyncSession, prompt_id: str) -> SystemPrompt | No
     except Exception:
         await db.rollback()
         raise
-    
+
     # Refresh after successful commit
     try:
         await db.refresh(prompt)
     except Exception:
         # If refresh fails, log but don't fail the whole operation since commit succeeded
         logger.warning("Failed to refresh prompt after activation, but DB commit succeeded")
-    
+
     return prompt
 
 
@@ -391,15 +391,11 @@ async def log_decision(
     # Validate final_action
     valid_actions = {"BUY", "SELL", "NEUTRAL", "VETO"}
     if final_action not in valid_actions:
-        raise ValueError(
-            f"final_action must be one of {valid_actions}, got {final_action!r}"
-        )
+        raise ValueError(f"final_action must be one of {valid_actions}, got {final_action!r}")
 
     # Validate final_confidence range
     if not 0.0 <= final_confidence <= 1.0:
-        raise ValueError(
-            f"final_confidence must be between 0.0 and 1.0, got {final_confidence!r}"
-        )
+        raise ValueError(f"final_confidence must be between 0.0 and 1.0, got {final_confidence!r}")
 
     decision = AIDecision(
         symbol=symbol,
