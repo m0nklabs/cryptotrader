@@ -10,7 +10,7 @@ These models map to the tables created by db/migrations/001_ai_tables.sql:
 from __future__ import annotations
 
 
-from sqlalchemy import BigInteger, Boolean, Column, Float, Integer, Text, ForeignKey, Index, DateTime, func
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 

@@ -66,6 +66,7 @@ class PromptRegistry:
                 return
 
             # Convert DB models to dataclass types
+            skipped = 0
             for db_prompt in db_prompts:
                 try:
                     prompt = SystemPrompt(
@@ -80,12 +81,14 @@ class PromptRegistry:
                     cls._prompts[prompt.id] = prompt
                 except ValueError:
                     # Skip prompts with invalid role names (e.g., test roles)
+                    skipped += 1
                     logger.warning("Skipping prompt %s with invalid role: %s", db_prompt.id, db_prompt.role)
                     continue
 
             cls._db_loaded = True
             cls._db_enabled = True
-            logger.info("Loaded %d prompts from database", len(db_prompts))
+            loaded = len(db_prompts) - skipped
+            logger.info("Loaded %d prompts from database (skipped %d with invalid roles)", loaded, skipped)
 
         except Exception as exc:
             logger.error("Failed to load prompts from DB: %s", exc)

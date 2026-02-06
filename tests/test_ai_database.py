@@ -41,12 +41,11 @@ from db.crud.ai import (
 
 # Module-level engine to avoid creating multiple engines
 _test_engine: AsyncEngine | None = None
-_async_session_maker: sessionmaker | None = None
 
 
 def _get_test_engine() -> AsyncEngine:
     """Get or create the test database engine (singleton)."""
-    global _test_engine, _async_session_maker
+    global _test_engine
 
     if _test_engine is not None:
         return _test_engine
@@ -62,7 +61,6 @@ def _get_test_engine() -> AsyncEngine:
         database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
 
     _test_engine = create_async_engine(database_url, echo=False)
-    _async_session_maker = sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
 
     return _test_engine
 
@@ -83,53 +81,55 @@ async def db_session():
 @pytest.mark.asyncio
 async def test_role_config_crud(db_session):
     """Test full CRUD cycle for role configurations."""
-    # Create a test role config
     test_role = "test_screener"
 
     # Delete if exists (cleanup from previous runs)
     await db_session.execute(text("DELETE FROM ai_role_configs WHERE name = :name"), {"name": test_role})
     await db_session.commit()
 
-    config = await create_role_config(
-        db_session,
-        name=test_role,
-        provider="deepseek",
-        model="deepseek-chat",
-        temperature=0.0,
-        max_tokens=2048,
-        weight=0.8,
-        enabled=True,
-    )
+    try:
+        config = await create_role_config(
+            db_session,
+            name=test_role,
+            provider="deepseek",
+            model="deepseek-chat",
+            temperature=0.0,
+            max_tokens=2048,
+            weight=0.8,
+            enabled=True,
+        )
 
-    assert config.name == test_role
-    assert config.provider == "deepseek"
-    assert config.model == "deepseek-chat"
-    assert abs(config.weight - 0.8) < 0.01  # Floating point comparison
+        assert config.name == test_role
+        assert config.provider == "deepseek"
+        assert config.model == "deepseek-chat"
+        assert abs(config.weight - 0.8) < 0.01  # Floating point comparison
 
-    # Read it back
-    retrieved = await get_role_config(db_session, test_role)
-    assert retrieved is not None
-    assert retrieved.name == test_role
-    assert retrieved.provider == "deepseek"
+        # Read it back
+        retrieved = await get_role_config(db_session, test_role)
+        assert retrieved is not None
+        assert retrieved.name == test_role
+        assert retrieved.provider == "deepseek"
 
-    # Update it
-    updated = await update_role_config(
-        db_session,
-        test_role,
-        model="deepseek-reasoner",
-        weight=1.5,
-    )
-    assert updated is not None
-    assert updated.model == "deepseek-reasoner"
-    assert abs(updated.weight - 1.5) < 0.01  # Floating point comparison
+        # Update it
+        updated = await update_role_config(
+            db_session,
+            test_role,
+            model="deepseek-reasoner",
+            weight=1.5,
+        )
+        assert updated is not None
+        assert updated.model == "deepseek-reasoner"
+        assert abs(updated.weight - 1.5) < 0.01  # Floating point comparison
 
-    # List all configs
-    all_configs = await get_role_configs(db_session)
-    assert len(all_configs) >= 5  # 4 defaults + our test one
-
-    # Clean up
-    await db_session.execute(text("DELETE FROM ai_role_configs WHERE name = :name"), {"name": test_role})
-    await db_session.commit()
+        # List all configs
+        all_configs = await get_role_configs(db_session)
+        assert len(all_configs) >= 5  # 4 defaults + our test one
+    finally:
+        try:
+            await db_session.execute(text("DELETE FROM ai_role_configs WHERE name = :name"), {"name": test_role})
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
 
 
 @pytest.mark.asyncio
@@ -327,11 +327,7 @@ async def test_seed_idempotency(db_session):
     configs_before = await get_role_configs(db_session)
     prompts_before = await get_prompts(db_session)
 
-    # Run seed script again (import and call its functions)
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    # Import seed functions (project root is already on sys.path via conftest/pytest)
     from scripts.seed_ai_defaults import seed_role_configs, seed_system_prompts
 
     # Seed again

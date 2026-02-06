@@ -6,7 +6,7 @@ All functions are designed to work with FastAPI dependency injection.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime  # used in get_usage_summary type hints
 from typing import Sequence
 
 from sqlalchemy import select, update, and_, func
@@ -62,7 +62,9 @@ async def update_role_config(
     """Update a role configuration.
 
     Only updates fields that are provided (not None).
-    Returns the updated config or None if not found.
+
+    Returns:
+        Updated AIRoleConfig with refreshed fields, or None if the role was not found.
     """
     values = {"updated_at": func.now()}
     if provider is not None:
@@ -85,7 +87,11 @@ async def update_role_config(
         values["fallback_model"] = fallback_model
 
     await db.execute(update(AIRoleConfig).where(AIRoleConfig.name == role_name).values(**values))
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
 
     return await get_role_config(db, role_name)
 
@@ -253,7 +259,11 @@ async def log_usage(
     success: bool = True,
     error: str | None = None,
 ) -> AIUsageLog:
-    """Log AI usage (tokens, cost, latency)."""
+    """Log AI usage (tokens, cost, latency).
+
+    Returns:
+        Newly created AIUsageLog with auto-generated id and created_at timestamp.
+    """
     log = AIUsageLog(
         role=role,
         provider=provider,
@@ -286,7 +296,10 @@ async def get_usage_summary(
 ) -> dict:
     """Get usage summary with filters.
 
-    Returns aggregate statistics: total requests, total cost, avg latency, success rate.
+    Returns:
+        Dict with keys: total_requests, total_tokens_in, total_tokens_out,
+        total_cost, avg_latency, success_rate. All values default to 0 when
+        no matching records exist.
     """
     query = select(
         func.count(AIUsageLog.id).label("total_requests"),
@@ -353,7 +366,11 @@ async def log_decision(
     total_cost_usd: float = 0.0,
     total_latency_ms: float = 0.0,
 ) -> AIDecision:
-    """Log an AI consensus decision."""
+    """Log an AI consensus decision.
+
+    Returns:
+        Newly created AIDecision with auto-generated id and created_at timestamp.
+    """
     decision = AIDecision(
         symbol=symbol,
         timeframe=timeframe,
