@@ -76,14 +76,14 @@ def _get_test_engine() -> AsyncEngine:
                 f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
             )
-        host_part, path_part = database_url.split("/", 1)
+        host_part, path_part = database_url.rsplit("/", 1)
         if not host_part or not path_part:
             raise ValueError(
                 f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
             )
         if "@" in host_part:
-            userinfo, host = host_part.split("@", 1)
+            userinfo, host = host_part.rsplit("@", 1)
             if not userinfo or not host:
                 raise ValueError(
                     f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
