@@ -158,7 +158,15 @@ class DeepSeekProvider(LLMProvider):
     ):
         """Stream chat-completion response from DeepSeek.
         
-        Yields text chunks as they arrive from the API.
+        Args:
+            request: The AI request (role, user prompt, context).
+            system_prompt: The system prompt to prepend.
+            model: Override the provider's default model.
+            temperature: Override the default temperature.
+            max_tokens: Override the default max tokens.
+        
+        Yields:
+            str: Text chunks as they arrive from the API.
         """
         model = model or request.override_model or self.config.default_model
         temperature = temperature or request.override_temperature or self.config.temperature

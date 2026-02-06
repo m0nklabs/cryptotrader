@@ -190,7 +190,7 @@ def with_retry(
                     # Calculate delay with exponential backoff
                     delay = min(base_delay * (2 ** attempt), max_delay)
                     if jitter:
-                        delay *= (0.5 + random.random())  # Add 0-50% jitter
+                        delay *= (0.5 + random.random())  # Randomize between 50%-150% of delay
                     
                     logger.warning(
                         "Transient error in %s (attempt %d/%d): %s. Retrying in %.2fs",
