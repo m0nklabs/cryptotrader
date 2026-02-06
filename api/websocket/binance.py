@@ -32,7 +32,7 @@ class BinanceWebSocketClient:
         if not symbols:
             return
 
-        symbol_map = { _normalize_binance_symbol(symbol): symbol for symbol in symbols }
+        symbol_map = {_normalize_binance_symbol(symbol): symbol for symbol in symbols}
         streams = "/".join(f"{symbol.lower()}@ticker" for symbol in sorted(symbol_map))
         url = f"{self.base_url}?streams={streams}"
 
