@@ -30,7 +30,7 @@ class TokenBucket:
     """
 
     _instances: dict[ProviderName, "TokenBucket"] = {}
-    _lock = asyncio.Lock()
+    _lock: asyncio.Lock | None = None
 
     def __init__(self, rate_per_minute: int, provider: ProviderName) -> None:
         """Initialize token bucket.
@@ -47,9 +47,16 @@ class TokenBucket:
         self._bucket_lock = asyncio.Lock()
 
     @classmethod
+    def _get_lock(cls) -> asyncio.Lock:
+        """Get or create the class-level lock (lazy initialization)."""
+        if cls._lock is None:
+            cls._lock = asyncio.Lock()
+        return cls._lock
+
+    @classmethod
     async def get_instance(cls, provider: ProviderName, rate_per_minute: int) -> "TokenBucket":
         """Get or create singleton bucket for provider."""
-        async with cls._lock:
+        async with cls._get_lock():
             if provider not in cls._instances:
                 cls._instances[provider] = cls(rate_per_minute, provider)
             return cls._instances[provider]
@@ -143,8 +150,9 @@ def classify_http_error(status_code: int, message: str) -> LLMError:
     if 400 <= status_code < 500:
         return PermanentError(message, status_code)
 
-    # Unknown - treat as transient to be safe
-    return TransientError(message, status_code)
+    # Unexpected status codes (< 400 or >= 600) - treat as permanent
+    # since they indicate unexpected behavior that shouldn't be retried
+    return PermanentError(message, status_code)
 
 
 # ---------------------------------------------------------------------------
@@ -231,10 +239,7 @@ def validate_json_response(raw_text: str, required_keys: list[str] | None = None
         required_keys: Optional list of required keys in the JSON
 
     Returns:
-        Parsed JSON dict, or None if invalid
-
-    Raises:
-        PermanentError: If JSON is malformed and required
+        Parsed JSON dict, or None if invalid or missing required keys
     """
     if not raw_text or not raw_text.strip():
         return None

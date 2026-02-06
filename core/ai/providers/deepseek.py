@@ -210,7 +210,8 @@ class DeepSeekProvider(LLMProvider):
                             continue
         except Exception as e:
             logger.error("DeepSeek streaming failed: %s", e)
-            # Fall back to non-streaming
+            # Fall back to non-streaming: yields entire response as single chunk
+            # Callers expecting incremental chunks will receive one large chunk instead
             async for chunk in super().complete_stream(
                 request,
                 system_prompt=system_prompt,
