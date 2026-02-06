@@ -119,6 +119,16 @@ python -m core.market_data.bitfinex_backfill \
   --resume
 ```
 
+Binance backfill uses the same CLI shape, with symbol normalization (e.g. BTCUSD → BTCUSDT):
+
+```bash
+python -m core.market_data.binance_backfill \
+  --symbol BTCUSD \
+  --timeframe 1h \
+  --start 2024-01-01 \
+  --exchange binance
+```
+
 ## Gap Detection and Repair
 
 After ingestion, you can detect and repair gaps in your data:

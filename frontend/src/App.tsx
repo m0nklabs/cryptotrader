@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import CandlestickChart from './components/CandlestickChart'
+import ArbitragePanel from './components/ArbitragePanel'
+import LivePrice from './components/LivePrice'
 import OrderForm from './components/OrderForm'
 import OrdersTable from './components/OrdersTable'
 import PositionsTable from './components/PositionsTable'
@@ -23,6 +25,8 @@ import { createCandleStream, type CandleUpdate } from './api/candleStream'
 import { fetchSystemStatus, type SystemStatus } from './api/systemStatus'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import type { ShortcutAction } from './lib/shortcuts'
+import { useExchangeStore, type ExchangeOption } from './stores/exchangeStore'
+import { usePriceStore } from './stores/priceStore'
 
 type Theme = 'light' | 'dark'
 
@@ -161,6 +165,8 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewId>(VIEW_IDS.DASHBOARD)
   const settingsRef = useRef<HTMLDivElement | null>(null)
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false)
+  const selectedExchange = useExchangeStore((state) => state.selectedExchange)
+  const setSelectedExchange = useExchangeStore((state) => state.setExchange)
 
   const [chartSymbol, setChartSymbol] = useState<string>('BTCUSD')
   const [chartTimeframe, setChartTimeframe] = useState<string>('1h')
@@ -171,7 +177,9 @@ export default function App() {
   const [chartError, setChartError] = useState<string | null>(null)
   const [chartLoading, setChartLoading] = useState(false)
   const [useWebSocket, setUseWebSocket] = useState(true) // Enable WebSocket by default
-  const [wsConnected, setWsConnected] = useState(false)
+  const wsStatus = usePriceStore((state) => state.statusByExchange[selectedExchange] || 'disconnected')
+  const wsConnected = wsStatus === 'connected'
+  const livePrice = usePriceStore((state) => state.prices[`${selectedExchange}:${chartSymbol}`])
 
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([])
   const [availableTimeframesBySymbol, setAvailableTimeframesBySymbol] = useState<Record<string, string[]>>({})
@@ -276,7 +284,7 @@ export default function App() {
     const controller = new AbortController()
     setAvailableError(null)
 
-    fetch(`/api/candles/available?exchange=${encodeURIComponent('bitfinex')}`, { signal: controller.signal })
+    fetch(`/api/candles/available?exchange=${encodeURIComponent(selectedExchange)}`, { signal: controller.signal })
       .then(async (resp) => {
         const bodyText = await resp.text()
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 120)}`)
@@ -333,7 +341,7 @@ export default function App() {
       })
 
     return () => controller.abort()
-  }, [])
+  }, [selectedExchange])
 
   const timeframesForChartSymbol = useMemo(() => {
     const tfs = availableTimeframesBySymbol[chartSymbol]
@@ -348,7 +356,7 @@ export default function App() {
     let candleStream: ReturnType<typeof createCandleStream> | null = null
     let pollInterval: number | null = null
 
-    const exchange = 'bitfinex'
+    const exchange = selectedExchange
     const timeframe = chartTimeframe
 
     // Load initial candles from database
@@ -461,18 +469,16 @@ export default function App() {
     loadInitialCandles()
 
     // Try to establish WebSocket connection if enabled
-    if (useWebSocket) {
+    if (useWebSocket && exchange === 'bitfinex') {
       try {
         candleStream = createCandleStream(
           chartSymbol,
           timeframe,
           (candle) => {
             updateCandle(candle)
-            setWsConnected(true)
           },
           (error) => {
             console.error('WebSocket error, falling back to polling:', error)
-            setWsConnected(false)
             setUseWebSocket(false) // Disable WebSocket to reflect actual state
             // Set up polling as fallback (if not already set up at line 410)
             if (!pollInterval) {
@@ -505,7 +511,27 @@ export default function App() {
         inFlight.abort()
       }
     }
-  }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket])
+  }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket, selectedExchange])
+
+  useEffect(() => {
+    if (!livePrice) return
+
+    setChartCandles((prev) => {
+      if (!prev.length) return prev
+      const last = prev[prev.length - 1]
+      if (livePrice.timestamp < last.t) return prev
+
+      const next = [...prev]
+      const updatedClose = livePrice.price
+      next[next.length - 1] = {
+        ...last,
+        c: updatedClose,
+        h: Math.max(last.h, updatedClose),
+        l: Math.min(last.l, updatedClose),
+      }
+      return next
+    })
+  }, [livePrice, setChartCandles])
 
   useEffect(() => {
     let mounted = true
@@ -519,7 +545,7 @@ export default function App() {
 
       setGapStatsError(null)
 
-      fetch('/api/gaps/summary', { signal: controller.signal })
+      fetch(`/api/gaps/summary?exchange=${encodeURIComponent(selectedExchange)}`, { signal: controller.signal })
         .then(async (resp) => {
           const bodyText = await resp.text()
           if (!resp.ok) {
@@ -568,7 +594,7 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [])
+  }, [selectedExchange])
 
   useEffect(() => {
     let mounted = true
@@ -586,7 +612,7 @@ export default function App() {
       const includeLlm = includeAnalysis
       const analysisLimit = includeAnalysis ? 20 : 5
       const params = new URLSearchParams({
-        exchange: 'bitfinex',
+        exchange: selectedExchange,
         timeframe: chartTimeframe,
         limit: '20',
         include_history: includeAnalysis ? 'true' : 'false',
@@ -658,7 +684,7 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [chartTimeframe, activeView])
+  }, [chartTimeframe, activeView, selectedExchange])
 
   // Fetch market watch data
   useEffect(() => {
@@ -673,7 +699,10 @@ export default function App() {
 
       setMarketWatchError(null)
 
-      fetch(`/api/market-watch?exchange=bitfinex&timeframe=${encodeURIComponent(chartTimeframe)}`, { signal: controller.signal })
+      fetch(
+        `/api/market-watch?exchange=${encodeURIComponent(selectedExchange)}&timeframe=${encodeURIComponent(chartTimeframe)}`,
+        { signal: controller.signal }
+      )
         .then(async (resp) => {
           const bodyText = await resp.text()
           if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 120)}`)
@@ -727,7 +756,7 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [chartTimeframe])
+  }, [chartTimeframe, selectedExchange])
 
   // Wallet balances - disabled until wallets-data service is deployed
   const WALLETS_SERVICE_ENABLED = false
@@ -823,9 +852,12 @@ export default function App() {
       setIngestionStatusError(null)
 
       const fallbackToLegacy = async (): Promise<{ apiReachable: boolean; latestTime: number | null }> => {
-        const resp = await fetch('/api/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', {
-          signal: controller.signal,
-        })
+        const resp = await fetch(
+          `/api/ingestion/status?exchange=${encodeURIComponent(selectedExchange)}&symbol=BTCUSD&timeframe=1m`,
+          {
+            signal: controller.signal,
+          }
+        )
         const bodyText = await resp.text()
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
 
@@ -858,9 +890,12 @@ export default function App() {
       }
 
       const fastApiIngestion = async (): Promise<number | null> => {
-        const resp = await fetch('/ingestion/status?exchange=bitfinex&symbol=BTCUSD&timeframe=1m', {
-          signal: controller.signal,
-        })
+        const resp = await fetch(
+          `/ingestion/status?exchange=${encodeURIComponent(selectedExchange)}&symbol=BTCUSD&timeframe=1m`,
+          {
+            signal: controller.signal,
+          }
+        )
         const bodyText = await resp.text()
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
 
@@ -914,7 +949,7 @@ export default function App() {
       window.clearInterval(id)
       if (inFlight) inFlight.abort()
     }
-  }, [gapStats])
+  }, [gapStats, selectedExchange])
 
   // Fetch market cap rankings
   useEffect(() => {
@@ -1337,6 +1372,9 @@ export default function App() {
                   <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate">{chartSymbol}</span>
+                      <span className="rounded border border-gray-200 px-1 py-0.5 text-[10px] uppercase dark:border-gray-800">
+                        {selectedExchange}
+                      </span>
                       <select
                         className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
                         value={chartTimeframe}
@@ -1350,6 +1388,7 @@ export default function App() {
                       </select>
                       <span className="whitespace-nowrap">(DB candles, window: {chartLimit})</span>
                     </div>
+                    <LivePrice symbol={chartSymbol} exchange={selectedExchange} />
                   </div>
 
                   <div onWheel={onChartWheel}>
@@ -1414,7 +1453,7 @@ export default function App() {
               </Panel>
 
               <Panel title="Opportunities" subtitle={`${chartSymbol} opportunity score`}>
-                <OpportunityScore symbol={chartSymbol} exchange="bitfinex" />
+                <OpportunityScore symbol={chartSymbol} exchange={selectedExchange} />
               </Panel>
 
               <Panel title="Data Quality" subtitle="Candle gaps">
@@ -1623,6 +1662,9 @@ export default function App() {
                       </div>
                     )
                   })}
+                  <div className="border-t border-gray-800 pt-3">
+                    <ArbitragePanel exchanges={['bitfinex', 'binance']} timeframe={chartTimeframe} />
+                  </div>
                 </div>
               )}
             </Panel>
@@ -1630,7 +1672,18 @@ export default function App() {
 
           {/* Market Watch view */}
           {activeView === VIEW_IDS.MARKET_WATCH && (
-            <Panel title="Market Watch" subtitle={`${marketWatch.length} symbols`}>
+            <Panel title="Market Watch" subtitle={`${marketWatch.length} symbols • ${selectedExchange}`}>
+              <div className="mb-2 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                <span>Exchange</span>
+                <select
+                  className="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                  value={selectedExchange}
+                  onChange={(ev) => setSelectedExchange(ev.target.value as ExchangeOption)}
+                >
+                  <option value="bitfinex">Bitfinex</option>
+                  <option value="binance">Binance</option>
+                </select>
+              </div>
               {marketWatchError ? (
                 <div className="text-xs text-red-500">{marketWatchError}</div>
               ) : marketWatch.length === 0 ? (
