@@ -80,6 +80,10 @@ const GAP_STATS_REFRESH_INTERVAL_MS = 60_000
 const SIGNALS_REFRESH_INTERVAL_MS = 30_000
 const INGESTION_STATUS_REFRESH_INTERVAL_MS = 15_000
 const WALLET_REFRESH_INTERVAL_MS = 30_000
+
+const CANDLE_WS_SUPPORT: Record<string, boolean> = {
+  bitfinex: true,
+}
 const MARKET_CAP_REFRESH_INTERVAL_MS = 600_000 // 10 minutes
 const SYSTEM_STATUS_REFRESH_INTERVAL_MS = 10_000 // 10 seconds
 const MARKET_WATCH_REFRESH_INTERVAL_MS = 30_000 // 30 seconds
@@ -178,7 +182,7 @@ export default function App() {
   const [chartLoading, setChartLoading] = useState(false)
   const [useWebSocket, setUseWebSocket] = useState(true) // Enable WebSocket by default
   const [candleWsConnected, setCandleWsConnected] = useState(false)
-  const candleWsSupported = selectedExchange === 'bitfinex' && useWebSocket
+  const candleWsSupported = Boolean(CANDLE_WS_SUPPORT[selectedExchange]) && useWebSocket
   const wsConnected = candleWsSupported && candleWsConnected
   const livePrice = usePriceStore((state) => state.prices[`${selectedExchange}:${chartSymbol}`])
 
@@ -519,7 +523,7 @@ export default function App() {
       }
       setCandleWsConnected(false)
     }
-  }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket, selectedExchange, candleWsSupported])
+  }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket, selectedExchange])
 
   useEffect(() => {
     if (!livePrice) return
