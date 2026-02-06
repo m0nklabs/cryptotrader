@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketLike(Protocol):
-    async def send_json(self, data: object) -> None: ...
+    async def send_json(self, data: object) -> None:
+        pass
 
 
 PriceCallback = Callable[[dict[str, object]], Awaitable[None]]
@@ -29,7 +30,8 @@ class ExchangePriceClient(Protocol):
         on_price: PriceCallback,
         on_status: StatusCallback,
         stop_event: asyncio.Event,
-    ) -> None: ...
+    ) -> None:
+        pass
 
 
 @dataclass

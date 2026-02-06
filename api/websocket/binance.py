@@ -71,5 +71,5 @@ class BinanceWebSocketClient:
                 try:
                     await asyncio.wait_for(stop_event.wait(), timeout=backoff)
                 except asyncio.TimeoutError:
-                    pass
+                    logger.debug("Binance WebSocket backoff expired; retrying")
                 backoff = min(backoff * 2, 30.0)

@@ -99,5 +99,5 @@ class BitfinexWebSocketClient:
                 try:
                     await asyncio.wait_for(stop_event.wait(), timeout=backoff)
                 except asyncio.TimeoutError:
-                    pass
+                    logger.debug("Bitfinex WebSocket backoff expired; retrying")
                 backoff = min(backoff * 2, 30.0)
