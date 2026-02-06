@@ -6,6 +6,7 @@ All functions are designed to work with FastAPI dependency injection.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime  # used in get_usage_summary type hints
 from typing import Sequence
 
@@ -13,6 +14,8 @@ from sqlalchemy import select, update, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models.ai import AIDecision, AIRoleConfig, AIUsageLog, SystemPrompt
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -225,10 +228,17 @@ async def activate_prompt(db: AsyncSession, prompt_id: str) -> SystemPrompt | No
 
     try:
         await db.commit()
-        await db.refresh(prompt)
     except Exception:
         await db.rollback()
         raise
+    
+    # Refresh after successful commit
+    try:
+        await db.refresh(prompt)
+    except Exception:
+        # If refresh fails, log but don't fail the whole operation since commit succeeded
+        logger.warning("Failed to refresh prompt after activation, but DB commit succeeded")
+    
     return prompt
 
 
@@ -368,9 +378,29 @@ async def log_decision(
 ) -> AIDecision:
     """Log an AI consensus decision.
 
+    Args:
+        final_action: Must be one of: BUY, SELL, NEUTRAL, VETO
+        final_confidence: Must be between 0.0 and 1.0
+
     Returns:
         Newly created AIDecision with auto-generated id and created_at timestamp.
+
+    Raises:
+        ValueError: If final_action or final_confidence are invalid.
     """
+    # Validate final_action
+    valid_actions = {"BUY", "SELL", "NEUTRAL", "VETO"}
+    if final_action not in valid_actions:
+        raise ValueError(
+            f"final_action must be one of {valid_actions}, got {final_action!r}"
+        )
+
+    # Validate final_confidence range
+    if not 0.0 <= final_confidence <= 1.0:
+        raise ValueError(
+            f"final_confidence must be between 0.0 and 1.0, got {final_confidence!r}"
+        )
+
     decision = AIDecision(
         symbol=symbol,
         timeframe=timeframe,

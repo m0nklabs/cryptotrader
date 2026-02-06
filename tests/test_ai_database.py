@@ -45,7 +45,7 @@ _test_engine: AsyncEngine | None = None
 
 def _get_test_engine() -> AsyncEngine:
     """Get or create the test database engine (singleton)."""
-    global _test_engine
+    global _test_engine, _async_session_maker
 
     if _test_engine is not None:
         return _test_engine
@@ -55,12 +55,21 @@ def _get_test_engine() -> AsyncEngine:
         pytest.skip("DATABASE_URL not set")
 
     # Convert to async URL if needed
-    if database_url.startswith("postgresql://") and "asyncpg" not in database_url:
-        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    elif database_url.startswith("postgres://") and "asyncpg" not in database_url:
+    # Ensure we always use postgresql+asyncpg:// scheme
+    if database_url.startswith("postgresql://"):
+        if "+asyncpg" not in database_url:
+            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif not database_url.startswith("postgresql+asyncpg://"):
+        # If it doesn't match any expected pattern, fail clearly
+        raise ValueError(
+            f"Unsupported DATABASE_URL format: {database_url}. "
+            "Expected postgresql://, postgres://, or postgresql+asyncpg://"
+        )
 
     _test_engine = create_async_engine(database_url, echo=False)
+    _async_session_maker = sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
 
     return _test_engine
 
@@ -72,7 +81,11 @@ async def db_session():
     Uses a module-level engine to avoid connection pool exhaustion.
     """
     engine = _get_test_engine()
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    # Reuse the cached session maker if available
+    if _async_session_maker is not None:
+        async_session = _async_session_maker
+    else:
+        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
         yield session
@@ -200,75 +213,91 @@ async def test_prompt_versioning(db_session):
 @pytest.mark.asyncio
 async def test_usage_logging(db_session):
     """Test AI usage logging and summary."""
-    # Log some usage
-    usage1 = await log_usage(
-        db_session,
-        role="tactical",
-        provider="deepseek",
-        model="deepseek-reasoner",
-        tokens_in=1000,
-        tokens_out=500,
-        cost_usd=0.005,
-        latency_ms=2500.0,
-        symbol="BTCUSD",
-        success=True,
-    )
-    assert usage1.role == "tactical"
-    assert abs(usage1.cost_usd - 0.005) < 0.001  # Floating point comparison
+    try:
+        # Log some usage
+        usage1 = await log_usage(
+            db_session,
+            role="tactical",
+            provider="deepseek",
+            model="deepseek-reasoner",
+            tokens_in=1000,
+            tokens_out=500,
+            cost_usd=0.005,
+            latency_ms=2500.0,
+            symbol="BTCUSD",
+            success=True,
+        )
+        assert usage1.role == "tactical"
+        assert abs(usage1.cost_usd - 0.005) < 0.001  # Floating point comparison
 
-    await log_usage(
-        db_session,
-        role="tactical",
-        provider="deepseek",
-        model="deepseek-reasoner",
-        tokens_in=800,
-        tokens_out=400,
-        cost_usd=0.004,
-        latency_ms=2000.0,
-        symbol="ETHUSD",
-        success=True,
-    )
+        await log_usage(
+            db_session,
+            role="tactical",
+            provider="deepseek",
+            model="deepseek-reasoner",
+            tokens_in=800,
+            tokens_out=400,
+            cost_usd=0.004,
+            latency_ms=2000.0,
+            symbol="ETHUSD",
+            success=True,
+        )
 
-    # Get summary for tactical role
-    summary = await get_usage_summary(db_session, role="tactical")
-    assert summary["total_requests"] >= 2
-    assert summary["total_cost"] >= 0.009
-    assert summary["success_rate"] > 0.0
+        # Get summary for tactical role
+        summary = await get_usage_summary(db_session, role="tactical")
+        assert summary["total_requests"] >= 2
+        assert summary["total_cost"] >= 0.009
+        assert summary["success_rate"] > 0.0
 
-    # Get summary for a specific symbol
-    symbol_summary = await get_usage_summary(db_session, symbol="BTCUSD")
-    assert symbol_summary["total_requests"] >= 1
+        # Get summary for a specific symbol
+        symbol_summary = await get_usage_summary(db_session, symbol="BTCUSD")
+        assert symbol_summary["total_requests"] >= 1
+    finally:
+        # Rollback to avoid polluting database
+        await db_session.rollback()
 
 
 @pytest.mark.asyncio
 async def test_decision_logging(db_session):
     """Test AI decision logging and retrieval."""
-    # Log a decision
-    decision = await log_decision(
-        db_session,
-        symbol="BTCUSD",
-        timeframe="1h",
-        final_action="BUY",
-        final_confidence=0.85,
-        verdicts=[
-            {"role": "tactical", "action": "BUY", "confidence": 0.9},
-            {"role": "fundamental", "action": "NEUTRAL", "confidence": 0.6},
-        ],
-        reasoning="Strong technical setup with neutral fundamentals",
-        total_cost_usd=0.034,
-        total_latency_ms=5000.0,
-    )
-    assert decision.symbol == "BTCUSD"
-    assert decision.final_action == "BUY"
-    assert len(decision.verdicts) == 2
+    test_symbol = "BTCUSD_TEST"
+    try:
+        # Log a decision
+        decision = await log_decision(
+            db_session,
+            symbol=test_symbol,
+            timeframe="1h",
+            final_action="BUY",
+            final_confidence=0.85,
+            verdicts=[
+                {"role": "tactical", "action": "BUY", "confidence": 0.9},
+                {"role": "fundamental", "action": "NEUTRAL", "confidence": 0.6},
+            ],
+            reasoning="Strong technical setup with neutral fundamentals",
+            total_cost_usd=0.034,
+            total_latency_ms=5000.0,
+        )
+        assert decision.symbol == test_symbol
+        assert decision.final_action == "BUY"
+        assert len(decision.verdicts) == 2
 
-    # Retrieve decisions for the symbol
-    decisions = await get_decisions(db_session, symbol="BTCUSD", limit=10)
-    assert len(decisions) >= 1
+        # Retrieve decisions for the symbol
+        decisions = await get_decisions(db_session, symbol=test_symbol, limit=10)
+        assert len(decisions) >= 1
 
-    # Retrieve BUY decisions
-    buy_decisions = await get_decisions(db_session, action="BUY", limit=10)
-    assert len(buy_decisions) >= 1
+        # Retrieve BUY decisions
+        buy_decisions = await get_decisions(db_session, action="BUY", limit=10)
+        assert len(buy_decisions) >= 1
+    finally:
+        # Clean up test decisions to avoid DB pollution
+        try:
+            await db_session.execute(
+                text("DELETE FROM ai_decisions WHERE symbol = :symbol"),
+                {"symbol": test_symbol},
+            )
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
 
 
 @pytest.mark.asyncio

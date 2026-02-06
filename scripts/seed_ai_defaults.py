@@ -34,6 +34,9 @@ from db.crud.ai import create_role_config, get_role_config, create_prompt, get_p
 # ---------------------------------------------------------------------------
 # Default role configurations (from issue #205)
 # ---------------------------------------------------------------------------
+# Note: system_prompt_id values reference prompts that will be created by DEFAULT_PROMPTS.
+# The seeding order in main() ensures prompts are created before role configs, so these
+# foreign keys will be valid. The system_prompt_id column is nullable, so the reference is optional.
 
 DEFAULT_ROLE_CONFIGS = [
     {
