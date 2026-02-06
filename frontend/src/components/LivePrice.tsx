@@ -75,7 +75,7 @@ export default function LivePrice({ symbol, exchange, timeframe, className }: Li
 
     const poll = async () => {
       try {
-        const fetchBaseUrl = API_BASE || window.location.origin
+        const fetchBaseUrl = API_BASE || `${window.location.origin}/api`
         const url = `${fetchBaseUrl}/candles/latest?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(
           symbol
         )}&timeframe=${encodeURIComponent(timeframe)}&limit=1`

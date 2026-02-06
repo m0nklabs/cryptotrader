@@ -111,8 +111,12 @@ class PriceWebSocketManager:
                 logger.warning("Failed to send price update to websocket", exc_info=True)
                 failed_websockets.append(websocket)
 
-        for websocket in failed_websockets:
-            await self.disconnect(websocket)
+        if failed_websockets:
+            async with self._lock:
+                active = set(self._connections)
+            for websocket in failed_websockets:
+                if websocket in active:
+                    await self.disconnect(websocket)
 
     async def broadcast_status(self, *, exchange: str, status: str) -> None:
         payload = {"type": "status", "exchange": exchange, "status": status}
@@ -129,8 +133,12 @@ class PriceWebSocketManager:
                 logger.warning("Failed to send status update to websocket", exc_info=True)
                 failed_websockets.append(websocket)
 
-        for websocket in failed_websockets:
-            await self.disconnect(websocket)
+        if failed_websockets:
+            async with self._lock:
+                active = set(self._connections)
+            for websocket in failed_websockets:
+                if websocket in active:
+                    await self.disconnect(websocket)
 
     async def _refresh_exchange_stream(self, exchange: str) -> None:
         task_to_stop: asyncio.Task | None = None
