@@ -52,9 +52,10 @@ def _redact_database_url(value: str) -> str:
         normalized = f"postgresql+asyncpg://{normalized}"
     parts = urlsplit(normalized)
     netloc = parts.netloc
-    if "@" in netloc:
-        netloc = "***@" + netloc.split("@", 1)[1]
-    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    if netloc:
+        netloc = "***"
+    redacted_path = "/***" if parts.path else ""
+    return urlunsplit((parts.scheme, netloc, redacted_path, "", ""))
 
 
 def _get_test_engine() -> AsyncEngine:
@@ -77,14 +78,14 @@ def _get_test_engine() -> AsyncEngine:
                 "Expected host:port/dbname or user:pass@host:port/dbname"
             )
         host_part, path_part = database_url.rsplit("/", 1)
-        if not host_part or not path_part:
+        if not host_part or path_part == "":
             raise ValueError(
                 f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
             )
         if "@" in host_part:
             userinfo, host = host_part.rsplit("@", 1)
-            if not userinfo or not host:
+            if host_part.startswith("@") or host_part.endswith("@") or not userinfo or not host:
                 raise ValueError(
                     f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                     "Expected host:port/dbname or user:pass@host:port/dbname"
