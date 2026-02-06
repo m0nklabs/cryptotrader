@@ -50,10 +50,11 @@ def _redact_database_url(value: str) -> str:
     normalized = value
     if "://" not in normalized:
         normalized = f"postgresql+asyncpg://{normalized}"
-    parts = urlsplit(normalized)
-    netloc = parts.netloc
-    if netloc:
-        netloc = "***"
+    try:
+        parts = urlsplit(normalized)
+    except Exception:
+        return "***"
+    netloc = "***" if parts.netloc else ""
     redacted_path = "/***" if parts.path else ""
     return urlunsplit((parts.scheme, netloc, redacted_path, "", ""))
 
@@ -72,25 +73,14 @@ def _get_test_engine() -> AsyncEngine:
     # Convert to async URL if needed
     # Ensure we always use postgresql+asyncpg:// scheme
     if "://" not in database_url:
-        if "/" not in database_url:
+        candidate = f"postgresql+asyncpg://{database_url}"
+        parsed = urlsplit(candidate)
+        if not parsed.netloc or parsed.path in {"", "/"}:
             raise ValueError(
                 f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
                 "Expected host:port/dbname or user:pass@host:port/dbname"
             )
-        host_part, path_part = database_url.rsplit("/", 1)
-        if not host_part or not path_part:
-            raise ValueError(
-                f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
-                "Expected host:port/dbname or user:pass@host:port/dbname"
-            )
-        if "@" in host_part:
-            userinfo, host = host_part.rsplit("@", 1)
-            if not userinfo or not host:
-                raise ValueError(
-                    f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
-                    "Expected host:port/dbname or user:pass@host:port/dbname"
-                )
-        database_url = f"postgresql+asyncpg://{database_url}"
+        database_url = candidate
     if database_url.startswith("postgresql://"):
         if "+asyncpg" not in database_url:
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
