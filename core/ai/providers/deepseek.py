@@ -143,42 +143,40 @@ class DeepSeekProvider(LLMProvider):
         except Exception:
             return False
 
-    async def complete_stream(
+    async def _attempt_streaming(
         self,
-        request: AIRequest,
-        *,
-        system_prompt: str,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
+        client: httpx.AsyncClient,
+        model: str,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int,
     ):
-        """Stream chat-completion response from DeepSeek.
+        """Single streaming attempt with error classification and rate limiting.
+
+        This method is called by the retry logic in complete_stream.
+        Rate limiting happens per attempt (including retries).
 
         Args:
-            request: The AI request (role, user prompt, context).
-            system_prompt: The system prompt to prepend.
-            model: Override the provider's default model.
-            temperature: Override the default temperature.
-            max_tokens: Override the default max tokens.
+            client: HTTP client to use
+            model: Model name
+            messages: Chat messages
+            temperature: Temperature setting
+            max_tokens: Max tokens setting
 
         Yields:
-            str: Text chunks as they arrive from the API.
+            str: Text chunks as they arrive
+
+        Raises:
+            TransientError: For retry-able errors (429, 503, network issues)
+            PermanentError: For non-retry-able errors (401, 400, etc.)
         """
-        model = model or request.override_model or self.config.default_model
-        temperature = temperature or request.override_temperature or self.config.temperature
-        max_tokens = max_tokens or self.config.max_tokens
+        from core.ai.providers.base import classify_http_error
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": request.user_prompt},
-        ]
-
-        # Acquire rate limit token for streaming (not handled by _make_request)
+        # Acquire rate limit token for each streaming attempt (including retries)
         rate_limiter = await self._get_rate_limiter()
         await rate_limiter.acquire()
 
         try:
-            client = await self._get_client()
             async with client.stream(
                 "POST",
                 "/v1/chat/completions",
@@ -190,7 +188,9 @@ class DeepSeekProvider(LLMProvider):
                     "stream": True,
                 },
             ) as response:
+                # Raise for HTTP errors (will be caught and classified below)
                 response.raise_for_status()
+
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         data_str = line[6:]  # Remove "data: " prefix
@@ -204,15 +204,102 @@ class DeepSeekProvider(LLMProvider):
                                 yield content
                         except json.JSONDecodeError:
                             continue
-        except Exception as e:
-            logger.error("DeepSeek streaming failed: %s", e)
-            # Fall back to non-streaming: yields entire response as single chunk
-            # Callers expecting incremental chunks will receive one large chunk instead
-            async for chunk in super().complete_stream(
-                request,
-                system_prompt=system_prompt,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ):
-                yield chunk
+        except httpx.HTTPStatusError as e:
+            # Classify HTTP errors
+            error = classify_http_error(e.response.status_code, str(e))
+            raise error
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
+            # Network errors are transient
+            from core.ai.providers.base import TransientError
+
+            raise TransientError(f"Network error: {e}", status_code=None) from e
+
+    async def complete_stream(
+        self,
+        request: AIRequest,
+        *,
+        system_prompt: str,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ):
+        """Stream chat-completion response from DeepSeek with retry logic.
+
+        Implements the same retry and error classification as non-streaming requests.
+        Transient errors (429, 503, network issues) are retried with exponential backoff.
+        Permanent errors (401, 400, etc.) fail fast.
+
+        Args:
+            request: The AI request (role, user prompt, context).
+            system_prompt: The system prompt to prepend.
+            model: Override the provider's default model.
+            temperature: Override the default temperature.
+            max_tokens: Override the default max tokens.
+
+        Yields:
+            str: Text chunks as they arrive from the API.
+        """
+        import asyncio
+        import random
+
+        from core.ai.providers.base import PermanentError, TransientError
+
+        model = model or request.override_model or self.config.default_model
+        temperature = temperature or request.override_temperature or self.config.temperature
+        max_tokens = max_tokens or self.config.max_tokens
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": request.user_prompt},
+        ]
+
+        client = await self._get_client()
+        max_retries = 3
+        base_delay = 1.0
+        max_delay = 10.0
+
+        for attempt in range(max_retries + 1):
+            try:
+                async for chunk in self._attempt_streaming(
+                    client, model, messages, temperature, max_tokens
+                ):
+                    yield chunk
+                return  # Success, exit retry loop
+            except TransientError as e:
+                if attempt >= max_retries:
+                    logger.error(
+                        "Max retries (%d) exceeded for streaming: %s",
+                        max_retries,
+                        e,
+                    )
+                    # Fall back to non-streaming as last resort
+                    logger.info("Falling back to non-streaming mode")
+                    async for chunk in super().complete_stream(
+                        request,
+                        system_prompt=system_prompt,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    ):
+                        yield chunk
+                    return
+
+                # Calculate delay with exponential backoff and jitter
+                delay = min(base_delay * (2**attempt), max_delay)
+                delay *= 0.5 + random.random()  # 50%-150% jitter
+
+                logger.warning(
+                    "Transient error in streaming (attempt %d/%d): %s. Retrying in %.2fs",
+                    attempt + 1,
+                    max_retries + 1,
+                    e,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+            except PermanentError as e:
+                logger.error("Permanent error in streaming: %s. Not retrying.", e)
+                raise
+            except Exception as e:
+                # Unexpected errors - fail fast
+                logger.error("Unexpected error in streaming: %s", e)
+                raise

@@ -592,14 +592,17 @@ async def test_deepseek_streaming_done_marker_handling():
 
 @pytest.mark.asyncio
 async def test_deepseek_streaming_fallback_on_error():
-    """Test streaming falls back to non-streaming on error."""
+    """Test streaming falls back to non-streaming after retry exhaustion."""
     provider = DeepSeekProvider()
 
-    # Mock streaming to fail
+    # Mock streaming to always fail with transient error
     with patch("httpx.AsyncClient.stream") as mock_stream:
-        mock_stream.side_effect = Exception("Streaming error")
+        # Create a mock that raises a transient error
+        from core.ai.providers.base import TransientError
 
-        # Mock non-streaming fallback
+        mock_stream.side_effect = TransientError("Service temporarily unavailable", 503)
+
+        # Mock non-streaming fallback (called after retries exhausted)
         with patch.object(provider, "complete", new_callable=AsyncMock) as mock_complete:
             mock_complete.return_value.raw_text = "Fallback response"
 
@@ -609,8 +612,8 @@ async def test_deepseek_streaming_fallback_on_error():
             async for chunk in provider.complete_stream(request, system_prompt="test"):
                 chunks.append(chunk)
 
-            # Should fall back to non-streaming and return single chunk
+            # Should fall back to non-streaming after all retries exhausted
             assert len(chunks) == 1
             assert "Fallback response" in chunks[0]
-            # Verify fallback was called
-            mock_complete.assert_called_once()
+            # Stream should have been attempted 4 times (initial + 3 retries)
+            assert mock_stream.call_count == 4
