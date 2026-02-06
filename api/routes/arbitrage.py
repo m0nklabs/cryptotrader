@@ -61,7 +61,7 @@ async def get_arbitrage_opportunities(
 
     stores = _get_stores()
 
-    def _fetch_snapshots() -> list[PriceSnapshot]:
+    def fetch_snapshots() -> list[PriceSnapshot]:
         rows = stores.get_latest_candle_closes(
             exchanges=exchange_list,
             timeframe=timeframe,
@@ -73,7 +73,7 @@ async def get_arbitrage_opportunities(
             snapshots.append(PriceSnapshot(exchange=exchange, symbol=symbol, price=price))
         return snapshots
 
-    price_snapshots = await asyncio.to_thread(_fetch_snapshots)
+    price_snapshots = await asyncio.to_thread(fetch_snapshots)
 
     fee_map = {exchange: DEFAULT_FEE for exchange in exchange_list}
     detector = ArbitrageDetector(
