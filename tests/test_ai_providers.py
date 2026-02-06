@@ -470,7 +470,7 @@ async def test_multiple_providers_different_rate_limits():
 async def test_deepseek_streaming_success():
     """Test successful streaming with SSE format parsing."""
     provider = DeepSeekProvider()
-    
+
     # Mock streaming response with SSE format
     mock_lines = [
         "data: " + '{"choices": [{"delta": {"content": "Hello"}}]}',
@@ -478,28 +478,28 @@ async def test_deepseek_streaming_success():
         "data: " + '{"choices": [{"delta": {"content": "!"}}]}',
         "data: [DONE]",
     ]
-    
+
     async def mock_aiter_lines():
         for line in mock_lines:
             yield line
-    
+
     with patch("httpx.AsyncClient.stream") as mock_stream:
         # Create async context manager mock
         mock_response = MagicMock()
         mock_response.aiter_lines = mock_aiter_lines
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_cm = MagicMock()
         mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
         mock_cm.__aexit__ = AsyncMock(return_value=None)
         mock_stream.return_value = mock_cm
-        
+
         request = AIRequest(role=RoleName.TACTICAL, user_prompt="Test streaming")
-        
+
         chunks = []
         async for chunk in provider.complete_stream(request, system_prompt="test"):
             chunks.append(chunk)
-        
+
         # Should have 3 content chunks
         assert len(chunks) == 3
         assert chunks == ["Hello", " world", "!"]
@@ -509,7 +509,7 @@ async def test_deepseek_streaming_success():
 async def test_deepseek_streaming_json_decode_error_resilience():
     """Test streaming handles JSON decode errors gracefully."""
     provider = DeepSeekProvider()
-    
+
     # Mock streaming response with invalid JSON in one line
     mock_lines = [
         "data: " + '{"choices": [{"delta": {"content": "Hello"}}]}',
@@ -517,27 +517,27 @@ async def test_deepseek_streaming_json_decode_error_resilience():
         "data: " + '{"choices": [{"delta": {"content": " world"}}]}',
         "data: [DONE]",
     ]
-    
+
     async def mock_aiter_lines():
         for line in mock_lines:
             yield line
-    
+
     with patch("httpx.AsyncClient.stream") as mock_stream:
         mock_response = MagicMock()
         mock_response.aiter_lines = mock_aiter_lines
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_cm = MagicMock()
         mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
         mock_cm.__aexit__ = AsyncMock(return_value=None)
         mock_stream.return_value = mock_cm
-        
+
         request = AIRequest(role=RoleName.TACTICAL, user_prompt="Test streaming")
-        
+
         chunks = []
         async for chunk in provider.complete_stream(request, system_prompt="test"):
             chunks.append(chunk)
-        
+
         # Should skip invalid JSON and get 2 valid chunks
         assert len(chunks) == 2
         assert chunks == ["Hello", " world"]
@@ -547,34 +547,34 @@ async def test_deepseek_streaming_json_decode_error_resilience():
 async def test_deepseek_streaming_done_marker_handling():
     """Test streaming properly handles [DONE] marker."""
     provider = DeepSeekProvider()
-    
+
     # Mock streaming response with [DONE] marker
     mock_lines = [
         "data: " + '{"choices": [{"delta": {"content": "Test"}}]}',
         "data: [DONE]",
         "data: " + '{"choices": [{"delta": {"content": "Should not appear"}}]}',
     ]
-    
+
     async def mock_aiter_lines():
         for line in mock_lines:
             yield line
-    
+
     with patch("httpx.AsyncClient.stream") as mock_stream:
         mock_response = MagicMock()
         mock_response.aiter_lines = mock_aiter_lines
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_cm = MagicMock()
         mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
         mock_cm.__aexit__ = AsyncMock(return_value=None)
         mock_stream.return_value = mock_cm
-        
+
         request = AIRequest(role=RoleName.TACTICAL, user_prompt="Test streaming")
-        
+
         chunks = []
         async for chunk in provider.complete_stream(request, system_prompt="test"):
             chunks.append(chunk)
-        
+
         # Should stop at [DONE] marker
         assert len(chunks) == 1
         assert chunks == ["Test"]
@@ -584,21 +584,21 @@ async def test_deepseek_streaming_done_marker_handling():
 async def test_deepseek_streaming_fallback_on_error():
     """Test streaming falls back to non-streaming on error."""
     provider = DeepSeekProvider()
-    
+
     # Mock streaming to fail
     with patch("httpx.AsyncClient.stream") as mock_stream:
         mock_stream.side_effect = Exception("Streaming error")
-        
+
         # Mock non-streaming fallback
         with patch.object(provider, "complete", new_callable=AsyncMock) as mock_complete:
             mock_complete.return_value.raw_text = "Fallback response"
-            
+
             request = AIRequest(role=RoleName.TACTICAL, user_prompt="Test fallback")
-            
+
             chunks = []
             async for chunk in provider.complete_stream(request, system_prompt="test"):
                 chunks.append(chunk)
-            
+
             # Should fall back to non-streaming and return single chunk
             assert len(chunks) == 1
             assert "Fallback response" in chunks[0]
