@@ -1388,7 +1388,7 @@ export default function App() {
                       </select>
                       <span className="whitespace-nowrap">(DB candles, window: {chartLimit})</span>
                     </div>
-                    <LivePrice symbol={chartSymbol} exchange={selectedExchange} />
+                    <LivePrice symbol={chartSymbol} exchange={selectedExchange} timeframe={chartTimeframe} />
                   </div>
 
                   <div onWheel={onChartWheel}>

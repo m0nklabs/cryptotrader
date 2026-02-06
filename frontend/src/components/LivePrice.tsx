@@ -5,6 +5,7 @@ import { usePriceStore, type PriceStatus } from '../stores/priceStore'
 type LivePriceProps = {
   symbol: string
   exchange: string
+  timeframe: string
   className?: string
 }
 
@@ -19,7 +20,7 @@ type PriceMessage = {
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
-export default function LivePrice({ symbol, exchange, className }: LivePriceProps) {
+export default function LivePrice({ symbol, exchange, timeframe, className }: LivePriceProps) {
   const setPrice = usePriceStore((state) => state.setPrice)
   const setStatus = usePriceStore((state) => state.setStatus)
   const priceSnapshot = usePriceStore((state) => state.prices[`${exchange}:${symbol}`])
@@ -74,7 +75,7 @@ export default function LivePrice({ symbol, exchange, className }: LivePriceProp
       try {
         const url = `${API_BASE}/candles/latest?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(
           symbol
-        )}&timeframe=1m&limit=1`
+        )}&timeframe=${encodeURIComponent(timeframe)}&limit=1`
         const resp = await fetch(url, { signal: controller.signal })
         if (!resp.ok) return
         const payload = await resp.json()
@@ -101,7 +102,7 @@ export default function LivePrice({ symbol, exchange, className }: LivePriceProp
       controller.abort()
       window.clearInterval(id)
     }
-  }, [exchange, symbol, status, setPrice])
+  }, [exchange, symbol, status, setPrice, timeframe])
 
   const statusColor =
     status === 'connected'

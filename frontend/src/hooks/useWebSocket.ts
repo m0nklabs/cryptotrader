@@ -69,7 +69,7 @@ export function useWebSocket<T = unknown>({
       updateStatus('connecting')
 
       const resolvedUrl = url.startsWith('/')
-        ? new URL(url, window.location.href)
+        ? new URL(url, window.location.origin)
         : new URL(url)
       if (resolvedUrl.protocol === 'http:') {
         resolvedUrl.protocol = 'ws:'
