@@ -132,7 +132,6 @@ class PriceWebSocketManager:
 
     async def _refresh_exchange_stream(self, exchange: str) -> None:
         task_to_stop: asyncio.Task | None = None
-        stop_event: asyncio.Event | None = None
         client: ExchangePriceClient | None = None
         expected_stop_event: asyncio.Event | None = None
         async with self._lock:
@@ -152,7 +151,6 @@ class PriceWebSocketManager:
             if state.task:
                 state.stop_event.set()
                 task_to_stop = state.task
-                stop_event = state.stop_event
                 state.task = None
 
             if not symbols:
@@ -165,8 +163,8 @@ class PriceWebSocketManager:
             expected_stop_event = state.stop_event
             client = self._clients.get(exchange)
 
-        if task_to_stop and stop_event:
-            await self._await_task(task_to_stop, stop_event)
+        if task_to_stop:
+            await self._await_task(task_to_stop)
 
         if client is None:
             logger.warning("No WebSocket client registered for exchange '%s'", exchange)
@@ -186,7 +184,7 @@ class PriceWebSocketManager:
                 return
             current_state.task = asyncio.create_task(_runner())
 
-    async def _await_task(self, task: asyncio.Task, stop_event: asyncio.Event) -> None:
+    async def _await_task(self, task: asyncio.Task) -> None:
         try:
             await asyncio.wait_for(task, timeout=1.0)
         except asyncio.TimeoutError:

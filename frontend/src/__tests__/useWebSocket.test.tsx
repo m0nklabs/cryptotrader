@@ -41,6 +41,10 @@ class MockWebSocket {
     this.readyState = 3
     this.onclose?.()
   }
+
+  triggerError() {
+    this.onerror?.()
+  }
 }
 
 type HookHarnessProps = {
@@ -106,5 +110,26 @@ describe('useWebSocket', () => {
 
     const ws = MockWebSocket.instances[0]
     expect(ws.url.startsWith('ws://')).toBe(true)
+  })
+
+  it('reports errors via status callback', () => {
+    const onMessage = vi.fn()
+    const statuses: string[] = []
+
+    function ErrorHarness() {
+      useWebSocket({
+        url: 'http://localhost/ws',
+        onMessage,
+        onStatusChange: (status) => statuses.push(status),
+      })
+      return null
+    }
+
+    render(<ErrorHarness />)
+    const ws = MockWebSocket.instances[0]
+    act(() => ws.triggerOpen())
+    act(() => ws.triggerError())
+
+    expect(statuses).toContain('error')
   })
 })
