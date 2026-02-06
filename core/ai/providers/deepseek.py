@@ -260,9 +260,7 @@ class DeepSeekProvider(LLMProvider):
 
         for attempt in range(max_retries + 1):
             try:
-                async for chunk in self._attempt_streaming(
-                    client, model, messages, temperature, max_tokens
-                ):
+                async for chunk in self._attempt_streaming(client, model, messages, temperature, max_tokens):
                     yield chunk
                 return  # Success, exit retry loop
             except TransientError as e:
