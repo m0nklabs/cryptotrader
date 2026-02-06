@@ -75,7 +75,7 @@ describe('useWebSocket', () => {
 
   it('connects and forwards messages', () => {
     const onMessage = vi.fn()
-    const { unmount } = render(<HookHarness url="http://localhost/ws" onMessage={onMessage} subscribeMessage={{ type: 'subscribe' }} />)
+    const { unmount } = render(<HookHarness url="ws://localhost/ws" onMessage={onMessage} subscribeMessage={{ type: 'subscribe' }} />)
 
     const ws = MockWebSocket.instances[0]
     act(() => ws.triggerOpen())
@@ -91,7 +91,7 @@ describe('useWebSocket', () => {
   it('reconnects after close', () => {
     vi.useFakeTimers()
     const onMessage = vi.fn()
-    render(<HookHarness url="http://localhost/ws" onMessage={onMessage} />)
+    render(<HookHarness url="ws://localhost/ws" onMessage={onMessage} />)
 
     const ws = MockWebSocket.instances[0]
     act(() => ws.triggerOpen())
@@ -118,7 +118,7 @@ describe('useWebSocket', () => {
 
     function ErrorHarness() {
       useWebSocket({
-        url: 'http://localhost/ws',
+        url: 'ws://localhost/ws',
         onMessage,
         onStatusChange: (status) => statuses.push(status),
       })
