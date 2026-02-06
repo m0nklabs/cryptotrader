@@ -87,8 +87,6 @@ async def test_role_config_crud(db_session):
     test_role = "test_screener"
 
     # Delete if exists (cleanup from previous runs)
-    from sqlalchemy import text
-
     await db_session.execute(text("DELETE FROM ai_role_configs WHERE name = :name"), {"name": test_role})
     await db_session.commit()
 
@@ -130,8 +128,6 @@ async def test_role_config_crud(db_session):
     assert len(all_configs) >= 5  # 4 defaults + our test one
 
     # Clean up
-    from sqlalchemy import text
-
     await db_session.execute(text("DELETE FROM ai_role_configs WHERE name = :name"), {"name": test_role})
     await db_session.commit()
 

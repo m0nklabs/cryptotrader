@@ -128,8 +128,10 @@ async def main() -> int:
         return 1
 
     # Convert to async URL if needed
-    if database_url.startswith("postgresql://"):
+    if database_url.startswith("postgresql://") and "asyncpg" not in database_url:
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgres://") and "asyncpg" not in database_url:
+        database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
     elif not database_url.startswith("postgresql+asyncpg://"):
         print(f"❌ ERROR: Unsupported DATABASE_URL format: {database_url}")
         return 1

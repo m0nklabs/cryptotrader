@@ -37,7 +37,14 @@ class PromptRegistry:
     _prompts: dict[str, SystemPrompt] = {}  # keyed by prompt id
     _db_enabled: bool = False
     _db_loaded: bool = False
-    _activation_lock: asyncio.Lock = asyncio.Lock()  # Prevent race conditions in activate_prompt
+    _activation_lock: asyncio.Lock | None = None  # Lazy-initialized to avoid event loop issues
+
+    @classmethod
+    def _get_activation_lock(cls) -> asyncio.Lock:
+        """Get or create the activation lock (lazy initialization)."""
+        if cls._activation_lock is None:
+            cls._activation_lock = asyncio.Lock()
+        return cls._activation_lock
 
     @classmethod
     async def load_from_db(cls, db: AsyncSession) -> None:
@@ -161,7 +168,7 @@ class PromptRegistry:
         if not cls._db_enabled:
             raise RuntimeError("DB backend is not enabled. Call load_from_db() first.")
 
-        async with cls._activation_lock:
+        async with cls._get_activation_lock():
             from db.crud.ai import activate_prompt as db_activate_prompt
 
             # Write to DB
