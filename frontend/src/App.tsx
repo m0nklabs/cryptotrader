@@ -177,8 +177,9 @@ export default function App() {
   const [chartError, setChartError] = useState<string | null>(null)
   const [chartLoading, setChartLoading] = useState(false)
   const [useWebSocket, setUseWebSocket] = useState(true) // Enable WebSocket by default
-  const wsStatus = usePriceStore((state) => state.statusByExchange[selectedExchange] || 'disconnected')
-  const wsConnected = wsStatus === 'connected'
+  const [candleWsConnected, setCandleWsConnected] = useState(false)
+  const candleWsSupported = selectedExchange === 'bitfinex' && useWebSocket
+  const wsConnected = candleWsSupported && candleWsConnected
   const livePrice = usePriceStore((state) => state.prices[`${selectedExchange}:${chartSymbol}`])
 
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([])
@@ -359,6 +360,10 @@ export default function App() {
     const exchange = selectedExchange
     const timeframe = chartTimeframe
 
+    if (!candleWsSupported) {
+      setCandleWsConnected(false)
+    }
+
     // Load initial candles from database
     const loadInitialCandles = () => {
       if (!mounted) return
@@ -469,17 +474,19 @@ export default function App() {
     loadInitialCandles()
 
     // Try to establish WebSocket connection if enabled
-    if (useWebSocket && exchange === 'bitfinex') {
+    if (candleWsSupported) {
       try {
         candleStream = createCandleStream(
           chartSymbol,
           timeframe,
           (candle) => {
             updateCandle(candle)
+            setCandleWsConnected(true)
           },
           (error) => {
             console.error('WebSocket error, falling back to polling:', error)
             setUseWebSocket(false) // Disable WebSocket to reflect actual state
+            setCandleWsConnected(false)
             // Set up polling as fallback (if not already set up at line 410)
             if (!pollInterval) {
               setupPolling()
@@ -510,8 +517,9 @@ export default function App() {
       if (inFlight) {
         inFlight.abort()
       }
+      setCandleWsConnected(false)
     }
-  }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket, selectedExchange])
+  }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket, selectedExchange, candleWsSupported])
 
   useEffect(() => {
     if (!livePrice) return

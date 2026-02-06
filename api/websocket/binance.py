@@ -66,5 +66,10 @@ class BinanceWebSocketClient:
             except Exception as exc:
                 logger.warning("Binance WebSocket error: %s", exc)
                 await on_status("disconnected")
-                await asyncio.sleep(backoff)
+                if stop_event.is_set():
+                    break
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=backoff)
+                except asyncio.TimeoutError:
+                    pass
                 backoff = min(backoff * 2, 30.0)

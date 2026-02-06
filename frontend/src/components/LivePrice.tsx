@@ -36,14 +36,19 @@ export default function LivePrice({ symbol, exchange, timeframe, className }: Li
     return `${wsProtocol}//${host}/api/ws/prices`
   }, [])
 
+  const subscribeMessage = useMemo(
+    () => ({
+      type: 'subscribe' as const,
+      exchange,
+      symbols: [symbol],
+    }),
+    [exchange, symbol],
+  )
+
   useWebSocket<PriceMessage>({
     url: socketUrl,
     enabled: Boolean(symbol),
-    subscribeMessage: {
-      type: 'subscribe',
-      exchange,
-      symbols: [symbol],
-    },
+    subscribeMessage,
     onMessage: (data) => {
       if (data.type === 'status' && data.exchange && data.status) {
         setStatus(data.exchange, data.status as PriceStatus)

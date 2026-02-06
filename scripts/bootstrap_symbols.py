@@ -74,13 +74,17 @@ def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     subprocess.run(cmd, cwd=str(_REPO_ROOT), env=env, check=True)
 
 
-def _link_user_unit(template_path: Path) -> None:
+def _link_user_unit(template_path: Path, *, required: bool = False) -> None:
     """Link a unit file into ~/.config/systemd/user via symlink.
 
     We avoid `systemctl --user link` to keep behavior predictable across distros.
     """
 
     if not template_path.exists():
+        message = f"Missing systemd unit template: {template_path}"
+        if required:
+            raise SystemExit(message)
+        print(f"warning: {message}")
         return
 
     user_dir = Path.home() / ".config" / "systemd" / "user"
@@ -174,8 +178,8 @@ def main(argv: list[str] | None = None) -> int:
     gap_repair_unit = _REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-gap-repair@.service"
     gap_repair_timer = _REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-gap-repair@.timer"
 
-    _link_user_unit(backfill_unit)
-    _link_user_unit(realtime_timer)
+    _link_user_unit(backfill_unit, required=True)
+    _link_user_unit(realtime_timer, required=True)
     if args.enable_gap_repair:
         _link_user_unit(gap_repair_unit)
         _link_user_unit(gap_repair_timer)
