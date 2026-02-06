@@ -57,6 +57,8 @@ def _get_test_engine() -> AsyncEngine:
 
     # Convert to async URL if needed
     # Ensure we always use postgresql+asyncpg:// scheme
+    if "://" not in database_url:
+        database_url = f"postgresql+asyncpg://{database_url}"
     if database_url.startswith("postgresql://"):
         if "+asyncpg" not in database_url:
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
