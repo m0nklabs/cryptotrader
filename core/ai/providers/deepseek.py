@@ -142,7 +142,72 @@ class DeepSeekProvider(LLMProvider):
         """Check if DeepSeek API is reachable."""
         try:
             client = await self._get_client()
-            data = await self._make_request(client, "GET", "/v1/models")
+            await self._make_request(client, "GET", "/v1/models")
             return True
         except Exception:
             return False
+
+    async def complete_stream(
+        self,
+        request: AIRequest,
+        *,
+        system_prompt: str,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ):
+        """Stream chat-completion response from DeepSeek.
+        
+        Yields text chunks as they arrive from the API.
+        """
+        model = model or request.override_model or self.config.default_model
+        temperature = temperature or request.override_temperature or self.config.temperature
+        max_tokens = max_tokens or self.config.max_tokens
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": request.user_prompt},
+        ]
+
+        # Acquire rate limit token
+        rate_limiter = await self._get_rate_limiter()
+        await rate_limiter.acquire()
+
+        try:
+            client = await self._get_client()
+            async with client.stream(
+                "POST",
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "stream": True,
+                },
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]  # Remove "data: " prefix
+                        if data_str.strip() == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield content
+                        except json.JSONDecodeError:
+                            continue
+        except Exception as e:
+            logger.error("DeepSeek streaming failed: %s", e)
+            # Fall back to non-streaming
+            async for chunk in super().complete_stream(
+                request,
+                system_prompt=system_prompt,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ):
+                yield chunk

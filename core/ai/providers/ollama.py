@@ -119,7 +119,7 @@ class OllamaProvider(LLMProvider):
         """Check if Ollama is running locally."""
         try:
             client = await self._get_client()
-            data = await self._make_request(client, "GET", "/api/tags")
+            await self._make_request(client, "GET", "/api/tags")
             return True
         except Exception:
             return False

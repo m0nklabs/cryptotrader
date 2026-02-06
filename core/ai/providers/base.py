@@ -354,6 +354,41 @@ class LLMProvider(ABC):
     async def health_check(self) -> bool:
         """Return ``True`` if the provider is reachable and authenticated."""
 
+    async def complete_stream(
+        self,
+        request: AIRequest,
+        *,
+        system_prompt: str,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ):
+        """Stream chat-completion response (optional, provider-specific).
+        
+        Args:
+            request: The AI request (role, user prompt, context).
+            system_prompt: The system prompt to prepend.
+            model: Override the provider's default model.
+            temperature: Override the default temperature.
+            max_tokens: Override the default max tokens.
+            
+        Yields:
+            Chunks of response text as they arrive.
+            
+        Note:
+            Default implementation falls back to non-streaming complete().
+            Providers that support streaming should override this method.
+        """
+        # Default: fall back to non-streaming
+        response = await self.complete(
+            request,
+            system_prompt=system_prompt,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        yield response.raw_text
+
     async def close(self) -> None:
         """Close any open HTTP connections."""
         if self._client is not None:

@@ -7,24 +7,22 @@ with mocked HTTP responses.
 from __future__ import annotations
 
 import asyncio
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from core.ai.providers.base import (
-    LLMError,
     PermanentError,
     TokenBucket,
     TransientError,
     classify_http_error,
     validate_json_response,
 )
-from core.ai.providers.deepseek import DEEPSEEK_R1_CONFIG, DeepSeekProvider
-from core.ai.providers.ollama import OLLAMA_CONFIG, OllamaProvider
-from core.ai.providers.openai import OPENAI_CONFIG, OpenAIProvider
-from core.ai.providers.xai import XAI_CONFIG, XAIProvider
+from core.ai.providers.deepseek import DeepSeekProvider
+from core.ai.providers.ollama import OllamaProvider
+from core.ai.providers.openai import OpenAIProvider
+from core.ai.providers.xai import XAIProvider
 from core.ai.types import AIRequest, ProviderName, RoleName
 
 

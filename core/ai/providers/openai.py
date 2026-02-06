@@ -128,7 +128,7 @@ class OpenAIProvider(LLMProvider):
         """Check if OpenAI API is reachable."""
         try:
             client = await self._get_client()
-            data = await self._make_request(client, "GET", "/v1/models")
+            await self._make_request(client, "GET", "/v1/models")
             return True
         except Exception:
             return False
