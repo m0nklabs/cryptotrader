@@ -1578,6 +1578,7 @@ export default function App() {
                 <span className={`ml-2 text-xs ${wsConnected ? 'text-green-500' : 'text-gray-400'}`}>
                   {wsConnected ? '● Live' : '○ Polling'}
                 </span>
+                <LivePrice symbol={chartSymbol} exchange={selectedExchange} timeframe={chartTimeframe} className="sr-only" />
               </div>
               <div className="min-h-100 flex-1 rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
                 <CandlestickChart

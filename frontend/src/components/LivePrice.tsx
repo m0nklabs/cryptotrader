@@ -31,7 +31,9 @@ export default function LivePrice({ symbol, exchange, timeframe, className }: Li
       const base = API_BASE.replace(/^http/, 'ws')
       return `${base}/ws/prices`
     }
-    return `/ws/prices`
+    const { protocol, host } = window.location
+    const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${wsProtocol}//${host}/api/ws/prices`
   }, [])
 
   useWebSocket<PriceMessage>({
@@ -91,6 +93,8 @@ export default function LivePrice({ symbol, exchange, timeframe, className }: Li
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
+        console.warn('[LivePrice] Polling failed', err)
+        setStatus(exchange, 'error')
       }
     }
 

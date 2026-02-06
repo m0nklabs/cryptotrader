@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from api.websocket.manager import get_price_ws_manager
 
 router = APIRouter(tags=["websocket"])
+logger = logging.getLogger(__name__)
 
 
 @router.websocket("/ws/prices")
@@ -31,4 +34,5 @@ async def websocket_prices(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
     except Exception:
+        logger.exception("WebSocket /ws/prices handler error")
         await manager.disconnect(websocket)

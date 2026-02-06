@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
+import contextlib
 from typing import Awaitable, Callable, Protocol
 
 from api.websocket.binance import BinanceWebSocketClient
@@ -62,6 +63,7 @@ class PriceWebSocketManager:
         self._connections: dict[WebSocketLike, ConnectionState] = {}
         self._exchange_state: dict[str, ExchangeState] = {}
         self._lock = asyncio.Lock()
+        self._refresh_lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocketLike, *, exchange: str = "bitfinex") -> None:
         async with self._lock:
@@ -71,15 +73,17 @@ class PriceWebSocketManager:
         async with self._lock:
             state = self._connections.pop(websocket, None)
         if state:
-            await self._refresh_exchange_stream(state.exchange)
+            async with self._refresh_lock:
+                await self._refresh_exchange_stream(state.exchange)
 
     async def update_subscription(self, websocket: WebSocketLike, *, exchange: str, symbols: set[str]) -> None:
         async with self._lock:
             prev_exchange = self._connections.get(websocket, ConnectionState(exchange=exchange)).exchange
             self._connections[websocket] = ConnectionState(exchange=exchange, symbols=set(symbols))
 
-        await self._refresh_exchange_stream(prev_exchange)
-        await self._refresh_exchange_stream(exchange)
+        async with self._refresh_lock:
+            await self._refresh_exchange_stream(prev_exchange)
+            await self._refresh_exchange_stream(exchange)
 
     async def broadcast_price(self, update: dict[str, object]) -> None:
         exchange = str(update.get("exchange", ""))
@@ -91,6 +95,7 @@ class PriceWebSocketManager:
         async with self._lock:
             connections = list(self._connections.items())
 
+        failures: list[WebSocketLike] = []
         for websocket, state in connections:
             if state.exchange != exchange or symbol not in state.symbols:
                 continue
@@ -98,19 +103,38 @@ class PriceWebSocketManager:
             if now - last_sent < self._rate_limit_seconds:
                 continue
             state.last_sent[symbol] = now
-            await websocket.send_json(update)
+            try:
+                await websocket.send_json(update)
+            except Exception:
+                logger.warning("Failed to send price update to websocket", exc_info=True)
+                failures.append(websocket)
+
+        for websocket in failures:
+            await self.disconnect(websocket)
 
     async def broadcast_status(self, *, exchange: str, status: str) -> None:
         payload = {"type": "status", "exchange": exchange, "status": status}
         async with self._lock:
             connections = list(self._connections.items())
 
+        failures: list[WebSocketLike] = []
         for websocket, state in connections:
             if state.exchange != exchange:
                 continue
-            await websocket.send_json(payload)
+            try:
+                await websocket.send_json(payload)
+            except Exception:
+                logger.warning("Failed to send status update to websocket", exc_info=True)
+                failures.append(websocket)
+
+        for websocket in failures:
+            await self.disconnect(websocket)
 
     async def _refresh_exchange_stream(self, exchange: str) -> None:
+        task_to_stop: asyncio.Task | None = None
+        stop_event: asyncio.Event | None = None
+        client: ExchangePriceClient | None = None
+        expected_stop_event: asyncio.Event | None = None
         async with self._lock:
             symbols = set()
             for state in self._connections.values():
@@ -127,7 +151,8 @@ class PriceWebSocketManager:
 
             if state.task:
                 state.stop_event.set()
-                state.task.cancel()
+                task_to_stop = state.task
+                stop_event = state.stop_event
                 state.task = None
 
             if not symbols:
@@ -137,7 +162,11 @@ class PriceWebSocketManager:
 
             state.symbols = set(symbols)
             state.stop_event = asyncio.Event()
+            expected_stop_event = state.stop_event
             client = self._clients.get(exchange)
+
+        if task_to_stop and stop_event:
+            await self._await_task(task_to_stop, stop_event)
 
         if client is None:
             logger.warning("No WebSocket client registered for exchange '%s'", exchange)
@@ -151,7 +180,22 @@ class PriceWebSocketManager:
                 stop_event=state.stop_event,
             )
 
-        state.task = asyncio.create_task(_runner())
+        async with self._lock:
+            current_state = self._exchange_state.get(exchange)
+            if current_state is None or current_state.stop_event is not expected_stop_event:
+                return
+            current_state.task = asyncio.create_task(_runner())
+
+    async def _await_task(self, task: asyncio.Task, stop_event: asyncio.Event) -> None:
+        stop_event.set()
+        try:
+            await asyncio.wait_for(task, timeout=1.0)
+        except asyncio.TimeoutError:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        except asyncio.CancelledError:
+            return
 
 
 _price_ws_manager: PriceWebSocketManager | None = None

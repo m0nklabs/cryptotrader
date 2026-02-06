@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import asyncio
 from decimal import Decimal
 from typing import Any
 
@@ -59,46 +60,20 @@ async def get_arbitrage_opportunities(
     symbol_list = _parse_list(symbols)
 
     stores = _get_stores()
-    engine = stores._get_engine()  # noqa: SLF001
-    _, text = stores._require_sqlalchemy()  # noqa: SLF001
 
-    price_snapshots: list[PriceSnapshot] = []
-    with engine.begin() as conn:
-        if not symbol_list:
-            for exchange in exchange_list:
-                rows = conn.execute(
-                    text(
-                        """
-                        SELECT DISTINCT symbol
-                        FROM candles
-                        WHERE exchange = :exchange AND timeframe = :timeframe
-                        ORDER BY symbol
-                        """
-                    ),
-                    {"exchange": exchange, "timeframe": timeframe},
-                ).fetchall()
-                symbol_list.extend([row[0] for row in rows])
+    def _fetch_snapshots() -> list[PriceSnapshot]:
+        rows = stores.get_latest_candle_closes(
+            exchanges=exchange_list,
+            timeframe=timeframe,
+            symbols=symbol_list or None,
+        )
+        snapshots: list[PriceSnapshot] = []
+        for exchange, symbol, close in rows:
+            price = Decimal(str(close))
+            snapshots.append(PriceSnapshot(exchange=exchange, symbol=symbol, price=price))
+        return snapshots
 
-            symbol_list = sorted(set(symbol_list))
-
-        for exchange in exchange_list:
-            for symbol in symbol_list:
-                row = conn.execute(
-                    text(
-                        """
-                        SELECT close
-                        FROM candles
-                        WHERE exchange = :exchange AND symbol = :symbol AND timeframe = :timeframe
-                        ORDER BY open_time DESC
-                        LIMIT 1
-                        """
-                    ),
-                    {"exchange": exchange, "symbol": symbol, "timeframe": timeframe},
-                ).fetchone()
-                if not row:
-                    continue
-                price = Decimal(str(row[0]))
-                price_snapshots.append(PriceSnapshot(exchange=exchange, symbol=symbol, price=price))
+    price_snapshots = await asyncio.to_thread(_fetch_snapshots)
 
     fee_map = {exchange: DEFAULT_FEE for exchange in exchange_list}
     detector = ArbitrageDetector(

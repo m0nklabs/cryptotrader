@@ -8,6 +8,8 @@ from typing import Awaitable, Callable
 
 import websockets
 
+from core.market_data.binance_backfill import _normalize_binance_symbol
+
 logger = logging.getLogger(__name__)
 
 PriceCallback = Callable[[dict[str, object]], Awaitable[None]]
@@ -30,7 +32,8 @@ class BinanceWebSocketClient:
         if not symbols:
             return
 
-        streams = "/".join(f"{symbol.lower()}@ticker" for symbol in sorted(symbols))
+        symbol_map = { _normalize_binance_symbol(symbol): symbol for symbol in symbols }
+        streams = "/".join(f"{symbol.lower()}@ticker" for symbol in sorted(symbol_map))
         url = f"{self.base_url}?streams={streams}"
 
         backoff = 1.0
@@ -49,11 +52,12 @@ class BinanceWebSocketClient:
                         price = data.get("c")
                         event_time = data.get("E") or int(time.time() * 1000)
                         if symbol and price is not None:
+                            canonical_symbol = symbol_map.get(str(symbol), str(symbol))
                             await on_price(
                                 {
                                     "type": "price",
                                     "exchange": "binance",
-                                    "symbol": str(symbol),
+                                    "symbol": canonical_symbol,
                                     "price": float(price),
                                     "timestamp": int(event_time),
                                 }
