@@ -296,6 +296,9 @@ class LLMProvider(ABC):
     ) -> dict[str, Any]:
         """Make HTTP request with retry and error handling.
 
+        Rate limit tokens are acquired per attempt (including retries) to
+        ensure the provider's rate limit is respected even during backoff.
+
         Args:
             client: HTTP client to use
             method: HTTP method (GET, POST, etc.)
@@ -309,6 +312,10 @@ class LLMProvider(ABC):
             TransientError: For retry-able errors
             PermanentError: For non-retry-able errors
         """
+        # Acquire rate limit token for each attempt (including retries)
+        rate_limiter = await self._get_rate_limiter()
+        await rate_limiter.acquire()
+
         try:
             resp = await client.request(method, url, **kwargs)
             resp.raise_for_status()

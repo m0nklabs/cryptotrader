@@ -73,10 +73,6 @@ class OpenAIProvider(LLMProvider):
             {"role": "user", "content": request.user_prompt},
         ]
 
-        # Acquire rate limit token before making request
-        rate_limiter = await self._get_rate_limiter()
-        await rate_limiter.acquire()
-
         start = self._start_timer()
         try:
             client = await self._get_client()

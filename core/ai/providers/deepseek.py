@@ -84,10 +84,6 @@ class DeepSeekProvider(LLMProvider):
             {"role": "user", "content": request.user_prompt},
         ]
 
-        # Acquire rate limit token before making request
-        rate_limiter = await self._get_rate_limiter()
-        await rate_limiter.acquire()
-
         start = self._start_timer()
         try:
             client = await self._get_client()
@@ -177,7 +173,7 @@ class DeepSeekProvider(LLMProvider):
             {"role": "user", "content": request.user_prompt},
         ]
 
-        # Acquire rate limit token
+        # Acquire rate limit token for streaming (not handled by _make_request)
         rate_limiter = await self._get_rate_limiter()
         await rate_limiter.acquire()
 

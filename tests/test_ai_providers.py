@@ -198,29 +198,39 @@ async def test_deepseek_complete_success():
 
 @pytest.mark.asyncio
 async def test_deepseek_complete_rate_limiting():
-    """Test that rate limiting is applied."""
-    provider = DeepSeekProvider()
+    """Test that rate limiting is applied per request attempt.
 
-    # Reset rate limiter to low capacity for test
-    bucket = await TokenBucket.get_instance(ProviderName.DEEPSEEK, 2)
-    bucket.tokens = 1  # Only 1 token available
+    Rate limiting now happens inside _make_request, so each call
+    (including retries) acquires a token from the bucket.
+    """
+    provider = DeepSeekProvider()
 
     mock_response = {
         "choices": [{"message": {"content": "test"}}],
         "usage": {"prompt_tokens": 10, "completion_tokens": 5},
     }
 
-    with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
-        mock_req.return_value = mock_response
+    # Mock the HTTP client so _make_request runs its full logic
+    # (including rate limiting) but doesn't hit the network
+    with patch("httpx.AsyncClient.request", new_callable=AsyncMock) as mock_http:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = mock_response
+        mock_resp.raise_for_status = MagicMock()
+        mock_http.return_value = mock_resp
 
         request = AIRequest(role=RoleName.SCREENER, user_prompt="Test")
 
-        # First request should succeed
+        # Make two requests — both should succeed and each should
+        # consume a rate limit token from the bucket
+        await provider.complete(request, system_prompt="test")
         await provider.complete(request, system_prompt="test")
 
-        # Second request should wait (rate limited)
-        # We can't easily test the wait, but we can verify it doesn't fail
-        await provider.complete(request, system_prompt="test")
+        # Verify _make_request was called twice (rate limiting is internal)
+        assert mock_http.call_count == 2
+
+        # Verify the rate limiter exists and tokens were consumed
+        limiter = await provider._get_rate_limiter()
+        assert limiter.tokens < limiter.capacity
 
 
 @pytest.mark.asyncio
