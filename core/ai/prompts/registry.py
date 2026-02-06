@@ -154,7 +154,7 @@ class PromptRegistry:
         """Activate a prompt and deactivate all others for the same role (write-through).
 
         Returns the activated prompt or None if not found.
-        
+
         Uses a lock to prevent race conditions when multiple concurrent requests
         try to activate different prompts for the same role.
         """

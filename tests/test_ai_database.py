@@ -47,10 +47,10 @@ _async_session_maker: sessionmaker | None = None
 def _get_test_engine() -> AsyncEngine:
     """Get or create the test database engine (singleton)."""
     global _test_engine, _async_session_maker
-    
+
     if _test_engine is not None:
         return _test_engine
-    
+
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         pytest.skip("DATABASE_URL not set")
@@ -63,14 +63,14 @@ def _get_test_engine() -> AsyncEngine:
 
     _test_engine = create_async_engine(database_url, echo=False)
     _async_session_maker = sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
-    
+
     return _test_engine
 
 
 @pytest_asyncio.fixture
 async def db_session():
     """Create an async database session for testing.
-    
+
     Uses a module-level engine to avoid connection pool exhaustion.
     """
     engine = _get_test_engine()

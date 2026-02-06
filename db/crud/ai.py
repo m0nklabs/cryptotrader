@@ -22,7 +22,7 @@ from db.models.ai import AIDecision, AIRoleConfig, AIUsageLog, SystemPrompt
 
 async def get_role_configs(db: AsyncSession) -> Sequence[AIRoleConfig]:
     """Get all role configurations.
-    
+
     Returns:
         Sequence of AIRoleConfig objects with all fields populated including
         provider, model, system_prompt_id, temperature, max_tokens, weight,
@@ -34,10 +34,10 @@ async def get_role_configs(db: AsyncSession) -> Sequence[AIRoleConfig]:
 
 async def get_role_config(db: AsyncSession, role_name: str) -> AIRoleConfig | None:
     """Get a specific role configuration.
-    
+
     Args:
         role_name: Name of the role (e.g., "tactical", "screener")
-        
+
     Returns:
         AIRoleConfig object if found, None otherwise. Contains all configuration
         fields including provider assignment, model, and system prompt reference.
@@ -104,7 +104,7 @@ async def create_role_config(
     fallback_model: str | None = None,
 ) -> AIRoleConfig:
     """Create a new role configuration.
-    
+
     Args:
         name: Role name (e.g., "tactical", "screener")
         provider: Provider name (e.g., "deepseek", "openai")
@@ -116,7 +116,7 @@ async def create_role_config(
         enabled: Whether role is active
         fallback_provider: Optional fallback provider
         fallback_model: Optional fallback model
-        
+
     Returns:
         Newly created AIRoleConfig with all fields populated including
         auto-generated updated_at timestamp.
@@ -178,7 +178,7 @@ async def create_prompt(
     is_active: bool = True,
 ) -> SystemPrompt:
     """Create a new system prompt version.
-    
+
     Note: prompt_id should follow the format "{role}_v{version}" (e.g., "tactical_v1").
     This convention ensures consistency across the system but is not strictly enforced.
     """
