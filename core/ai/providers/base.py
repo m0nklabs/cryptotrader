@@ -337,7 +337,7 @@ class LLMProvider(ABC):
                 e.response.status_code,
                 f"{method} {url} failed: {e.response.text[:200]}",
             )
-            raise error
+            raise error from e
         except httpx.TimeoutException as e:
             # Timeouts are transient
             raise TransientError(f"{method} {url} timed out: {e}")

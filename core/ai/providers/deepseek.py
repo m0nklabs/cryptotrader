@@ -219,7 +219,7 @@ class DeepSeekProvider(LLMProvider):
                 # If reading the body fails for any reason, fall back to the base message
                 pass
             error = classify_http_error(status_code, message)
-            raise error
+            raise error from e
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
             # Network errors are transient
             from core.ai.providers.base import TransientError

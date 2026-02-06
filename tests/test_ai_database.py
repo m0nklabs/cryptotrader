@@ -12,6 +12,8 @@ Requires DATABASE_URL to be set and PostgreSQL running.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 from pathlib import Path
 from typing import Iterable
@@ -171,8 +173,10 @@ async def db_session():
             # Seed defaults for tests that expect a baseline DB state.
             from scripts.seed_ai_defaults import seed_role_configs, seed_system_prompts
 
-            await seed_system_prompts(session)
-            await seed_role_configs(session)
+            # Silence stdout from seed scripts to reduce test log noise
+            with contextlib.redirect_stdout(io.StringIO()):
+                await seed_system_prompts(session)
+                await seed_role_configs(session)
             yield session
     finally:
         await engine.dispose()
