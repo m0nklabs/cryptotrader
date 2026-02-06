@@ -71,6 +71,14 @@ def _get_test_engine() -> AsyncEngine:
         pytest.skip(f"Unsupported DATABASE_URL format: {database_url}")
 
     _test_engine = create_async_engine(database_url, echo=False)
+
+    # Verify asyncpg is importable — CI may not have it installed
+    try:
+        import asyncpg  # noqa: F401
+    except ImportError:
+        _test_engine = None
+        pytest.skip("asyncpg not installed — skipping async DB tests")
+
     _async_session_maker = sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
 
     return _test_engine
