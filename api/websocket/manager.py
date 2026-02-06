@@ -187,7 +187,6 @@ class PriceWebSocketManager:
             current_state.task = asyncio.create_task(_runner())
 
     async def _await_task(self, task: asyncio.Task, stop_event: asyncio.Event) -> None:
-        stop_event.set()
         try:
             await asyncio.wait_for(task, timeout=1.0)
         except asyncio.TimeoutError:
