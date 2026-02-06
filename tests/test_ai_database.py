@@ -39,8 +39,9 @@ from db.crud.ai import (
     get_decisions,
 )
 
-# Module-level engine to avoid creating multiple engines
+# Module-level singletons to avoid creating multiple engines/sessions
 _test_engine: AsyncEngine | None = None
+_async_session_maker: sessionmaker | None = None
 
 
 def _get_test_engine() -> AsyncEngine:

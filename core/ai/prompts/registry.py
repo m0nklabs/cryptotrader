@@ -38,17 +38,15 @@ class PromptRegistry:
     _db_enabled: bool = False
     _db_loaded: bool = False
     _activation_lock: asyncio.Lock | None = None  # Lazy-initialized to avoid event loop issues
-    _lock_init_lock: asyncio.Lock | None = None  # For thread-safe lock initialization
 
     @classmethod
     def _get_activation_lock(cls) -> asyncio.Lock:
-        """Get or create the activation lock (lazy initialization with double-checked locking)."""
+        """Get or create the activation lock (lazy initialization).
+
+        Lazy init avoids 'no running event loop' errors at import time.
+        Safe for single-process async applications (one event loop).
+        """
         if cls._activation_lock is None:
-            # Double-checked locking pattern for thread-safe initialization
-            if cls._lock_init_lock is None:
-                cls._lock_init_lock = asyncio.Lock()
-            # Note: This is still not fully thread-safe across different event loops,
-            # but it's good enough for single-process async applications
             cls._activation_lock = asyncio.Lock()
         return cls._activation_lock
 
