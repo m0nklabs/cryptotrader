@@ -168,6 +168,11 @@ async def db_session():
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with async_session() as session:
+            # Seed defaults for tests that expect a baseline DB state.
+            from scripts.seed_ai_defaults import seed_role_configs, seed_system_prompts
+
+            await seed_system_prompts(session)
+            await seed_role_configs(session)
             yield session
     finally:
         await engine.dispose()
@@ -328,7 +333,7 @@ async def test_usage_logging(db_session):
         # Get summary for tactical role
         summary = await get_usage_summary(db_session, role="tactical")
         assert summary["total_requests"] >= 2
-        assert summary["total_cost"] >= 0.009
+        assert summary["total_cost"] == pytest.approx(0.009, abs=1e-6)
         assert summary["success_rate"] > 0.0
 
         # Get summary for a specific symbol
