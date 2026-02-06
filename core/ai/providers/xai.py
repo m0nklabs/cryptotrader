@@ -74,10 +74,16 @@ class XAIProvider(LLMProvider):
             {"role": "user", "content": request.user_prompt},
         ]
 
+        # Acquire rate limit token before making request
+        rate_limiter = await self._get_rate_limiter()
+        await rate_limiter.acquire()
+
         start = self._start_timer()
         try:
             client = await self._get_client()
-            resp = await client.post(
+            data = await self._make_request(
+                client,
+                "POST",
                 "/v1/chat/completions",
                 json={
                     "model": model,
@@ -86,8 +92,6 @@ class XAIProvider(LLMProvider):
                     "max_tokens": max_tokens,
                 },
             )
-            resp.raise_for_status()
-            data = resp.json()
         except Exception as exc:
             latency = self._elapsed_ms(start)
             logger.error("xAI request failed: %s", exc)
@@ -125,7 +129,7 @@ class XAIProvider(LLMProvider):
         """Check if xAI API is reachable."""
         try:
             client = await self._get_client()
-            resp = await client.get("/v1/models")
-            return resp.status_code == 200
+            data = await self._make_request(client, "GET", "/v1/models")
+            return True
         except Exception:
             return False

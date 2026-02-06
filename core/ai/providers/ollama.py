@@ -65,10 +65,16 @@ class OllamaProvider(LLMProvider):
             {"role": "user", "content": request.user_prompt},
         ]
 
+        # Acquire rate limit token (though local Ollama has no real limit)
+        rate_limiter = await self._get_rate_limiter()
+        await rate_limiter.acquire()
+
         start = self._start_timer()
         try:
             client = await self._get_client()
-            resp = await client.post(
+            data = await self._make_request(
+                client,
+                "POST",
                 "/api/chat",
                 json={
                     "model": model,
@@ -79,8 +85,6 @@ class OllamaProvider(LLMProvider):
                     },
                 },
             )
-            resp.raise_for_status()
-            data = resp.json()
         except Exception as exc:
             latency = self._elapsed_ms(start)
             logger.error("Ollama request failed: %s", exc)
@@ -115,7 +119,7 @@ class OllamaProvider(LLMProvider):
         """Check if Ollama is running locally."""
         try:
             client = await self._get_client()
-            resp = await client.get("/api/tags")
-            return resp.status_code == 200
+            data = await self._make_request(client, "GET", "/api/tags")
+            return True
         except Exception:
             return False
