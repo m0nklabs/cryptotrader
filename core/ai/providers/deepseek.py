@@ -219,7 +219,7 @@ class DeepSeekProvider(LLMProvider):
                 # If reading the body fails for any reason, fall back to the base message
                 logger.debug("Failed to read DeepSeek error response body", exc_info=True)
             if status_code is None:
-                raise TransientError(f"HTTP error without status code: {message}") from e
+                raise TransientError(f"HTTP error without status code: {message}", status_code=None) from e
             error = classify_http_error(status_code, message)
             raise error from e
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
