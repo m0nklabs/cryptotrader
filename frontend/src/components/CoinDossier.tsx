@@ -462,28 +462,28 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
               <NarrativeSection
                 title="Background"
                 icon="📖"
-                content={selectedEntry.lore}
+                content={selectedEntry.lore ?? ''}
                 defaultOpen={false}
               />
               <NarrativeSection
                 title="Stats Summary"
                 icon="📊"
-                content={selectedEntry.stats_summary}
+                content={selectedEntry.stats_summary ?? ''}
               />
               <NarrativeSection
                 title="Technical Analysis"
                 icon="🔬"
-                content={selectedEntry.tech_analysis}
+                content={selectedEntry.tech_analysis ?? ''}
               />
               <NarrativeSection
                 title="Retrospective"
                 icon="🔙"
-                content={selectedEntry.retrospective}
+                content={selectedEntry.retrospective ?? ''}
               />
               <NarrativeSection
                 title="Prediction & Outlook"
                 icon="🔮"
-                content={selectedEntry.prediction}
+                content={selectedEntry.prediction ?? ''}
               />
             </div>
 
