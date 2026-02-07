@@ -72,20 +72,20 @@ class FundamentalRole(AgentRole):
         items = []
         if isinstance(news_data, str):
             # Split by double newlines or numbered items
-            chunks = re.split(r'\n\n+|\n\d+\.\s+', news_data)
+            chunks = re.split(r"\n\n+|\n\d+\.\s+", news_data)
             for chunk in chunks:
                 if len(chunk.strip()) > 20:  # Skip very short chunks
-                    items.append({
-                        "title": chunk.strip()[:200],
-                        "source": "unknown",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
+                    items.append(
+                        {
+                            "title": chunk.strip()[:200],
+                            "source": "unknown",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
 
         return items[:10]  # Limit to 10 items
 
-    def _calculate_sentiment_score(
-        self, news_items: list[dict], response_text: str
-    ) -> dict[str, float]:
+    def _calculate_sentiment_score(self, news_items: list[dict], response_text: str) -> dict[str, float]:
         """Calculate sentiment metrics from news and LLM analysis.
 
         Args:
@@ -113,9 +113,7 @@ class FundamentalRole(AgentRole):
         bearish_count = sum(1 for word in bearish_words if word in text_lower)
 
         if bullish_count + bearish_count > 0:
-            metrics["sentiment_score"] = (
-                (bullish_count - bearish_count) / (bullish_count + bearish_count)
-            )
+            metrics["sentiment_score"] = (bullish_count - bearish_count) / (bullish_count + bearish_count)
 
         # Event risk keywords
         risk_words = ["regulatory", "ban", "hack", "lawsuit", "investigation", "delisting"]
@@ -157,42 +155,50 @@ class FundamentalRole(AgentRole):
         ]
 
         if news_items:
-            prompt_parts.extend([
-                "=== PROVIDED NEWS CONTEXT ===",
-                json.dumps(news_items, indent=2, default=str),
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "=== PROVIDED NEWS CONTEXT ===",
+                    json.dumps(news_items, indent=2, default=str),
+                    "",
+                ]
+            )
 
         if social_data:
-            prompt_parts.extend([
-                "=== SOCIAL MEDIA DATA ===",
-                json.dumps(social_data, indent=2, default=str),
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "=== SOCIAL MEDIA DATA ===",
+                    json.dumps(social_data, indent=2, default=str),
+                    "",
+                ]
+            )
 
         if onchain_metrics:
-            prompt_parts.extend([
-                "=== ON-CHAIN METRICS ===",
-                json.dumps(onchain_metrics, indent=2, default=str),
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "=== ON-CHAIN METRICS ===",
+                    json.dumps(onchain_metrics, indent=2, default=str),
+                    "",
+                ]
+            )
 
-        prompt_parts.extend([
-            request.user_prompt,
-            "",
-            "RESPONSE FORMAT:",
-            "Provide your analysis in JSON format with the following structure:",
-            "{",
-            '  "action": "BUY" | "SELL" | "NEUTRAL",',
-            '  "confidence": 0.0-1.0,',
-            '  "reasoning": "detailed fundamental analysis",',
-            '  "sentiment_score": -1.0 to 1.0,  // -1=bearish, 0=neutral, 1=bullish',
-            '  "event_risk": 0.0-1.0,  // 0=low risk, 1=high risk',
-            '  "social_volume": 0.0-1.0,  // Relative social activity',
-            '  "key_events": ["event1", "event2", ...],  // Major news items',
-            '  "news_summary": "brief summary of key news"',
-            "}",
-        ])
+        prompt_parts.extend(
+            [
+                request.user_prompt,
+                "",
+                "RESPONSE FORMAT:",
+                "Provide your analysis in JSON format with the following structure:",
+                "{",
+                '  "action": "BUY" | "SELL" | "NEUTRAL",',
+                '  "confidence": 0.0-1.0,',
+                '  "reasoning": "detailed fundamental analysis",',
+                '  "sentiment_score": -1.0 to 1.0,  // -1=bearish, 0=neutral, 1=bullish',
+                '  "event_risk": 0.0-1.0,  // 0=low risk, 1=high risk',
+                '  "social_volume": 0.0-1.0,  // Relative social activity',
+                '  "key_events": ["event1", "event2", ...],  // Major news items',
+                '  "news_summary": "brief summary of key news"',
+                "}",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 

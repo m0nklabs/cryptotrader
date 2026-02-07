@@ -108,9 +108,7 @@ class StrategistRole(AgentRole):
 
         return False, ""
 
-    def _calculate_correlation_penalty(
-        self, proposed_symbol: str, existing_positions: list[dict]
-    ) -> float:
+    def _calculate_correlation_penalty(self, proposed_symbol: str, existing_positions: list[dict]) -> float:
         """Calculate correlation penalty for proposed trade.
 
         Note: This is a simplified correlation check based on base asset matching.
@@ -158,9 +156,7 @@ class StrategistRole(AgentRole):
         avg_win = risk_limits.get("avg_win_pct", 0.05)
         avg_loss = risk_limits.get("avg_loss_pct", 0.02)
 
-        kelly_fraction = calculate_position_size_kelly(
-            win_rate, avg_win, avg_loss, max_kelly_fraction=0.25
-        )
+        kelly_fraction = calculate_position_size_kelly(win_rate, avg_win, avg_loss, max_kelly_fraction=0.25)
 
         # Fixed fraction fallback
         fixed_fraction = risk_limits.get("fixed_position_size_pct", 0.1)
@@ -205,17 +201,13 @@ class StrategistRole(AgentRole):
         portfolio_state = format_portfolio_state(positions, total_equity, available_balance)
 
         # Check hard risk limits
-        should_veto, veto_reason = self._check_risk_limits(
-            proposed_trade, portfolio_state, risk_limits
-        )
+        should_veto, veto_reason = self._check_risk_limits(proposed_trade, portfolio_state, risk_limits)
 
         # Calculate correlation risk
         correlation_score = self._calculate_correlation_penalty(symbol, positions)
 
         # Suggest position size
-        sizing_suggestion = self._suggest_position_size(
-            proposed_trade, portfolio_state, risk_limits
-        )
+        sizing_suggestion = self._suggest_position_size(proposed_trade, portfolio_state, risk_limits)
 
         prompt_parts = [
             f"Evaluate proposed {proposed_action} on {symbol}.",
@@ -223,56 +215,66 @@ class StrategistRole(AgentRole):
         ]
 
         if should_veto:
-            prompt_parts.extend([
-                "=== AUTOMATIC VETO ===",
-                f"REASON: {veto_reason}",
-                "This trade violates hard risk limits and must be rejected.",
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "=== AUTOMATIC VETO ===",
+                    f"REASON: {veto_reason}",
+                    "This trade violates hard risk limits and must be rejected.",
+                    "",
+                ]
+            )
 
-        prompt_parts.extend([
-            "=== CURRENT PORTFOLIO STATE ===",
-            json.dumps(portfolio_state, indent=2, default=str),
-            "",
-            "=== PROPOSED TRADE ===",
-            json.dumps(proposed_trade, indent=2, default=str),
-            "",
-            "=== RISK LIMITS ===",
-            json.dumps(risk_limits, indent=2, default=str),
-            "",
-            "=== CORRELATION ANALYSIS ===",
-            json.dumps(
-                {
-                    "correlation_score": correlation_score,
-                    "risk_level": "HIGH" if correlation_score > 0.7 else "MODERATE" if correlation_score > 0.3 else "LOW",
-                },
-                indent=2,
-            ),
-            "",
-            "=== POSITION SIZING RECOMMENDATION ===",
-            json.dumps(sizing_suggestion, indent=2, default=str),
-            "",
-            request.user_prompt,
-            "",
-            "RESPONSE FORMAT:",
-            "Provide your analysis in JSON format with the following structure:",
-            "{",
-            '  "action": "BUY" | "SELL" | "NEUTRAL" | "VETO",',
-            '  "confidence": 0.0-1.0,',
-            '  "reasoning": "detailed risk analysis",',
-            '  "position_size_pct": 0.0-1.0,  // Recommended position size as % of equity',
-            '  "portfolio_risk_pct": 0.0-1.0,  // Estimated portfolio risk after trade',
-            '  "correlation_score": 0.0-1.0,  // Correlation with existing positions',
-            '  "veto_reason": "..." // Required if action is VETO',
-            "}",
-        ])
+        prompt_parts.extend(
+            [
+                "=== CURRENT PORTFOLIO STATE ===",
+                json.dumps(portfolio_state, indent=2, default=str),
+                "",
+                "=== PROPOSED TRADE ===",
+                json.dumps(proposed_trade, indent=2, default=str),
+                "",
+                "=== RISK LIMITS ===",
+                json.dumps(risk_limits, indent=2, default=str),
+                "",
+                "=== CORRELATION ANALYSIS ===",
+                json.dumps(
+                    {
+                        "correlation_score": correlation_score,
+                        "risk_level": "HIGH"
+                        if correlation_score > 0.7
+                        else "MODERATE"
+                        if correlation_score > 0.3
+                        else "LOW",
+                    },
+                    indent=2,
+                ),
+                "",
+                "=== POSITION SIZING RECOMMENDATION ===",
+                json.dumps(sizing_suggestion, indent=2, default=str),
+                "",
+                request.user_prompt,
+                "",
+                "RESPONSE FORMAT:",
+                "Provide your analysis in JSON format with the following structure:",
+                "{",
+                '  "action": "BUY" | "SELL" | "NEUTRAL" | "VETO",',
+                '  "confidence": 0.0-1.0,',
+                '  "reasoning": "detailed risk analysis",',
+                '  "position_size_pct": 0.0-1.0,  // Recommended position size as % of equity',
+                '  "portfolio_risk_pct": 0.0-1.0,  // Estimated portfolio risk after trade',
+                '  "correlation_score": 0.0-1.0,  // Correlation with existing positions',
+                '  "veto_reason": "..." // Required if action is VETO',
+                "}",
+            ]
+        )
 
         # If we already determined a veto, note it
         if should_veto:
-            prompt_parts.extend([
-                "",
-                'NOTE: action MUST be "VETO" due to hard risk limit violation.',
-            ])
+            prompt_parts.extend(
+                [
+                    "",
+                    'NOTE: action MUST be "VETO" due to hard risk limit violation.',
+                ]
+            )
 
         return "\n".join(prompt_parts)
 

@@ -203,10 +203,7 @@ def serialize_indicators(indicators: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(value, dict):
             result[key] = serialize_indicators(value)
         elif isinstance(value, (list, tuple)):
-            result[key] = [
-                float(v) if isinstance(v, Decimal) else v
-                for v in value
-            ]
+            result[key] = [float(v) if isinstance(v, Decimal) else v for v in value]
         else:
             result[key] = value
     return result

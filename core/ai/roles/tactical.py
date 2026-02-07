@@ -56,9 +56,7 @@ class TacticalRole(AgentRole):
     def __init__(self, config: RoleConfig | None = None) -> None:
         super().__init__(config or DEFAULT_TACTICAL_CONFIG)
 
-    def _calculate_support_resistance(
-        self, candles: Sequence[Candle], lookback: int = 50
-    ) -> dict[str, float]:
+    def _calculate_support_resistance(self, candles: Sequence[Candle], lookback: int = 50) -> dict[str, float]:
         """Calculate support and resistance levels from recent price action.
 
         Args:
@@ -143,9 +141,7 @@ class TacticalRole(AgentRole):
         max_candles = candle_depth_map.get(timeframe, 200)
 
         # Serialize candles (full OHLCV for tactical analysis)
-        serialized_candles = serialize_candles(
-            candles, max_candles=max_candles, include_full_data=True
-        )
+        serialized_candles = serialize_candles(candles, max_candles=max_candles, include_full_data=True)
 
         # Calculate support/resistance
         sr_levels = {}
@@ -168,35 +164,41 @@ class TacticalRole(AgentRole):
         ]
 
         if sr_levels:
-            prompt_parts.extend([
-                "=== SUPPORT/RESISTANCE LEVELS ===",
-                json.dumps(sr_levels, indent=2),
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "=== SUPPORT/RESISTANCE LEVELS ===",
+                    json.dumps(sr_levels, indent=2),
+                    "",
+                ]
+            )
 
         if multi_tf:
-            prompt_parts.extend([
-                "=== MULTI-TIMEFRAME CONTEXT ===",
-                json.dumps(multi_tf, indent=2, default=str),
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "=== MULTI-TIMEFRAME CONTEXT ===",
+                    json.dumps(multi_tf, indent=2, default=str),
+                    "",
+                ]
+            )
 
-        prompt_parts.extend([
-            request.user_prompt,
-            "",
-            "RESPONSE FORMAT:",
-            "Provide your analysis in JSON format with the following structure:",
-            "{",
-            '  "action": "BUY" | "SELL" | "NEUTRAL",',
-            '  "confidence": 0.0-1.0,',
-            '  "reasoning": "detailed technical analysis",',
-            '  "entry": <price>,  // Recommended entry price',
-            '  "stop_loss": <price>,  // Stop loss level',
-            '  "take_profit": <price>,  // Take profit target',
-            '  "risk_reward": <ratio>,  // Risk:Reward ratio',
-            '  "timeframe_alignment": "STRONG" | "WEAK" | "CONFLICTED",  // Multi-TF check',
-            "}",
-        ])
+        prompt_parts.extend(
+            [
+                request.user_prompt,
+                "",
+                "RESPONSE FORMAT:",
+                "Provide your analysis in JSON format with the following structure:",
+                "{",
+                '  "action": "BUY" | "SELL" | "NEUTRAL",',
+                '  "confidence": 0.0-1.0,',
+                '  "reasoning": "detailed technical analysis",',
+                '  "entry": <price>,  // Recommended entry price',
+                '  "stop_loss": <price>,  // Stop loss level',
+                '  "take_profit": <price>,  // Take profit target',
+                '  "risk_reward": <ratio>,  // Risk:Reward ratio',
+                '  "timeframe_alignment": "STRONG" | "WEAK" | "CONFLICTED",  // Multi-TF check',
+                "}",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 

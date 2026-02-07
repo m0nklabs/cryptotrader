@@ -111,41 +111,44 @@ class ScreenerRole(AgentRole):
         ]
 
         if filtered_symbols:
-            prompt_parts.extend([
-                "Symbols to analyze:",
-                json.dumps(filtered_symbols, indent=2),
-                "",
-                "Indicator snapshots:",
-                json.dumps(
-                    {
-                        sym: serialize_indicators(indicators_by_symbol.get(sym, {}))
-                        for sym in filtered_symbols
-                    },
-                    indent=2,
-                    default=str,
-                ),
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "Symbols to analyze:",
+                    json.dumps(filtered_symbols, indent=2),
+                    "",
+                    "Indicator snapshots:",
+                    json.dumps(
+                        {sym: serialize_indicators(indicators_by_symbol.get(sym, {})) for sym in filtered_symbols},
+                        indent=2,
+                        default=str,
+                    ),
+                    "",
+                ]
+            )
 
         if rejected_symbols:
-            prompt_parts.extend([
-                "Pre-rejected symbols (for context only):",
-                json.dumps(rejected_symbols, indent=2),
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "Pre-rejected symbols (for context only):",
+                    json.dumps(rejected_symbols, indent=2),
+                    "",
+                ]
+            )
 
-        prompt_parts.extend([
-            request.user_prompt,
-            "",
-            "Return a JSON response with the following structure:",
-            "{",
-            '  "action": "BUY" | "NEUTRAL" | "SKIP",',
-            '  "confidence": 0.0-1.0,',
-            '  "reasoning": "brief explanation",',
-            '  "filtered_symbols": ["SYMBOL1", "SYMBOL2", ...],',
-            '  "strong_buy_symbols": ["SYMBOL1", ...],  // Optional: high-conviction picks',
-            "}",
-        ])
+        prompt_parts.extend(
+            [
+                request.user_prompt,
+                "",
+                "Return a JSON response with the following structure:",
+                "{",
+                '  "action": "BUY" | "NEUTRAL" | "SKIP",',
+                '  "confidence": 0.0-1.0,',
+                '  "reasoning": "brief explanation",',
+                '  "filtered_symbols": ["SYMBOL1", "SYMBOL2", ...],',
+                '  "strong_buy_symbols": ["SYMBOL1", ...],  // Optional: high-conviction picks',
+                "}",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 
