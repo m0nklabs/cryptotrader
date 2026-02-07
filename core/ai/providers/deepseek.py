@@ -229,8 +229,6 @@ class DeepSeekProvider(LLMProvider):
             raise error from e
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
             # Network errors are transient
-            from core.ai.providers.base import TransientError
-
             raise TransientError(f"Network error: {e}", status_code=None) from e
 
     async def complete_stream(
