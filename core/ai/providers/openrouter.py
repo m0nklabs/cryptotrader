@@ -14,7 +14,13 @@ import os
 
 import httpx
 
-from core.ai.providers.base import LLMProvider, calculate_backoff_delay, validate_json_response
+from core.ai.providers.base import (
+    LLMProvider,
+    TransientError,
+    calculate_backoff_delay,
+    classify_http_error,
+    validate_json_response,
+)
 from core.ai.types import AIRequest, AIResponse, ProviderConfig, ProviderName
 
 logger = logging.getLogger(__name__)
@@ -35,6 +41,7 @@ OPENROUTER_CONFIG = ProviderConfig(
 
 
 # Pricing per 1M tokens (USD) — best-effort mapping for OpenAI models via OpenRouter.
+# TODO: Fetch pricing from /api/v1/models or a central pricing config to avoid drift.
 OPENROUTER_PRICING: dict[str, dict[str, float]] = {
     "openai/o3-mini": {"input": 1.10, "output": 4.40},
     "openai/o3": {"input": 2.00, "output": 8.00},
@@ -164,8 +171,6 @@ class OpenRouterProvider(LLMProvider):
         max_tokens: int,
     ):
         """Single streaming attempt with error classification and rate limiting."""
-        from core.ai.providers.base import TransientError, classify_http_error
-
         rate_limiter = await self._get_rate_limiter()
         await rate_limiter.acquire()
 
