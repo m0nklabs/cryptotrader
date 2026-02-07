@@ -32,13 +32,13 @@ interface DossierEntry {
   support_level: number
   resistance_level: number
   signal_score: number
-  // Narrative
-  lore: string
-  stats_summary: string
-  tech_analysis: string
-  retrospective: string
-  prediction: string
-  full_narrative: string
+  // Narrative (may be omitted in compact list mode)
+  lore?: string
+  stats_summary?: string
+  tech_analysis?: string
+  retrospective?: string
+  prediction?: string
+  full_narrative?: string
   // Prediction tracking
   predicted_direction: string
   predicted_target: number
@@ -218,7 +218,7 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
   const fetchLatest = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await fetch(`/dossier/latest?exchange=${encodeURIComponent(exchange)}`)
+      const res = await fetch(`/dossier/latest?exchange=${encodeURIComponent(exchange)}&compact=true`)
       if (!res.ok) {
         if (res.status === 404) {
           setEntries([])

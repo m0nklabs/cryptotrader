@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from typing import Any, Optional, Sequence
 
@@ -41,6 +42,22 @@ from core.types import (
     TradeFill,
     WalletSnapshot,
 )
+
+
+def _pg_ssl_connect_args_from_env() -> dict[str, str]:
+    """Build libpq/psycopg SSL kwargs from environment.
+
+    Uses standard libpq env var names so deploy systems (e.g. GH Secrets) can inject them.
+    Returns an empty dict when unset.
+    """
+
+    mapping = {
+        "sslmode": os.environ.get("PGSSLMODE"),
+        "sslrootcert": os.environ.get("PGSSLROOTCERT"),
+        "sslcert": os.environ.get("PGSSLCERT"),
+        "sslkey": os.environ.get("PGSSLKEY"),
+    }
+    return {k: v for k, v in mapping.items() if v}
 
 
 class PostgresStores(
@@ -84,7 +101,12 @@ class PostgresStores(
         if self._engine is None:
             create_engine, _ = self._require_sqlalchemy()
             # Do not log the URL (it may contain secrets).
-            self._engine = create_engine(self._config.database_url, echo=False, pool_pre_ping=True)
+            self._engine = create_engine(
+                self._config.database_url,
+                echo=False,
+                pool_pre_ping=True,
+                connect_args={"connect_timeout": 3, **_pg_ssl_connect_args_from_env()},
+            )
         return self._engine
 
     def _get_latest_candle_open_time(self, *, exchange: str, symbol: str, timeframe: str) -> datetime | None:
