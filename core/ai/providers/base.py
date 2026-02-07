@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import random
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from typing import Any, Callable, NoReturn
 
 import httpx
 
@@ -199,9 +200,7 @@ def with_retry(
                         raise
 
                     # Calculate delay with exponential backoff
-                    delay = min(base_delay * (2**attempt), max_delay)
-                    if jitter:
-                        delay *= 0.5 + random.random()  # Randomize between 50%-150% of delay
+                    delay = calculate_backoff_delay(attempt, base_delay, max_delay, jitter=jitter)
 
                     logger.warning(
                         "Transient error in %s (attempt %d/%d): %s. Retrying in %.2fs",
@@ -228,9 +227,37 @@ def with_retry(
     return decorator
 
 
+def calculate_backoff_delay(
+    attempt: int,
+    base_delay: float,
+    max_delay: float,
+    *,
+    jitter: bool = True,
+) -> float:
+    """Calculate exponential backoff delay with optional jitter."""
+    delay = min(base_delay * (2**attempt), max_delay)
+    if jitter:
+        delay *= 0.5 + random.random()  # Randomize between 50%-150% of delay
+    return delay
+
+
 # ---------------------------------------------------------------------------
 # Response Validation
 # ---------------------------------------------------------------------------
+
+
+def _reject_non_finite_constant(value: str) -> NoReturn:
+    raise ValueError(f"Invalid JSON constant: {value}")
+
+
+def _contains_non_finite_values(value: Any) -> bool:
+    if isinstance(value, float):
+        return not math.isfinite(value)
+    if isinstance(value, dict):
+        return any(_contains_non_finite_values(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_non_finite_values(item) for item in value)
+    return False
 
 
 def validate_json_response(raw_text: str, required_keys: list[str] | None = None) -> dict[str, Any] | None:
@@ -247,7 +274,14 @@ def validate_json_response(raw_text: str, required_keys: list[str] | None = None
         return None
 
     try:
-        parsed = json.loads(raw_text)
+        parsed = json.loads(raw_text, parse_constant=_reject_non_finite_constant)
+
+        if not isinstance(parsed, dict):
+            logger.warning(
+                "JSON response is not an object (got %s)",
+                type(parsed).__name__,
+            )
+            return None
 
         # Validate required keys if specified
         if required_keys:
@@ -256,8 +290,12 @@ def validate_json_response(raw_text: str, required_keys: list[str] | None = None
                 logger.warning("JSON response missing required keys: %s", missing)
                 return None
 
+        if _contains_non_finite_values(parsed):
+            logger.warning("JSON response contains non-finite values")
+            return None
+
         return parsed
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, ValueError) as e:
         logger.warning("Failed to parse JSON response: %s", e)
         return None
 

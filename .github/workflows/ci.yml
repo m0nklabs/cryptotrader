@@ -96,6 +96,7 @@ jobs:
       DATABASE_URL: postgresql+psycopg2://cryptotrader:cryptotrader@localhost:5432/cryptotrader_test
       BITFINEX_API_KEY: ${{ secrets.BITFINEX_API_KEY }}
       BITFINEX_API_SECRET: ${{ secrets.BITFINEX_API_SECRET }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       PAPER_TRADING: "true"
 
     steps:

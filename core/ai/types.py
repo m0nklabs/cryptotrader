@@ -18,6 +18,7 @@ class ProviderName(str, Enum):
 
     DEEPSEEK = "deepseek"
     OPENAI = "openai"
+    OPENROUTER = "openrouter"  # OpenAI-compatible gateway
     XAI = "xai"  # Grok
     OLLAMA = "ollama"  # Local inference
     GOOGLE = "google"  # Gemini

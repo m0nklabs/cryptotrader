@@ -7,6 +7,7 @@ with mocked HTTP responses.
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -22,6 +23,7 @@ from core.ai.providers.base import (
 from core.ai.providers.deepseek import DeepSeekProvider
 from core.ai.providers.ollama import OllamaProvider
 from core.ai.providers.openai import OpenAIProvider
+from core.ai.providers.openrouter import OpenRouterProvider
 from core.ai.providers.xai import XAIProvider
 from core.ai.types import AIRequest, ProviderName, RoleName
 
@@ -111,6 +113,18 @@ def test_validate_json_response_invalid():
     assert parsed is None
 
     parsed = validate_json_response("")
+    assert parsed is None
+
+
+def test_validate_json_response_rejects_non_finite_values():
+    """Test validation rejects NaN/Infinity values."""
+    parsed = validate_json_response('{"value": NaN}')
+    assert parsed is None
+
+    parsed = validate_json_response('{"value": Infinity}')
+    assert parsed is None
+
+    parsed = validate_json_response('{"value": -Infinity}')
     assert parsed is None
 
 
@@ -362,6 +376,54 @@ async def test_openai_cost_calculation():
 
 
 # ---------------------------------------------------------------------------
+# OpenRouter Provider Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_openrouter_complete_success():
+    """Test successful OpenRouter completion."""
+    provider = OpenRouterProvider()
+
+    mock_response = {
+        "choices": [{"message": {"content": "Analysis complete"}}],
+        "usage": {"prompt_tokens": 150, "completion_tokens": 75},
+    }
+
+    with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = mock_response
+
+        request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Review risk")
+        response = await provider.complete(request, system_prompt="You are a strategist")
+
+        assert response.role == RoleName.STRATEGIST
+        assert response.provider == ProviderName.OPENROUTER
+        assert response.model == "openai/o3-mini"
+        assert response.cost_usd > 0
+
+
+@pytest.mark.asyncio
+async def test_openrouter_cost_calculation():
+    """Test cost calculation for OpenRouter (best-effort mapping)."""
+    provider = OpenRouterProvider()
+
+    mock_response = {
+        "choices": [{"message": {"content": "test"}}],
+        "usage": {"prompt_tokens": 1000, "completion_tokens": 1000},
+    }
+
+    with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = mock_response
+
+        request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Test")
+        response = await provider.complete(request, system_prompt="test")
+
+        # openai/o3-mini mapping: $1.10 input, $4.40 output per 1M tokens
+        expected_cost = (1000 * 1.10 + 1000 * 4.40) / 1_000_000
+        assert abs(response.cost_usd - expected_cost) < 0.0001
+
+
+# ---------------------------------------------------------------------------
 # xAI Provider Tests
 # ---------------------------------------------------------------------------
 
@@ -596,7 +658,11 @@ async def test_deepseek_streaming_fallback_on_error():
     provider = DeepSeekProvider()
 
     # Mock streaming to always fail with transient error
-    with patch("httpx.AsyncClient.stream") as mock_stream:
+    with (
+        patch("httpx.AsyncClient.stream") as mock_stream,
+        patch("core.ai.providers.base.calculate_backoff_delay", return_value=0),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
         # Create a mock that raises a transient error
         from core.ai.providers.base import TransientError
 
@@ -615,5 +681,177 @@ async def test_deepseek_streaming_fallback_on_error():
             # Should fall back to non-streaming after all retries exhausted
             assert len(chunks) == 1
             assert "Fallback response" in chunks[0]
-            # Stream should have been attempted 4 times (initial + 3 retries)
+        # Stream should have been attempted 4 times (initial + 3 retries)
+        assert mock_stream.call_count == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider_cls", "role"),
+    [
+        (OpenAIProvider, RoleName.STRATEGIST),
+        (OpenRouterProvider, RoleName.STRATEGIST),
+        (XAIProvider, RoleName.FUNDAMENTAL),
+        (OllamaProvider, RoleName.TACTICAL),
+    ],
+)
+async def test_provider_streaming_fallback_on_error(provider_cls, role):
+    """Test streaming retries then falls back to non-streaming."""
+    provider = provider_cls()
+
+    with (
+        patch("httpx.AsyncClient.stream") as mock_stream,
+        patch("core.ai.providers.base.calculate_backoff_delay", return_value=0),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        from core.ai.providers.base import TransientError
+
+        mock_stream.side_effect = TransientError("Service temporarily unavailable", 503)
+
+        with patch.object(provider, "complete", new_callable=AsyncMock) as mock_complete:
+            mock_complete.return_value.raw_text = "Fallback response"
+
+            request = AIRequest(role=role, user_prompt="Test fallback")
+
+            chunks = []
+            async for chunk in provider.complete_stream(request, system_prompt="test"):
+                chunks.append(chunk)
+
+            assert chunks == ["Fallback response"]
             assert mock_stream.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_openai_streaming_success():
+    """Test OpenAI streaming with SSE format parsing."""
+    provider = OpenAIProvider()
+
+    mock_lines = [
+        "data: " + '{"choices": [{"delta": {"content": "Hello"}}]}',
+        "data: " + '{"choices": [{"delta": {"content": " world"}}]}',
+        "data: [DONE]",
+    ]
+
+    async def mock_aiter_lines():
+        for line in mock_lines:
+            yield line
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        mock_response.raise_for_status = MagicMock()
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.return_value = mock_cm
+
+        request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Test streaming")
+
+        chunks = []
+        async for chunk in provider.complete_stream(request, system_prompt="test"):
+            chunks.append(chunk)
+
+        assert chunks == ["Hello", " world"]
+
+
+@pytest.mark.asyncio
+async def test_openrouter_streaming_success():
+    """Test OpenRouter streaming with SSE format parsing."""
+    provider = OpenRouterProvider()
+
+    mock_lines = [
+        "data: " + '{"choices": [{"delta": {"content": "Hello"}}]}',
+        "data: " + '{"choices": [{"delta": {"content": " world"}}]}',
+        "data: [DONE]",
+    ]
+
+    async def mock_aiter_lines():
+        for line in mock_lines:
+            yield line
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        mock_response.raise_for_status = MagicMock()
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.return_value = mock_cm
+
+        request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Test streaming")
+
+        chunks = []
+        async for chunk in provider.complete_stream(request, system_prompt="test"):
+            chunks.append(chunk)
+
+        assert chunks == ["Hello", " world"]
+
+
+@pytest.mark.asyncio
+async def test_xai_streaming_success():
+    """Test xAI streaming with SSE format parsing."""
+    provider = XAIProvider()
+
+    mock_lines = [
+        "data: " + '{"choices": [{"delta": {"content": "News"}}]}',
+        "data: " + '{"choices": [{"delta": {"content": " update"}}]}',
+        "data: [DONE]",
+    ]
+
+    async def mock_aiter_lines():
+        for line in mock_lines:
+            yield line
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        mock_response.raise_for_status = MagicMock()
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.return_value = mock_cm
+
+        request = AIRequest(role=RoleName.FUNDAMENTAL, user_prompt="Test streaming")
+
+        chunks = []
+        async for chunk in provider.complete_stream(request, system_prompt="test"):
+            chunks.append(chunk)
+
+        assert chunks == ["News", " update"]
+
+
+@pytest.mark.asyncio
+async def test_ollama_streaming_success():
+    """Test Ollama streaming with JSON lines parsing."""
+    provider = OllamaProvider()
+
+    mock_lines = [
+        json.dumps({"message": {"content": "Local"}, "done": False}),
+        json.dumps({"message": {"content": " stream"}, "done": False}),
+        json.dumps({"done": True}),
+    ]
+
+    async def mock_aiter_lines():
+        for line in mock_lines:
+            yield line
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        mock_response.raise_for_status = MagicMock()
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.return_value = mock_cm
+
+        request = AIRequest(role=RoleName.TACTICAL, user_prompt="Test streaming")
+
+        chunks = []
+        async for chunk in provider.complete_stream(request, system_prompt="test"):
+            chunks.append(chunk)
+
+        assert chunks == ["Local", " stream"]
