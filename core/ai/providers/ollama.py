@@ -154,8 +154,8 @@ class OllamaProvider(LLMProvider):
                         continue
                     if chunk.get("done") is True:
                         break
-                    message = chunk.get("message", {})
-                    content = message.get("content", "")
+                    chunk_message = chunk.get("message", {})
+                    content = chunk_message.get("content", "")
                     if content:
                         yield content
         except httpx.HTTPStatusError as e:
