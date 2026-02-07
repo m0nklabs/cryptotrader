@@ -904,4 +904,3 @@ async def test_strategist_hard_veto_enforced():
     assert "max positions" in verdict.reasoning.lower() or "risk limit" in verdict.reasoning.lower()
     # Response should be synthetic (not from LLM)
     assert response.tokens_in == 0 and response.tokens_out == 0, "Should not call LLM when hard veto triggers"
-
