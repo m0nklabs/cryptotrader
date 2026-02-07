@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -51,6 +53,7 @@ async def list_dossier_symbols(
 @router.get("/latest")
 async def get_latest_dossiers(
     exchange: str = Query("bitfinex", description="Exchange code"),
+    compact: bool = Query(False, description="Return a compact payload (omit large narrative fields)"),
 ):
     """Get the most recent dossier entry for each coin on the exchange."""
     svc = _get_service()
@@ -58,7 +61,7 @@ async def get_latest_dossiers(
     return {
         "exchange": exchange,
         "count": len(entries),
-        "entries": [_entry_to_dict(e) for e in entries],
+        "entries": [_entry_to_dict(e, compact=compact) for e in entries],
     }
 
 
@@ -172,24 +175,58 @@ async def generate_all_dossiers(
 # -----------------------------------------------------------------------
 
 
-def _entry_to_dict(entry) -> dict:
+def _as_float(value: Any) -> float:
+    if value is None:
+        return 0.0
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, Decimal):
+        return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        try:
+            return float(str(value))
+        except (TypeError, ValueError):
+            return 0.0
+
+
+def _entry_to_dict(entry, *, compact: bool = False) -> dict:
     """Convert a DossierEntry to a JSON-serializable dict."""
-    return {
+    base = {
         "id": entry.id,
         "exchange": entry.exchange,
         "symbol": entry.symbol,
         "entry_date": str(entry.entry_date),
         # Stats
-        "price": entry.price,
-        "change_24h": entry.change_24h,
-        "change_7d": entry.change_7d,
-        "volume_24h": entry.volume_24h,
-        "rsi": entry.rsi,
+        "price": _as_float(entry.price),
+        "change_24h": _as_float(entry.change_24h),
+        "change_7d": _as_float(entry.change_7d),
+        "volume_24h": _as_float(entry.volume_24h),
+        "rsi": _as_float(entry.rsi),
         "macd_signal": entry.macd_signal,
         "ema_trend": entry.ema_trend,
-        "support_level": entry.support_level,
-        "resistance_level": entry.resistance_level,
-        "signal_score": entry.signal_score,
+        "support_level": _as_float(entry.support_level),
+        "resistance_level": _as_float(entry.resistance_level),
+        "signal_score": _as_float(entry.signal_score),
+        # Prediction tracking
+        "predicted_direction": entry.predicted_direction,
+        "predicted_target": _as_float(entry.predicted_target),
+        "predicted_timeframe": entry.predicted_timeframe,
+        "prediction_correct": entry.prediction_correct,
+    }
+
+    if compact:
+        return {
+            **base,
+            # Minimal narrative summary for list views
+            "stats_summary": entry.stats_summary,
+        }
+
+    return {
+        **base,
         # Narrative
         "lore": entry.lore,
         "stats_summary": entry.stats_summary,
@@ -197,11 +234,6 @@ def _entry_to_dict(entry) -> dict:
         "retrospective": entry.retrospective,
         "prediction": entry.prediction,
         "full_narrative": entry.full_narrative,
-        # Prediction tracking
-        "predicted_direction": entry.predicted_direction,
-        "predicted_target": entry.predicted_target,
-        "predicted_timeframe": entry.predicted_timeframe,
-        "prediction_correct": entry.prediction_correct,
         # Meta
         "model_used": entry.model_used,
         "tokens_used": entry.tokens_used,
