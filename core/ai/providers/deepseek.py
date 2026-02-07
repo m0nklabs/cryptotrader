@@ -8,7 +8,12 @@ import os
 
 import httpx
 
-from core.ai.providers.base import LLMProvider, calculate_backoff_delay, validate_json_response
+from core.ai.providers.base import (
+    LLMProvider,
+    TransientError,
+    calculate_backoff_delay,
+    validate_json_response,
+)
 from core.ai.types import AIRequest, AIResponse, ProviderConfig, ProviderName
 
 logger = logging.getLogger(__name__)
@@ -214,8 +219,6 @@ class DeepSeekProvider(LLMProvider):
                 # If reading the body fails for any reason, fall back to the base message
                 logger.debug("Failed to read DeepSeek error response body", exc_info=True)
             if status_code is None:
-                from core.ai.providers.base import TransientError
-
                 raise TransientError(f"HTTP error without status code: {message}", status_code=None) from e
             error = classify_http_error(status_code, message)
             raise error from e
