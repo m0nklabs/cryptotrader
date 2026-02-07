@@ -168,8 +168,8 @@ class OllamaProvider(LLMProvider):
                         message = f"{message} | body: {body_text[:512]}"
             except Exception:
                 logger.debug("Failed to read Ollama error response body", exc_info=True)
-            if e.response is None:
-                raise TransientError(f"HTTP error without response: {message}", status_code=None) from e
+            if status_code is None:
+                raise TransientError(f"HTTP error without status code: {message}", status_code=None) from e
             error = classify_http_error(status_code, message)
             raise error from e
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
