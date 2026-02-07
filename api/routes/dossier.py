@@ -179,6 +179,7 @@ def _as_float(value: Decimal | float | int | str | None) -> float | None:
     if isinstance(value, (Decimal, float, int)):
         return float(value)
     if isinstance(value, str):
+        # float() handles leading/trailing whitespace; ValueError covers bad strings.
         try:
             return float(value)
         except ValueError:

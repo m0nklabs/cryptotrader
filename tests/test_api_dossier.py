@@ -12,6 +12,7 @@ from api.routes.dossier import _as_float
         (2, 2.0),
         (2.5, 2.5),
         ("3.14", 3.14),
+        # float() trims leading/trailing whitespace.
         (" 3.14 ", 3.14),
         (None, None),
         ("invalid", None),
