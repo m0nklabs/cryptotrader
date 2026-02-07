@@ -32,7 +32,7 @@ interface DossierEntry {
   support_level: number
   resistance_level: number
   signal_score: number
-  // Narrative
+  // Narrative (may be omitted in compact list mode)
   lore: string | null
   stats_summary: string | null
   tech_analysis: string | null

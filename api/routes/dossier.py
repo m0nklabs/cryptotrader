@@ -176,9 +176,7 @@ async def generate_all_dossiers(
 def _as_float(value: Decimal | float | int | None) -> float | None:
     if value is None:
         return None
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, (float, int)):
+    if isinstance(value, (Decimal, float, int)):
         return float(value)
     return None
 
