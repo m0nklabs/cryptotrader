@@ -1,5 +1,20 @@
 # Architecture
 
+## Philosophy: "Autobots Engage"
+
+The fundamental premise of this architecture is **Neutrality via Multi-Brain Consensus**.
+
+- Humans are emotional, biased, and inconsistent.
+- Single models can hallucinate or get stuck in reasoning loops.
+- **Multi-Brain Consensus** (Screener → Tactical → Fundamental → Strategist) uses multiple specialized LLMs to cross-validate trading decisions.
+
+**Why?**
+To generate consistent profit.
+**What is the profit for?**
+To fund physical infrastructure (The Datacenter).
+
+Every architectural decision—from the event-driven signal engine to the VETO logic in the Strategist role—serves this single purpose: **Maximize PnL, Minimize Risk.**
+
 ## Scope (v2)
 
 This repository is a v2 trading system focused on:

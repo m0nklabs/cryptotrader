@@ -4,6 +4,8 @@ These instructions apply to GitHub Copilot in the context of this repository.
 
 ## Primary goals
 
+- **The Vision**: Generate profit to fund the Datacenter. All code supports this.
+- **The Method**: "Autobots Engage". Automated, neutral, multi-LLM consensus trading.
 - Make the smallest correct change that satisfies the request.
 - Keep the repo buildable/testable; don’t break CI.
 - Prefer clarity and correctness over cleverness.

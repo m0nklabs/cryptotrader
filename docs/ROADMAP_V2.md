@@ -1,8 +1,10 @@
 # Roadmap V2: Path to the North Star
 
-This document defines the comprehensive roadmap for cryptotrader v2, organized by **Epics** that guide the project toward the ultimate goal: **a semi-autonomous trading machine that generates consistent profit**.
+This document defines the comprehensive roadmap for cryptotrader v2, organized by **Epics** that guide the project toward the ultimate goal: **Funding the Datacenter via Automated Profit**.
 
-> **North Star**: Profitability (PnL) is the primary success metric. Features are valuable only if they contribute to profit generation, risk control, or observability.
+> **The Vision**: We are building a Datacenter. This project is the funding engine.
+> **The Strategy**: "Autobots Engage". Unemotional, automated, multi-LLM consensus trading to maximize PnL.
+> **North Star**: Profitability (PnL) is the only metric that matters.
 
 ---
 
