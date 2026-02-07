@@ -3,7 +3,7 @@ import { Bell, Send, Settings } from 'lucide-react';
 import { TelegramSetup } from './TelegramSetup';
 import { DiscordSetup } from './DiscordSetup';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// All API calls use relative paths, proxied by Vite to the backend
 
 interface NotificationSettings {
   telegram_enabled: boolean;
@@ -29,7 +29,7 @@ export function NotificationSettings() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/notifications/settings`);
+      const response = await fetch('/notifications/settings');
       if (response.ok) {
         const data = await response.json();
         setSettings(data);
@@ -43,7 +43,7 @@ export function NotificationSettings() {
     setIsSaving(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/notifications/settings`, {
+      const response = await fetch('/notifications/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -71,7 +71,7 @@ export function NotificationSettings() {
     setIsTesting(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/notifications/test/${channel}`, {
+      const response = await fetch(`/notifications/test/${channel}`, {
         method: 'POST',
       });
 

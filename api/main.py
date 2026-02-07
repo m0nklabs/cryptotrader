@@ -191,6 +191,7 @@ class FeesEstimateResponse(BaseModel):
 
 
 @app.get("/health")
+@app.get("/healthz")
 async def health() -> dict[str, Any]:
     """Health check endpoint.
 

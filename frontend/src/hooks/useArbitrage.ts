@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// All API calls use relative paths, proxied by Vite to the backend
 
 export type ArbitrageOpportunity = {
   symbol: string
@@ -41,7 +41,7 @@ export function useArbitrage({
         params.set('symbols', symbols.join(','))
       }
 
-      const response = await fetch(`${API_BASE_URL}/arbitrage/opportunities?${params.toString()}`)
+      const response = await fetch(`/arbitrage/opportunities?${params.toString()}`)
       if (!response.ok) {
         throw new Error('Failed to fetch arbitrage opportunities')
       }
