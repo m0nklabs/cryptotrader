@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -172,6 +173,16 @@ async def generate_all_dossiers(
 # -----------------------------------------------------------------------
 
 
+def _as_float(value: Decimal | float | int | None) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (float, int)):
+        return float(value)
+    return None
+
+
 def _entry_to_dict(entry) -> dict:
     """Convert a DossierEntry to a JSON-serializable dict."""
     return {
@@ -180,16 +191,16 @@ def _entry_to_dict(entry) -> dict:
         "symbol": entry.symbol,
         "entry_date": str(entry.entry_date),
         # Stats
-        "price": entry.price,
-        "change_24h": entry.change_24h,
-        "change_7d": entry.change_7d,
-        "volume_24h": entry.volume_24h,
-        "rsi": entry.rsi,
+        "price": _as_float(entry.price),
+        "change_24h": _as_float(entry.change_24h),
+        "change_7d": _as_float(entry.change_7d),
+        "volume_24h": _as_float(entry.volume_24h),
+        "rsi": _as_float(entry.rsi),
         "macd_signal": entry.macd_signal,
         "ema_trend": entry.ema_trend,
-        "support_level": entry.support_level,
-        "resistance_level": entry.resistance_level,
-        "signal_score": entry.signal_score,
+        "support_level": _as_float(entry.support_level),
+        "resistance_level": _as_float(entry.resistance_level),
+        "signal_score": _as_float(entry.signal_score),
         # Narrative
         "lore": entry.lore,
         "stats_summary": entry.stats_summary,
@@ -199,7 +210,7 @@ def _entry_to_dict(entry) -> dict:
         "full_narrative": entry.full_narrative,
         # Prediction tracking
         "predicted_direction": entry.predicted_direction,
-        "predicted_target": entry.predicted_target,
+        "predicted_target": _as_float(entry.predicted_target),
         "predicted_timeframe": entry.predicted_timeframe,
         "prediction_correct": entry.prediction_correct,
         # Meta

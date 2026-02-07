@@ -33,12 +33,12 @@ interface DossierEntry {
   resistance_level: number
   signal_score: number
   // Narrative
-  lore: string
-  stats_summary: string
-  tech_analysis: string
-  retrospective: string
-  prediction: string
-  full_narrative: string
+  lore: string | null
+  stats_summary: string | null
+  tech_analysis: string | null
+  retrospective: string | null
+  prediction: string | null
+  full_narrative: string | null
   // Prediction tracking
   predicted_direction: string
   predicted_target: number
