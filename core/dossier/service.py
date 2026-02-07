@@ -211,10 +211,13 @@ Structure your response EXACTLY as follows (use these exact headers):
         self.db_timeout = DEFAULT_DB_TIMEOUT
         self.model = model or os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL)
         self.host = host or os.environ.get("OLLAMA_HOST", DEFAULT_HOST)
-        # Optional: only enable auth when OLLAMA_USER is explicitly set.
+        # Optional: only enable auth when both user and password are set.
         self._auth_user = os.environ.get("OLLAMA_USER")
+        self._auth_password = os.environ.get("OLLAMA_PASSWORD")
         self._auth: httpx.BasicAuth | None = (
-            httpx.BasicAuth(username=self._auth_user, password="") if self._auth_user else None
+            httpx.BasicAuth(username=self._auth_user, password=self._auth_password)
+            if self._auth_user and self._auth_password
+            else None
         )
 
     # ------------------------------------------------------------------
