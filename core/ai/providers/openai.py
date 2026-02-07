@@ -179,7 +179,7 @@ class OpenAIProvider(LLMProvider):
             except Exception:
                 logger.debug("Failed to read OpenAI error response body", exc_info=True)
             if status_code is None:
-                raise TransientError(f"HTTP error without status code: {message}", status_code=None) from e
+                raise TransientError(f"HTTP error without status code: {message}") from e
             error = classify_http_error(status_code, message)
             raise error from e
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
