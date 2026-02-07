@@ -69,9 +69,7 @@ class OpenAIProvider(LLMProvider):
             model = request.override_model if request.override_model is not None else self.config.default_model
         if temperature is None:
             temperature = (
-                request.override_temperature
-                if request.override_temperature is not None
-                else self.config.temperature
+                request.override_temperature if request.override_temperature is not None else self.config.temperature
             )
         if max_tokens is None:
             max_tokens = self.config.max_tokens
@@ -208,9 +206,7 @@ class OpenAIProvider(LLMProvider):
             model = request.override_model if request.override_model is not None else self.config.default_model
         if temperature is None:
             temperature = (
-                request.override_temperature
-                if request.override_temperature is not None
-                else self.config.temperature
+                request.override_temperature if request.override_temperature is not None else self.config.temperature
             )
         if max_tokens is None:
             max_tokens = self.config.max_tokens
