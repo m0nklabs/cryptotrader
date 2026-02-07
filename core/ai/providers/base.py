@@ -234,7 +234,7 @@ def with_retry(
 # ---------------------------------------------------------------------------
 
 
-def _reject_non_finite_json_constant(value: str) -> NoReturn:
+def _reject_json_constant(value: str) -> NoReturn:
     raise ValueError(f"Invalid JSON constant: {value}")
 
 
@@ -262,7 +262,7 @@ def validate_json_response(raw_text: str, required_keys: list[str] | None = None
         return None
 
     try:
-        parsed = json.loads(raw_text, parse_constant=_reject_non_finite_json_constant)
+        parsed = json.loads(raw_text, parse_constant=_reject_json_constant)
 
         # Validate required keys if specified
         if required_keys:
