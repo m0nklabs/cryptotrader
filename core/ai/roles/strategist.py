@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-from decimal import Decimal
 
 from core.ai.roles.base import (
     AgentRole,
@@ -267,7 +266,7 @@ class StrategistRole(AgentRole):
         if should_veto:
             prompt_parts.extend([
                 "",
-                f'NOTE: action MUST be "VETO" due to hard risk limit violation.',
+                'NOTE: action MUST be "VETO" due to hard risk limit violation.',
             ])
 
         return "\n".join(prompt_parts)
