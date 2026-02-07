@@ -6,7 +6,6 @@ const BACKEND_HTTP = 'http://127.0.0.1:8000'
 const BACKEND_WS = 'ws://127.0.0.1:8000'
 // Set VITE_DISABLE_SSL_VERIFY=true for self-signed certs in local dev.
 const DISABLE_SSL_VERIFY = process.env.VITE_DISABLE_SSL_VERIFY === 'true'
-// SSL verification is disabled only when VITE_DISABLE_SSL_VERIFY=true.
 const REST_PROXY = { target: BACKEND_HTTP, changeOrigin: true, secure: !DISABLE_SSL_VERIFY }
 
 const sharedProxy = {
