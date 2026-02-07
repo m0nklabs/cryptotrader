@@ -555,17 +555,17 @@ Structure your response EXACTLY as follows (use these exact headers):
         """Build the comprehensive dossier prompt."""
         # Format current stats
         stats_block = f"""Current metrics for {symbol} on {exchange}:
-- Price: ${stats.get('price', 0):,.2f}
-- 24h Change: {stats.get('change_24h', 0):+.2f}%
-- 7d Change: {stats.get('change_7d', 'N/A')}{'%' if isinstance(stats.get('change_7d'), (int, float)) else ''}
-- 24h Volume: ${stats.get('volume_24h', 0):,.0f}
-- RSI (14): {stats.get('rsi', 'N/A')}
-- EMA(9): ${stats.get('ema_9', 0):,.2f} | EMA(21): ${stats.get('ema_21', 0):,.2f}
-- EMA Trend: {stats.get('ema_trend', 'N/A')}
-- MACD: {stats.get('macd', 'N/A')} ({stats.get('macd_signal', 'N/A')})
-- Support: ${stats.get('support_level', 0):,.2f}
-- Resistance: ${stats.get('resistance_level', 0):,.2f}
-- Volume Ratio (vs avg): {stats.get('volume_ratio', 'N/A')}x"""
+- Price: ${stats.get("price", 0):,.2f}
+- 24h Change: {stats.get("change_24h", 0):+.2f}%
+- 7d Change: {stats.get("change_7d", "N/A")}{"%" if isinstance(stats.get("change_7d"), (int, float)) else ""}
+- 24h Volume: ${stats.get("volume_24h", 0):,.0f}
+- RSI (14): {stats.get("rsi", "N/A")}
+- EMA(9): ${stats.get("ema_9", 0):,.2f} | EMA(21): ${stats.get("ema_21", 0):,.2f}
+- EMA Trend: {stats.get("ema_trend", "N/A")}
+- MACD: {stats.get("macd", "N/A")} ({stats.get("macd_signal", "N/A")})
+- Support: ${stats.get("support_level", 0):,.2f}
+- Resistance: ${stats.get("resistance_level", 0):,.2f}
+- Volume Ratio (vs avg): {stats.get("volume_ratio", "N/A")}x"""
 
         # Format previous entries context
         history_block = ""
