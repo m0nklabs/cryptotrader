@@ -9,7 +9,7 @@ const REST_PROXY = { target: BACKEND_HTTP, changeOrigin: true }
 const sharedProxy = {
   '/api': {
     ...REST_PROXY,
-    // FastAPI routes are mounted without an /api prefix.
+    // Frontend uses /api as a convention; backend routes are mounted without it.
     rewrite: (path: string) => path.replace(/^\/api/, ''),
   },
   '/ws': {
