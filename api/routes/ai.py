@@ -11,7 +11,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, Field
@@ -33,7 +33,7 @@ _async_session_factory = None
 
 def _pg_ssl_connect_args_from_env() -> dict[str, str]:
     """Build libpq/psycopg SSL kwargs from environment.
-    
+
     Uses standard libpq env var names so deploy systems (e.g. GH Secrets) can inject them.
     Returns an empty dict when unset.
     """
@@ -48,7 +48,7 @@ def _pg_ssl_connect_args_from_env() -> dict[str, str]:
 
 def _normalize_database_url(database_url: str) -> str:
     """Normalize DATABASE_URL to an async SQLAlchemy URL.
-    
+
     Supports:
     - Bare: host:port/dbname or user:pass@host:port/dbname
     - postgresql://
@@ -60,11 +60,9 @@ def _normalize_database_url(database_url: str) -> str:
         candidate = f"postgresql+asyncpg://{database_url}"
         parsed = urlsplit(candidate)
         if not parsed.netloc or parsed.path in {"", "/"}:
-            raise ValueError(
-                f"Unsupported DATABASE_URL format. Expected host:port/dbname or user:pass@host:port/dbname"
-            )
+            raise ValueError("Unsupported DATABASE_URL format. Expected host:port/dbname or user:pass@host:port/dbname")
         database_url = candidate
-    
+
     if database_url.startswith("postgresql+asyncpg://"):
         return database_url
     if database_url.startswith("postgresql+"):
@@ -74,7 +72,7 @@ def _normalize_database_url(database_url: str) -> str:
         return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     if database_url.startswith("postgres://"):
         return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    
+
     return database_url
 
 
@@ -88,7 +86,7 @@ def _get_session_factory():
 
         # Normalize to postgresql+asyncpg://
         database_url = _normalize_database_url(database_url)
-        
+
         # Create engine with connection hardening (timeout + SSL support)
         _engine = create_async_engine(
             database_url,
@@ -112,7 +110,7 @@ async def get_db() -> AsyncSession:
 
 def _get_router() -> LLMRouter:
     """Create a new LLM router instance.
-    
+
     Using a fresh instance per call avoids sharing mutable internal state
     (such as usage logs) across concurrent requests.
     """
@@ -177,7 +175,7 @@ class SystemPromptResponse(BaseModel):
 
 class SystemPromptCreate(BaseModel):
     """Create new system prompt request.
-    
+
     Prompts are created inactive by default. To activate a prompt,
     use the `/prompts/{id}/activate` endpoint.
     """
@@ -541,7 +539,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
             total_cost_usd=decision.total_cost_usd,
             total_latency_ms=decision.total_latency_ms,
         )
-        
+
         # Log per-role usage records from the router's usage log
         for usage_record in router_instance._usage_log:
             await ai_crud.log_usage(

@@ -24,12 +24,12 @@ from core.ai.types import RoleName, RoleVerdict
 def reset_role_registry():
     """Reset RoleRegistry before each test to avoid test interference."""
     from core.ai.roles.base import RoleRegistry
-    
+
     # Save original state
     original_roles = RoleRegistry._roles.copy()
-    
+
     yield
-    
+
     # Restore original state after test
     RoleRegistry._roles = original_roles
 
@@ -571,7 +571,7 @@ def test_weighted_confidence_with_custom_weights():
     """Test that weights properly influence consensus."""
     from core.ai.roles.base import RoleRegistry
     from core.ai.types import RoleConfig, ProviderName
-    
+
     # Register mock roles with known weights
     for role_name, weight in [
         (RoleName.SCREENER, 0.5),
@@ -588,7 +588,7 @@ def test_weighted_confidence_with_custom_weights():
             weight=weight,
         )
         RoleRegistry.register(mock_role)
-    
+
     engine = ConsensusEngine(confidence_threshold=0.6, min_agreement=2)
 
     verdicts = [
@@ -620,7 +620,7 @@ def test_high_confidence_low_weight_vs_low_confidence_high_weight():
     """Test interaction between confidence and weight."""
     from core.ai.roles.base import RoleRegistry
     from core.ai.types import RoleConfig, ProviderName
-    
+
     # Register mock roles with known weights
     for role_name, weight in [
         (RoleName.SCREENER, 0.5),
@@ -638,7 +638,7 @@ def test_high_confidence_low_weight_vs_low_confidence_high_weight():
             weight=weight,
         )
         RoleRegistry.register(mock_role)
-    
+
     engine = ConsensusEngine(confidence_threshold=0.5, min_agreement=2)
 
     verdicts = [
