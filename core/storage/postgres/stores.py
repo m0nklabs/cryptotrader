@@ -42,6 +42,8 @@ from core.types import (
     WalletSnapshot,
 )
 
+DEFAULT_DB_CONNECT_TIMEOUT = 30
+
 
 class PostgresStores(
     CandleStore,
@@ -88,7 +90,7 @@ class PostgresStores(
                 self._config.database_url,
                 echo=False,
                 pool_pre_ping=True,
-                connect_args={"connect_timeout": 10},
+                connect_args={"connect_timeout": DEFAULT_DB_CONNECT_TIMEOUT},
             )
         return self._engine
 
