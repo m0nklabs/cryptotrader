@@ -345,6 +345,7 @@ async def get_usage_summary(
             "total_tokens_in": 0,
             "total_tokens_out": 0,
             "total_cost_usd": 0.0,
+            "total_cost": 0.0,  # Backwards-compatible alias
             "avg_latency": 0.0,
             "success_rate": 0.0,
             "by_role": {},
@@ -400,6 +401,7 @@ async def get_usage_summary(
         "total_tokens_in": row.total_tokens_in or 0,
         "total_tokens_out": row.total_tokens_out or 0,
         "total_cost_usd": float(row.total_cost_usd or 0.0),
+        "total_cost": float(row.total_cost_usd or 0.0),  # Backwards-compatible alias
         "avg_latency": float(row.avg_latency or 0.0),
         "success_rate": (row.successful_requests / row.total_requests) if row.total_requests > 0 else 0.0,
         "by_role": by_role,
@@ -510,11 +512,11 @@ async def get_daily_usage(
         List of dicts with keys: date, total_requests, total_cost_usd,
         total_tokens_in, total_tokens_out, avg_latency_ms, success_rate.
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from sqlalchemy import cast, Date
 
-    # Calculate start date
-    end_date = datetime.utcnow()
+    # Calculate start date (use timezone-aware UTC datetime)
+    end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
 
     query = (

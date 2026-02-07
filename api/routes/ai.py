@@ -369,7 +369,8 @@ async def create_prompt(request: SystemPromptCreate):
         # Generate prompt ID
         prompt_id = f"{request.role}_v{next_version}"
 
-        # Create prompt
+        # Force new prompts to be inactive by default to prevent multiple active prompts
+        # Use activate endpoint to make a prompt active (which deactivates others)
         prompt = await ai_crud.create_prompt(
             db,
             prompt_id=prompt_id,
@@ -377,7 +378,7 @@ async def create_prompt(request: SystemPromptCreate):
             version=next_version,
             content=request.content,
             description=request.description,
-            is_active=request.is_active,
+            is_active=False,  # Always create as inactive
         )
 
         return SystemPromptResponse(
@@ -457,6 +458,18 @@ async def evaluate_opportunity(request: EvaluationRequest):
         risk_limits=request.risk_limits,
         roles=roles,
     )
+    
+    # Convert verdicts to JSON-serializable format
+    verdict_dicts = [
+        {
+            "role": v.role.value,  # Convert RoleName enum to string
+            "action": v.action,
+            "confidence": v.confidence,
+            "reasoning": v.reasoning,
+            "metrics": v.metrics,
+        }
+        for v in decision.verdicts
+    ]
 
     # Log decision to database
     async with factory() as db:
@@ -466,9 +479,9 @@ async def evaluate_opportunity(request: EvaluationRequest):
             timeframe=request.timeframe,
             final_action=decision.final_action,
             final_confidence=decision.final_confidence,
-            verdicts=[v.__dict__ for v in decision.verdicts],
+            verdicts=verdict_dicts,
             reasoning=decision.reasoning,
-            vetoed_by=decision.vetoed_by,
+            vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
             total_cost_usd=decision.total_cost_usd,
             total_latency_ms=decision.total_latency_ms,
         )
@@ -479,8 +492,8 @@ async def evaluate_opportunity(request: EvaluationRequest):
         final_action=decision.final_action,
         final_confidence=decision.final_confidence,
         reasoning=decision.reasoning,
-        verdicts=[v.__dict__ for v in decision.verdicts],
-        vetoed_by=decision.vetoed_by,
+        verdicts=verdict_dicts,
+        vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
         total_cost_usd=decision.total_cost_usd,
         total_latency_ms=decision.total_latency_ms,
         created_at=datetime.utcnow(),
