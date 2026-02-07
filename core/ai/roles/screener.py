@@ -141,11 +141,11 @@ class ScreenerRole(AgentRole):
                 "",
                 "Return a JSON response with the following structure:",
                 "{",
-                '  "action": "BUY" | "NEUTRAL" | "SKIP",',
+                '  "action": "BUY" | "SELL" | "NEUTRAL",',
                 '  "confidence": 0.0-1.0,',
                 '  "reasoning": "brief explanation",',
-                '  "filtered_symbols": ["SYMBOL1", "SYMBOL2", ...],',
-                '  "strong_buy_symbols": ["SYMBOL1", ...],  // Optional: high-conviction picks',
+                '  "passed_symbols": ["SYMBOL1", "SYMBOL2", ...],',
+                '  "skipped_symbols": ["SYMBOLX", "SYMBOLY", ...],',
                 "}",
             ]
         )
@@ -170,14 +170,19 @@ class ScreenerRole(AgentRole):
 
         if response.parsed and isinstance(response.parsed, dict):
             action = response.parsed.get("action", "NEUTRAL")
+            # Map invalid SKIP action to NEUTRAL (SKIP is not a valid SignalAction)
+            if action == "SKIP":
+                action = "NEUTRAL"
             confidence = float(response.parsed.get("confidence", 0.5))
             reasoning = response.parsed.get("reasoning", response.raw_text)
 
-            # Extract filtered symbol counts
-            filtered = response.parsed.get("filtered_symbols", [])
+            # Extract filtered symbol counts (accept both key sets for compatibility)
+            filtered = response.parsed.get("passed_symbols") or response.parsed.get("filtered_symbols", [])
+            skipped = response.parsed.get("skipped_symbols", [])
             strong_buy = response.parsed.get("strong_buy_symbols", [])
             metrics = {
                 "symbols_passed": float(len(filtered)),
+                "symbols_skipped": float(len(skipped)),
                 "strong_buy_count": float(len(strong_buy)),
             }
 

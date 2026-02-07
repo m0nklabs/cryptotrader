@@ -711,3 +711,177 @@ async def test_strategist_parse_response_with_metrics():
     assert verdict.metrics["position_size_pct"] == 0.08
     assert verdict.metrics["portfolio_risk_pct"] == 0.015
     assert verdict.metrics["correlation_score"] == 0.4
+
+
+# ---------------------------------------------------------------------------
+# Additional edge-case tests for review-comment fixes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_screener_parse_response_skip_maps_to_neutral():
+    """SKIP action from LLM should be mapped to NEUTRAL (SKIP is not a valid SignalAction)."""
+    screener = ScreenerRole()
+    response = AIResponse(
+        role=RoleName.SCREENER,
+        provider=ProviderName.OLLAMA,
+        model="llama3.2:3b",
+        raw_text="No good opportunities",
+        parsed={
+            "action": "SKIP",
+            "confidence": 0.3,
+            "reasoning": "Low volume across the board",
+            "passed_symbols": [],
+            "skipped_symbols": ["BTC/USD", "ETH/USD"],
+        },
+    )
+
+    verdict = screener.parse_response(response)
+
+    assert verdict.action == "NEUTRAL", "SKIP should be mapped to NEUTRAL"
+    assert verdict.metrics["symbols_skipped"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_screener_parse_response_old_keys_compat():
+    """Old key names (filtered_symbols) should still work for backward compatibility."""
+    screener = ScreenerRole()
+    response = AIResponse(
+        role=RoleName.SCREENER,
+        provider=ProviderName.OLLAMA,
+        model="llama3.2:3b",
+        raw_text="Found some picks",
+        parsed={
+            "action": "BUY",
+            "confidence": 0.7,
+            "reasoning": "Volume spike detected",
+            "filtered_symbols": ["BTC/USD", "ETH/USD"],
+        },
+    )
+
+    verdict = screener.parse_response(response)
+
+    assert verdict.action == "BUY"
+    assert verdict.metrics["symbols_passed"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_tactical_parse_response_nested_metrics():
+    """Price levels inside nested 'metrics' object should be extracted."""
+    tactical = TacticalRole()
+    response = AIResponse(
+        role=RoleName.TACTICAL,
+        provider=ProviderName.OPENAI,
+        model="o3-mini",
+        raw_text="Entry at 50000",
+        parsed={
+            "action": "BUY",
+            "confidence": 0.8,
+            "reasoning": "Support bounce pattern",
+            "metrics": {
+                "entry": 50000.0,
+                "stop_loss": 49000.0,
+                "take_profit": 52000.0,
+                "risk_reward": 2.0,
+            },
+        },
+    )
+
+    verdict = tactical.parse_response(response)
+
+    assert verdict.action == "BUY"
+    assert verdict.metrics["entry"] == 50000.0
+    assert verdict.metrics["stop_loss"] == 49000.0
+    assert verdict.metrics["take_profit"] == 52000.0
+    assert verdict.metrics["risk_reward"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_tactical_extract_price_levels_target_alias():
+    """'target' key should be normalized to 'take_profit'."""
+    tactical = TacticalRole()
+    text = "Entry: $50,000 | Stop: $49,000 | Target: $52,000"
+    levels = tactical._extract_price_levels(text)
+
+    assert "take_profit" in levels, "'target' should be normalized to 'take_profit'"
+    assert "target" not in levels, "'target' key should be removed after normalization"
+
+
+@pytest.mark.asyncio
+async def test_fundamental_parse_response_major_news_items_alias():
+    """major_news_items should work as alias for key_events."""
+    fundamental = FundamentalRole()
+    response = AIResponse(
+        role=RoleName.FUNDAMENTAL,
+        provider=ProviderName.OPENAI,
+        model="o3-mini",
+        raw_text="Positive news flow",
+        parsed={
+            "action": "BUY",
+            "confidence": 0.7,
+            "reasoning": "Strong institutional adoption",
+            "sentiment_score": 0.8,
+            "major_news_items": [
+                {"title": "ETF Approved", "impact": "positive"},
+                {"title": "Regulation Update", "impact": "neutral"},
+            ],
+        },
+    )
+
+    verdict = fundamental.parse_response(response)
+
+    assert verdict.action == "BUY"
+    assert verdict.metrics["key_events_count"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_strategist_parse_response_pct_0_100_conversion():
+    """Values >1 for pct fields should be auto-converted from 0-100 to 0-1 scale."""
+    strategist = StrategistRole()
+    response = AIResponse(
+        role=RoleName.STRATEGIST,
+        provider=ProviderName.OPENAI,
+        model="o3-mini",
+        raw_text="Approved",
+        parsed={
+            "action": "BUY",
+            "confidence": 0.7,
+            "reasoning": "Acceptable risk",
+            "position_size_pct": 8.0,  # 8% on 0-100 scale
+            "portfolio_risk_pct": 1.5,  # 1.5% on 0-100 scale
+            "correlation_score": 0.4,  # Already 0-1, should NOT be divided
+        },
+    )
+
+    verdict = strategist.parse_response(response)
+
+    assert verdict.metrics["position_size_pct"] == pytest.approx(0.08)
+    assert verdict.metrics["portfolio_risk_pct"] == pytest.approx(0.015)
+    assert verdict.metrics["correlation_score"] == 0.4  # Unchanged
+
+
+@pytest.mark.asyncio
+async def test_strategist_hard_veto_enforced():
+    """Hard risk-limit breach should enforce VETO regardless of LLM response."""
+    strategist = StrategistRole()
+
+    # Simulate build_prompt() detecting a hard veto
+    strategist._hard_veto_reason = "Exceeds max positions (3/3)"
+
+    response = AIResponse(
+        role=RoleName.STRATEGIST,
+        provider=ProviderName.OPENAI,
+        model="o3-mini",
+        raw_text="Approved — looks good!",
+        parsed={
+            "action": "BUY",
+            "confidence": 0.9,
+            "reasoning": "Trade looks great",
+        },
+    )
+
+    verdict = strategist.parse_response(response)
+
+    assert verdict.action == "VETO", "Hard veto should override LLM approval"
+    assert verdict.confidence == 1.0
+    assert "max positions" in verdict.reasoning.lower()

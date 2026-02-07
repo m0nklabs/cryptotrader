@@ -187,7 +187,12 @@ class StrategistRole(AgentRole):
         }
 
     def build_prompt(self, request: AIRequest) -> str:
-        """Build a risk-focused prompt with portfolio context."""
+        """Build a risk-focused prompt with portfolio context.
+
+        NOTE: If hard risk limits are violated, this stores the veto
+        state so that parse_response() can enforce it regardless of
+        what the LLM returns. See `_hard_veto_reason`.
+        """
         symbol = request.context.get("symbol", "UNKNOWN")
         proposed_action = request.context.get("proposed_action", "UNKNOWN")
         proposed_trade = request.context.get("proposed_trade", {})
@@ -200,8 +205,9 @@ class StrategistRole(AgentRole):
         available_balance = float(portfolio_metrics.get("available_balance", 0))
         portfolio_state = format_portfolio_state(positions, total_equity, available_balance)
 
-        # Check hard risk limits
+        # Check hard risk limits — store for enforcement in parse_response()
         should_veto, veto_reason = self._check_risk_limits(proposed_trade, portfolio_state, risk_limits)
+        self._hard_veto_reason: str | None = veto_reason if should_veto else None
 
         # Calculate correlation risk
         correlation_score = self._calculate_correlation_penalty(symbol, positions)
@@ -279,7 +285,24 @@ class StrategistRole(AgentRole):
         return "\n".join(prompt_parts)
 
     def parse_response(self, response: AIResponse) -> RoleVerdict:
-        """Parse strategist response — can VETO trades."""
+        """Parse strategist response — can VETO trades.
+
+        If build_prompt() detected a hard risk-limit breach, this method
+        enforces a VETO regardless of LLM output (the LLM may hallucinate
+        an approval even when told to VETO).
+        """
+        # Enforce hard VETO from risk-limit check (set by build_prompt)
+        hard_veto = getattr(self, "_hard_veto_reason", None)
+        if hard_veto:
+            self._hard_veto_reason = None  # reset for next call
+            return RoleVerdict(
+                role=RoleName.STRATEGIST,
+                action="VETO",
+                confidence=1.0,
+                reasoning=f"Hard risk limit breach: {hard_veto}",
+                metrics={},
+            )
+
         if response.error:
             # On error, default to VETO for safety
             return RoleVerdict(
@@ -299,11 +322,15 @@ class StrategistRole(AgentRole):
             confidence = float(response.parsed.get("confidence", 0.5))
             reasoning = response.parsed.get("reasoning", response.raw_text)
 
-            # Extract risk metrics
+            # Extract risk metrics — handle both 0-1 and 0-100 scales
+            # (system prompt strategist_v1 uses 0-100, prompt template uses 0-1)
             for key in ("position_size_pct", "portfolio_risk_pct", "correlation_score"):
                 if key in response.parsed:
                     try:
                         value = float(response.parsed[key])
+                        # Auto-detect 0-100 scale and convert to 0-1
+                        if key != "correlation_score" and value > 1.0:
+                            value = value / 100.0
                         # Clamp to valid range
                         value = max(0.0, min(1.0, value))
                         metrics[key] = value

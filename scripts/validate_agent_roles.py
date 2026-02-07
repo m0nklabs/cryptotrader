@@ -302,9 +302,10 @@ def test_strategist_validation():
     print("\nTest 1: Normal trade within limits")
     proposed_trade = {"size": 1.0, "entry_price": 100.0, "stop_loss": 98.0}
 
-    from core.ai.roles.base import format_portfolio_state
+    from core.ai.roles.base import format_portfolio_state  # noqa: E402
 
     portfolio_state = format_portfolio_state(positions, total_equity, available_balance)
+    assert portfolio_state["total_equity"] == total_equity
 
     should_veto, reason = strategist._check_risk_limits(proposed_trade, portfolio_state, risk_limits)
     print(f"  - VETO: {should_veto}" + (f" ({reason})" if should_veto else " (Trade approved)"))

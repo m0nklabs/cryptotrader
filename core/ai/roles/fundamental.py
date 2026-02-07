@@ -236,8 +236,10 @@ class FundamentalRole(AgentRole):
                     except (ValueError, TypeError):
                         continue
 
-            # Extract key events count
-            key_events = response.parsed.get("key_events", [])
+            # Extract key events count (accept both key_events and major_news_items)
+            key_events = response.parsed.get("key_events")
+            if not isinstance(key_events, list):
+                key_events = response.parsed.get("major_news_items", [])
             if isinstance(key_events, list):
                 metrics["key_events_count"] = float(len(key_events))
 

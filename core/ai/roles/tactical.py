@@ -120,6 +120,10 @@ class TacticalRole(AgentRole):
                 except ValueError:
                     continue
 
+        # Normalize 'target' to 'take_profit' for downstream consistency
+        if "target" in levels and "take_profit" not in levels:
+            levels["take_profit"] = levels.pop("target")
+
         return levels
 
     def build_prompt(self, request: AIRequest) -> str:
@@ -222,7 +226,18 @@ class TacticalRole(AgentRole):
             confidence = float(response.parsed.get("confidence", 0.5))
             reasoning = response.parsed.get("reasoning", response.raw_text)
 
-            # Extract price levels from structured response
+            # Extract price levels — support both top-level and nested `metrics` object
+            # (system prompt tactical_v1 uses nested metrics, prompt template uses top-level)
+            parsed_metrics = response.parsed.get("metrics", {})
+            if isinstance(parsed_metrics, dict):
+                for key in ("entry", "stop_loss", "take_profit", "risk_reward"):
+                    if key in parsed_metrics:
+                        try:
+                            metrics[key] = float(parsed_metrics[key])
+                        except (ValueError, TypeError):
+                            continue
+
+            # Top-level keys override nested ones
             for key in ("entry", "stop_loss", "take_profit", "risk_reward"):
                 if key in response.parsed:
                     try:
