@@ -11,6 +11,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, Field
@@ -30,6 +31,53 @@ _engine = None
 _async_session_factory = None
 
 
+def _pg_ssl_connect_args_from_env() -> dict[str, str]:
+    """Build libpq/psycopg SSL kwargs from environment.
+    
+    Uses standard libpq env var names so deploy systems (e.g. GH Secrets) can inject them.
+    Returns an empty dict when unset.
+    """
+    mapping = {
+        "sslmode": os.environ.get("PGSSLMODE"),
+        "sslrootcert": os.environ.get("PGSSLROOTCERT"),
+        "sslcert": os.environ.get("PGSSLCERT"),
+        "sslkey": os.environ.get("PGSSLKEY"),
+    }
+    return {k: v for k, v in mapping.items() if v}
+
+
+def _normalize_database_url(database_url: str) -> str:
+    """Normalize DATABASE_URL to an async SQLAlchemy URL.
+    
+    Supports:
+    - Bare: host:port/dbname or user:pass@host:port/dbname
+    - postgresql://
+    - postgres://
+    - postgresql+<driver>:// (e.g. psycopg2)
+    - postgresql+asyncpg://
+    """
+    if "://" not in database_url:
+        candidate = f"postgresql+asyncpg://{database_url}"
+        parsed = urlsplit(candidate)
+        if not parsed.netloc or parsed.path in {"", "/"}:
+            raise ValueError(
+                f"Unsupported DATABASE_URL format. Expected host:port/dbname or user:pass@host:port/dbname"
+            )
+        database_url = candidate
+    
+    if database_url.startswith("postgresql+asyncpg://"):
+        return database_url
+    if database_url.startswith("postgresql+"):
+        # Handle postgresql+psycopg2://, postgresql+psycopg://, etc.
+        return "postgresql+asyncpg://" + database_url.split("://", 1)[1]
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    
+    return database_url
+
+
 def _get_session_factory():
     """Get or create async session factory."""
     global _engine, _async_session_factory
@@ -38,13 +86,16 @@ def _get_session_factory():
         if not database_url:
             raise RuntimeError("DATABASE_URL environment variable is required")
 
-        # Convert postgres:// to postgresql+asyncpg://
-        if database_url.startswith("postgres://"):
-            database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif database_url.startswith("postgresql://"):
-            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-        _engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
+        # Normalize to postgresql+asyncpg://
+        database_url = _normalize_database_url(database_url)
+        
+        # Create engine with connection hardening (timeout + SSL support)
+        _engine = create_async_engine(
+            database_url,
+            echo=False,
+            pool_pre_ping=True,
+            connect_args={"timeout": 3, **_pg_ssl_connect_args_from_env()},
+        )
         _async_session_factory = sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
     return _async_session_factory
 
@@ -56,16 +107,16 @@ async def get_db() -> AsyncSession:
         yield session
 
 
-# Singleton router instance
-_router: LLMRouter | None = None
+# Router factory (request-scoped instances)
 
 
 def _get_router() -> LLMRouter:
-    """Get or create LLM router singleton."""
-    global _router
-    if _router is None:
-        _router = LLMRouter()
-    return _router
+    """Create a new LLM router instance.
+    
+    Using a fresh instance per call avoids sharing mutable internal state
+    (such as usage logs) across concurrent requests.
+    """
+    return LLMRouter()
 
 
 # =============================================================================
@@ -125,12 +176,16 @@ class SystemPromptResponse(BaseModel):
 
 
 class SystemPromptCreate(BaseModel):
-    """Create new system prompt request."""
+    """Create new system prompt request.
+    
+    Prompts are created inactive by default. To activate a prompt,
+    use the `/prompts/{id}/activate` endpoint.
+    """
 
     role: str
     content: str
     description: str = ""
-    is_active: bool = True
+    is_active: bool = False
 
 
 class EvaluationRequest(BaseModel):
@@ -471,9 +526,10 @@ async def evaluate_opportunity(request: EvaluationRequest):
         for v in decision.verdicts
     ]
 
-    # Log decision to database
+    # Persist decision and usage logs to database
     async with factory() as db:
-        await ai_crud.log_decision(
+        # Log the aggregated decision
+        logged_decision = await ai_crud.log_decision(
             db,
             symbol=request.symbol,
             timeframe=request.timeframe,
@@ -485,6 +541,21 @@ async def evaluate_opportunity(request: EvaluationRequest):
             total_cost_usd=decision.total_cost_usd,
             total_latency_ms=decision.total_latency_ms,
         )
+        
+        # Log per-role usage records from the router's usage log
+        for usage_record in router_instance._usage_log:
+            await ai_crud.log_usage(
+                db,
+                role=usage_record.role.value,
+                provider=usage_record.provider.value,
+                model=usage_record.model,
+                tokens_in=usage_record.tokens_in,
+                tokens_out=usage_record.tokens_out,
+                cost_usd=usage_record.cost_usd,
+                latency_ms=usage_record.latency_ms,
+                symbol=usage_record.symbol,
+                success=usage_record.success,
+            )
 
     return EvaluationResponse(
         symbol=request.symbol,
@@ -496,7 +567,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
         vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
         total_cost_usd=decision.total_cost_usd,
         total_latency_ms=decision.total_latency_ms,
-        created_at=datetime.now(timezone.utc),
+        created_at=logged_decision.created_at,  # Use DB timestamp for consistency
     )
 
 

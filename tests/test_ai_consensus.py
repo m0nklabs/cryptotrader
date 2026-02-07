@@ -7,6 +7,8 @@ Phase 6.1 (P6.1) of issue #205.
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from core.ai.consensus import ConsensusEngine
@@ -16,6 +18,20 @@ from core.ai.types import RoleName, RoleVerdict
 # ---------------------------------------------------------------------------
 # Test Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def reset_role_registry():
+    """Reset RoleRegistry before each test to avoid test interference."""
+    from core.ai.roles.base import RoleRegistry
+    
+    # Save original state
+    original_roles = RoleRegistry._roles.copy()
+    
+    yield
+    
+    # Restore original state after test
+    RoleRegistry._roles = original_roles
 
 
 @pytest.fixture
@@ -553,10 +569,26 @@ def test_veto_reasoning_includes_vetoer_explanation(engine):
 
 def test_weighted_confidence_with_custom_weights():
     """Test that weights properly influence consensus."""
-    # This test would ideally mock RoleRegistry.get() to return custom weights
-    # For now, we test with known default weights:
-    # Screener: 0.5, Tactical: 1.5, Fundamental: 1.0, Strategist: 1.2
-
+    from core.ai.roles.base import RoleRegistry
+    from core.ai.types import RoleConfig, ProviderName
+    
+    # Register mock roles with known weights
+    for role_name, weight in [
+        (RoleName.SCREENER, 0.5),
+        (RoleName.TACTICAL, 1.5),
+    ]:
+        mock_role = Mock()
+        mock_role.name = role_name
+        mock_role.weight = weight
+        mock_role.config = RoleConfig(
+            name=role_name,
+            provider=ProviderName.DEEPSEEK,
+            model="test",
+            system_prompt_id="test",
+            weight=weight,
+        )
+        RoleRegistry.register(mock_role)
+    
     engine = ConsensusEngine(confidence_threshold=0.6, min_agreement=2)
 
     verdicts = [
@@ -586,6 +618,27 @@ def test_weighted_confidence_with_custom_weights():
 
 def test_high_confidence_low_weight_vs_low_confidence_high_weight():
     """Test interaction between confidence and weight."""
+    from core.ai.roles.base import RoleRegistry
+    from core.ai.types import RoleConfig, ProviderName
+    
+    # Register mock roles with known weights
+    for role_name, weight in [
+        (RoleName.SCREENER, 0.5),
+        (RoleName.TACTICAL, 1.5),
+        (RoleName.FUNDAMENTAL, 1.0),
+    ]:
+        mock_role = Mock()
+        mock_role.name = role_name
+        mock_role.weight = weight
+        mock_role.config = RoleConfig(
+            name=role_name,
+            provider=ProviderName.DEEPSEEK,
+            model="test",
+            system_prompt_id="test",
+            weight=weight,
+        )
+        RoleRegistry.register(mock_role)
+    
     engine = ConsensusEngine(confidence_threshold=0.5, min_agreement=2)
 
     verdicts = [
