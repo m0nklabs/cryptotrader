@@ -890,7 +890,7 @@ async def test_strategist_hard_veto_enforced():
             "risk_limits": {
                 "max_positions": 3,  # Already at limit with 3 positions
                 "max_exposure_pct": 0.95,
-                "max_trade_risk_pct": 0.02,
+                "max_risk_per_trade_pct": 0.02,
             },
         },
     )
