@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Path as PathParam
@@ -496,7 +496,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
         vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
         total_cost_usd=decision.total_cost_usd,
         total_latency_ms=decision.total_latency_ms,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
 
 
@@ -615,9 +615,9 @@ async def get_usage_summary(
     """
     # Default to last 30 days
     if not start_date:
-        start_date = datetime.utcnow() - timedelta(days=30)
+        start_date = datetime.now(timezone.utc) - timedelta(days=30)
     if not end_date:
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
 
     factory = _get_session_factory()
     async with factory() as db:
