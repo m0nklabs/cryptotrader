@@ -81,8 +81,11 @@ CONFIDENCE: (your confidence in the analysis)"""
         self.timeout = timeout
         # HTTP Basic Auth for ollama_guardian proxy (optional)
         self._auth_user = os.environ.get("OLLAMA_USER")
+        self._auth_password = os.environ.get("OLLAMA_PASSWORD")
         self._auth: httpx.BasicAuth | None = (
-            httpx.BasicAuth(username=self._auth_user, password="") if self._auth_user else None
+            httpx.BasicAuth(username=self._auth_user, password=self._auth_password)
+            if self._auth_user and self._auth_password
+            else None
         )
 
     async def explain(

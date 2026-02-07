@@ -92,6 +92,8 @@ The frontend proxies:
 - `/candles/*`, `/market-watch`, `/gaps`, `/arbitrage/*`, `/dossier/*`, `/export/*`, etc. → FastAPI
 - `/ws/*` → FastAPI (WebSocket)
 
+If you need to proxy to a self-signed HTTPS backend in local development, set `VITE_DISABLE_SSL_VERIFY=true` before running the dev server.
+
 ### Legacy dashboard API (optional)
 
 This repo also contains a legacy DB-backed helper API used in older iterations:

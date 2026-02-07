@@ -10,7 +10,7 @@ The WebSocket market data implementation provides real-time OHLCV candle updates
 
 The dashboard also exposes a lightweight WebSocket for live price updates:
 
-- **Endpoint**: `ws://<host>/api/ws/prices` (or `wss://` when HTTPS)
+- **Endpoint**: `ws://<host>/ws/prices` (or `wss://` when HTTPS)
 - **Subscribe payload** (client → server):
 
 ```json
