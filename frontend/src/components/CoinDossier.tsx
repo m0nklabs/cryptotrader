@@ -10,7 +10,7 @@
  * - Prediction tracking (correct / wrong)
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 // -----------------------------------------------------------------------
 // Types
@@ -49,6 +49,34 @@ interface DossierEntry {
   tokens_used: number
   generation_time_ms: number
   created_at: string | null
+}
+
+type SortMode = 'alpha' | 'hot' | 'volume' | 'rsi' | 'score'
+
+const SORT_OPTIONS: { value: SortMode; label: string; icon: string }[] = [
+  { value: 'alpha', label: 'A–Z', icon: '🔤' },
+  { value: 'hot', label: 'Hot (24h)', icon: '🔥' },
+  { value: 'volume', label: 'Volume', icon: '📊' },
+  { value: 'rsi', label: 'RSI', icon: '📈' },
+  { value: 'score', label: 'Signal', icon: '⚡' },
+]
+
+function sortEntries(entries: DossierEntry[], mode: SortMode): DossierEntry[] {
+  const sorted = [...entries]
+  switch (mode) {
+    case 'hot':
+      return sorted.sort((a, b) => Math.abs(b.change_24h) - Math.abs(a.change_24h))
+    case 'volume':
+      return sorted.sort((a, b) => b.volume_24h - a.volume_24h)
+    case 'rsi':
+      // Sort by distance from 50 (most extreme = most interesting)
+      return sorted.sort((a, b) => Math.abs(b.rsi - 50) - Math.abs(a.rsi - 50))
+    case 'score':
+      return sorted.sort((a, b) => Math.abs(b.signal_score) - Math.abs(a.signal_score))
+    case 'alpha':
+    default:
+      return sorted.sort((a, b) => a.symbol.localeCompare(b.symbol))
+  }
 }
 
 interface QueueStatus {
@@ -256,6 +284,9 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
   const [generatingSymbol, setGeneratingSymbol] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null)
+  const [sortMode, setSortMode] = useState<SortMode>('alpha')
+
+  const sortedEntries = useMemo(() => sortEntries(entries, sortMode), [entries, sortMode])
 
   // Fetch latest dossiers for all coins
   const fetchLatest = useCallback(async () => {
@@ -400,9 +431,9 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
     <div className="flex gap-4 h-full min-h-0">
       {/* Left sidebar — coin list */}
       <div className="w-72 flex-shrink-0 space-y-2 overflow-y-auto rounded-lg border border-gray-700/50 bg-gray-900/50 p-3">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-            Coin Dossiers ({entries.length})
+            Dossiers ({entries.length})
           </h3>
           <button
             onClick={handleGenerateAll}
@@ -412,6 +443,24 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
           >
             {generating ? '⏳' : '🔄'}
           </button>
+        </div>
+
+        {/* Sort buttons */}
+        <div className="flex flex-wrap gap-1 mb-2">
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setSortMode(opt.value)}
+              className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                sortMode === opt.value
+                  ? 'bg-blue-600/80 text-white'
+                  : 'bg-gray-800/60 text-gray-400 hover:bg-gray-700/60 hover:text-gray-300'
+              }`}
+              title={`Sort by ${opt.label}`}
+            >
+              {opt.icon} {opt.label}
+            </button>
+          ))}
         </div>
 
         {/* Queue progress bar */}
@@ -425,7 +474,7 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
           </div>
         )}
 
-        {entries.map((entry) => (
+        {sortedEntries.map((entry) => (
           <CoinCard
             key={entry.symbol}
             entry={entry}
