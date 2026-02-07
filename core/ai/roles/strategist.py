@@ -113,6 +113,11 @@ class StrategistRole(AgentRole):
     ) -> float:
         """Calculate correlation penalty for proposed trade.
 
+        Note: This is a simplified correlation check based on base asset matching.
+        It does not account for quote currency correlation or more sophisticated
+        correlation metrics. Future improvements could include actual price
+        correlation analysis or sector-based grouping.
+
         Returns:
             Correlation score 0.0-1.0 (1.0 = high correlation risk)
         """

@@ -119,15 +119,18 @@ def test_tactical_validation():
     # Create sample candle data
     base_time = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     candles = []
+    from datetime import timedelta
     for i in range(100):
         close_price = Decimal("50000") + Decimal(i * 50)
+        open_time = base_time + timedelta(hours=i)
+        close_time = open_time + timedelta(hours=1)
         candles.append(
             Candle(
                 symbol="BTC/USD",
                 exchange="binance",
                 timeframe="1h",
-                open_time=base_time.replace(hour=i % 24),
-                close_time=base_time.replace(hour=(i + 1) % 24),
+                open_time=open_time,
+                close_time=close_time,
                 open=close_price - Decimal("25"),
                 high=close_price + Decimal("50"),
                 low=close_price - Decimal("50"),

@@ -254,6 +254,10 @@ def calculate_position_size_kelly(
 ) -> float:
     """Calculate position size using Kelly Criterion.
 
+    Note: This is a simplified implementation assuming independent trades
+    and stationary win rate/returns. Real-world trading with autocorrelated
+    returns may require fractional Kelly or other adjustments.
+
     Args:
         win_rate: Historical win rate (0.0-1.0)
         avg_win: Average winning trade size (positive)

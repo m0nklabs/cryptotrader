@@ -36,15 +36,18 @@ def sample_candles():
     """Generate sample candle data for testing."""
     base_time = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     candles = []
+    from datetime import timedelta
     for i in range(100):
         close_price = Decimal("50000") + Decimal(i * 100)
+        open_time = base_time + timedelta(hours=i)
+        close_time = open_time + timedelta(hours=1)
         candles.append(
             Candle(
                 symbol="BTC/USD",
                 exchange="binance",
                 timeframe="1h",
-                open_time=base_time.replace(hour=i % 24),
-                close_time=base_time.replace(hour=(i + 1) % 24),
+                open_time=open_time,
+                close_time=close_time,
                 open=close_price - Decimal("50"),
                 high=close_price + Decimal("100"),
                 low=close_price - Decimal("100"),
@@ -101,7 +104,7 @@ def test_serialize_candles_compact(sample_candles):
     """Test compact candle serialization (close prices only)."""
     result = serialize_candles(sample_candles, max_candles=10, include_full_data=False)
     
-    assert len(result) == 10
+    assert len(result) == min(10, len(sample_candles))
     assert all("time" in c and "close" in c for c in result)
     assert all("open" not in c for c in result)
     assert isinstance(result[0]["close"], float)
