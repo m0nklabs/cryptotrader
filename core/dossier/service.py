@@ -27,6 +27,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_DB_TIMEOUT = 30.0
+
 DEBUG = os.environ.get("DOSSIER_DEBUG", "").lower() in ("1", "true", "yes")
 
 
@@ -206,6 +208,7 @@ Structure your response EXACTLY as follows (use these exact headers):
             "DATABASE_URL",
             "postgresql://cryptotrader:cryptotrader@localhost:5432/cryptotrader",
         )
+        self.db_timeout = DEFAULT_DB_TIMEOUT
         self.model = model or os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL)
         self.host = host or os.environ.get("OLLAMA_HOST", DEFAULT_HOST)
         self._auth_user = os.environ.get("OLLAMA_USER", "cryptotrader")
@@ -310,7 +313,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         import asyncpg
 
         try:
-            conn = await asyncpg.connect(self.db_url)
+            conn = await asyncpg.connect(self.db_url, timeout=self.db_timeout)
             try:
                 rows = await conn.fetch(
                     """
@@ -333,7 +336,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         import asyncpg
 
         try:
-            conn = await asyncpg.connect(self.db_url)
+            conn = await asyncpg.connect(self.db_url, timeout=self.db_timeout)
             try:
                 rows = await conn.fetch(
                     """
@@ -360,7 +363,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         """Gather current stats from the candles table."""
         import asyncpg
 
-        conn = await asyncpg.connect(self.db_url)
+        conn = await asyncpg.connect(self.db_url, timeout=self.db_timeout)
         try:
             # Get last 200 hourly candles for indicator calculation
             rows = await conn.fetch(
@@ -472,7 +475,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         """Get available symbols from candle data."""
         import asyncpg
 
-        conn = await asyncpg.connect(self.db_url)
+        conn = await asyncpg.connect(self.db_url, timeout=self.db_timeout)
         try:
             rows = await conn.fetch(
                 """
@@ -505,7 +508,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         since = target - timedelta(days=days)
 
         try:
-            conn = await asyncpg.connect(self.db_url)
+            conn = await asyncpg.connect(self.db_url, timeout=self.db_timeout)
             try:
                 rows = await conn.fetch(
                     """
@@ -775,7 +778,7 @@ If this is the first entry, skip the retrospective section and focus on laying a
         import asyncpg
 
         try:
-            conn = await asyncpg.connect(self.db_url)
+            conn = await asyncpg.connect(self.db_url, timeout=self.db_timeout)
             try:
                 await conn.execute(
                     """
@@ -799,7 +802,7 @@ If this is the first entry, skip the retrospective section and focus on laying a
         """Store or update a dossier entry in the database."""
         import asyncpg
 
-        conn = await asyncpg.connect(self.db_url)
+        conn = await asyncpg.connect(self.db_url, timeout=self.db_timeout)
         try:
             row = await conn.fetchrow(
                 """
