@@ -147,7 +147,6 @@ class PriceWebSocketManager:
         task_to_stop: asyncio.Task | None = None
         client: ExchangePriceClient | None = None
         expected_stop_event: asyncio.Event | None = None
-        stop_event: asyncio.Event | None = None
         async with self._lock:
             symbols = set()
             for state in self._connections.values():
@@ -174,8 +173,7 @@ class PriceWebSocketManager:
 
             state.symbols = set(symbols)
             state.stop_event = asyncio.Event()
-            stop_event = state.stop_event
-            expected_stop_event = stop_event
+            expected_stop_event = state.stop_event
             client = self._clients.get(exchange)
 
         if task_to_stop:
@@ -190,7 +188,7 @@ class PriceWebSocketManager:
                 symbols=symbols,
                 on_price=self.broadcast_price,
                 on_status=lambda status: self.broadcast_status(exchange=exchange, status=status),
-                stop_event=stop_event,
+                stop_event=expected_stop_event,
             )
 
         async with self._lock:
