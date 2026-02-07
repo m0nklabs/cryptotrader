@@ -9,11 +9,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import random
 
 import httpx
 
-from core.ai.providers.base import LLMProvider, validate_json_response
+from core.ai.providers.base import LLMProvider, calculate_backoff_delay, validate_json_response
 from core.ai.types import AIRequest, AIResponse, ProviderConfig, ProviderName
 
 logger = logging.getLogger(__name__)
@@ -155,7 +154,8 @@ class OllamaProvider(LLMProvider):
                         continue
                     if chunk.get("done") is True:
                         break
-                    content = chunk.get("message", {}).get("content", "")
+                    message = chunk.get("message", {})
+                    content = message.get("content", "")
                     if content:
                         yield content
         except httpx.HTTPStatusError as e:
@@ -167,7 +167,9 @@ class OllamaProvider(LLMProvider):
                     if body_text:
                         message = f"{message} | body: {body_text[:512]}"
             except Exception:
-                pass
+                logger.debug("Failed to read Ollama error response body", exc_info=True)
+            if e.response is None:
+                raise TransientError(f"HTTP error without response: {message}", status_code=None) from e
             error = classify_http_error(status_code, message)
             raise error from e
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
@@ -221,8 +223,7 @@ class OllamaProvider(LLMProvider):
                         yield chunk
                     return
 
-                delay = min(base_delay * (2**attempt), max_delay)
-                delay *= 0.5 + random.random()
+                delay = calculate_backoff_delay(attempt, base_delay, max_delay)
 
                 logger.warning(
                     "Transient error in streaming (attempt %d/%d): %s. Retrying in %.2fs",

@@ -200,9 +200,7 @@ def with_retry(
                         raise
 
                     # Calculate delay with exponential backoff
-                    delay = min(base_delay * (2**attempt), max_delay)
-                    if jitter:
-                        delay *= 0.5 + random.random()  # Randomize between 50%-150% of delay
+                    delay = calculate_backoff_delay(attempt, base_delay, max_delay, jitter=jitter)
 
                     logger.warning(
                         "Transient error in %s (attempt %d/%d): %s. Retrying in %.2fs",
@@ -229,12 +227,26 @@ def with_retry(
     return decorator
 
 
+def calculate_backoff_delay(
+    attempt: int,
+    base_delay: float,
+    max_delay: float,
+    *,
+    jitter: bool = True,
+) -> float:
+    """Calculate exponential backoff delay with optional jitter."""
+    delay = min(base_delay * (2**attempt), max_delay)
+    if jitter:
+        delay *= 0.5 + random.random()  # Randomize between 50%-150% of delay
+    return delay
+
+
 # ---------------------------------------------------------------------------
 # Response Validation
 # ---------------------------------------------------------------------------
 
 
-def _reject_non_finite_constant(value: str) -> NoReturn:
+def _reject_json_constant(value: str) -> NoReturn:
     raise ValueError(f"Invalid JSON constant: {value}")
 
 
@@ -262,7 +274,11 @@ def validate_json_response(raw_text: str, required_keys: list[str] | None = None
         return None
 
     try:
-        parsed = json.loads(raw_text, parse_constant=_reject_non_finite_constant)
+        parsed = json.loads(raw_text, parse_constant=_reject_json_constant)
+
+        if not isinstance(parsed, dict):
+            logger.warning("JSON response is not an object")
+            return None
 
         # Validate required keys if specified
         if required_keys:

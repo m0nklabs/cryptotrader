@@ -6,11 +6,10 @@ import asyncio
 import json
 import logging
 import os
-import random
 
 import httpx
 
-from core.ai.providers.base import LLMProvider, validate_json_response
+from core.ai.providers.base import LLMProvider, calculate_backoff_delay, validate_json_response
 from core.ai.types import AIRequest, AIResponse, ProviderConfig, ProviderName
 
 logger = logging.getLogger(__name__)
@@ -178,7 +177,9 @@ class OpenAIProvider(LLMProvider):
                     if body_text:
                         message = f"{message} | body: {body_text[:512]}"
             except Exception:
-                pass
+                logger.debug("Failed to read OpenAI error response body", exc_info=True)
+            if status_code is None:
+                raise TransientError(f"HTTP error without status code: {message}", status_code=None) from e
             error = classify_http_error(status_code, message)
             raise error from e
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
@@ -233,8 +234,7 @@ class OpenAIProvider(LLMProvider):
                         yield chunk
                     return
 
-                delay = min(base_delay * (2**attempt), max_delay)
-                delay *= 0.5 + random.random()
+                delay = calculate_backoff_delay(attempt, base_delay, max_delay)
 
                 logger.warning(
                     "Transient error in streaming (attempt %d/%d): %s. Retrying in %.2fs",

@@ -8,7 +8,7 @@ import os
 
 import httpx
 
-from core.ai.providers.base import LLMProvider, validate_json_response
+from core.ai.providers.base import LLMProvider, calculate_backoff_delay, validate_json_response
 from core.ai.types import AIRequest, AIResponse, ProviderConfig, ProviderName
 
 logger = logging.getLogger(__name__)
@@ -212,7 +212,11 @@ class DeepSeekProvider(LLMProvider):
                         message = f"{message} | body: {preview}"
             except Exception:
                 # If reading the body fails for any reason, fall back to the base message
-                pass
+                logger.debug("Failed to read DeepSeek error response body", exc_info=True)
+            if status_code is None:
+                from core.ai.providers.base import TransientError
+
+                raise TransientError(f"HTTP error without status code: {message}", status_code=None) from e
             error = classify_http_error(status_code, message)
             raise error from e
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
@@ -247,7 +251,6 @@ class DeepSeekProvider(LLMProvider):
             str: Text chunks as they arrive from the API.
         """
         import asyncio
-        import random
 
         from core.ai.providers.base import PermanentError, TransientError
 
@@ -290,8 +293,7 @@ class DeepSeekProvider(LLMProvider):
                     return
 
                 # Calculate delay with exponential backoff and jitter
-                delay = min(base_delay * (2**attempt), max_delay)
-                delay *= 0.5 + random.random()  # 50%-150% jitter
+                delay = calculate_backoff_delay(attempt, base_delay, max_delay)
 
                 logger.warning(
                     "Transient error in streaming (attempt %d/%d): %s. Retrying in %.2fs",
