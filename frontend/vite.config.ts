@@ -4,8 +4,9 @@ import react from '@vitejs/plugin-react'
 // FastAPI backend defaults to port 8000 (see docs/PORTS.md).
 const BACKEND_HTTP = 'http://127.0.0.1:8000'
 const BACKEND_WS = 'ws://127.0.0.1:8000'
-// secure:false is for local dev with self-signed certs only.
-const REST_PROXY = { target: BACKEND_HTTP, changeOrigin: true, secure: false }
+const IS_DEV = process.env.NODE_ENV !== 'production'
+// Disable SSL verification only in local development with self-signed certs.
+const REST_PROXY = { target: BACKEND_HTTP, changeOrigin: true, secure: !IS_DEV }
 
 const sharedProxy = {
   '/api': {
