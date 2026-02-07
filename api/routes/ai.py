@@ -458,7 +458,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
         risk_limits=request.risk_limits,
         roles=roles,
     )
-    
+
     # Convert verdicts to JSON-serializable format
     verdict_dicts = [
         {
