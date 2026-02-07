@@ -174,6 +174,7 @@ async def generate_all_dossiers(
 
 
 def _as_float(value: Decimal | float | int | str | None) -> float | None:
+    """Convert numeric values (including Decimal/string) to float for JSON."""
     if value is None:
         return None
     if isinstance(value, (Decimal, float, int)):

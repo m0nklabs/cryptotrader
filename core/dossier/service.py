@@ -27,7 +27,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_TIMEOUT = 30.0
+DEFAULT_DB_TIMEOUT = 30.0  # Avoid hangs on unreachable DB while tolerating cold starts.
 
 DEBUG = os.environ.get("DOSSIER_DEBUG", "").lower() in ("1", "true", "yes")
 
