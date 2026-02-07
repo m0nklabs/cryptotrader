@@ -96,16 +96,18 @@ class PriceWebSocketManager:
 
         now = time.monotonic()
         async with self._lock:
-            connections = list(self._connections.items())
+            targets: list[WebSocketLike] = []
+            for websocket, state in self._connections.items():
+                if state.exchange != exchange or symbol not in state.symbols:
+                    continue
+                last_sent = state.last_sent.get(symbol, 0.0)
+                if now - last_sent < self._rate_limit_seconds:
+                    continue
+                state.last_sent[symbol] = now
+                targets.append(websocket)
 
         failed_websockets: list[WebSocketLike] = []
-        for websocket, state in connections:
-            if state.exchange != exchange or symbol not in state.symbols:
-                continue
-            last_sent = state.last_sent.get(symbol, 0.0)
-            if now - last_sent < self._rate_limit_seconds:
-                continue
-            state.last_sent[symbol] = now
+        for websocket in targets:
             try:
                 await websocket.send_json(update)
             except Exception:
@@ -145,6 +147,7 @@ class PriceWebSocketManager:
         task_to_stop: asyncio.Task | None = None
         client: ExchangePriceClient | None = None
         expected_stop_event: asyncio.Event | None = None
+        stop_event: asyncio.Event | None = None
         async with self._lock:
             symbols = set()
             for state in self._connections.values():
@@ -171,7 +174,8 @@ class PriceWebSocketManager:
 
             state.symbols = set(symbols)
             state.stop_event = asyncio.Event()
-            expected_stop_event = state.stop_event
+            stop_event = state.stop_event
+            expected_stop_event = stop_event
             client = self._clients.get(exchange)
 
         if task_to_stop:
@@ -186,7 +190,7 @@ class PriceWebSocketManager:
                 symbols=symbols,
                 on_price=self.broadcast_price,
                 on_status=lambda status: self.broadcast_status(exchange=exchange, status=status),
-                stop_event=state.stop_event,
+                stop_event=stop_event,
             )
 
         async with self._lock:

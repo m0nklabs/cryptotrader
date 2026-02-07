@@ -57,6 +57,10 @@ export default function LivePrice({ symbol, exchange, timeframe, className }: Li
     },
     onStatusChange: (next) => {
       if (next === 'connected') return
+      if (next === 'error') {
+        setStatus(exchange, 'error')
+        return
+      }
       setStatus(exchange, next === 'connecting' ? 'connecting' : 'disconnected')
     },
   })

@@ -79,10 +79,11 @@ CONFIDENCE: (your confidence in the analysis)"""
         self.model = model or os.environ.get("OLLAMA_MODEL", self.DEFAULT_MODEL)
         self.host = host or os.environ.get("OLLAMA_HOST", self.DEFAULT_HOST)
         self.timeout = timeout
-        # HTTP Basic Auth for ollama_guardian proxy (username only, no password)
-        self._auth_user = os.environ.get("OLLAMA_USER", "cryptotrader")
+        # HTTP Basic Auth for ollama_guardian proxy (optional)
+        self._auth_user = os.environ.get("OLLAMA_USER")
+        self._auth_password = os.environ.get("OLLAMA_PASSWORD", "")
         self._auth: httpx.BasicAuth | None = (
-            httpx.BasicAuth(username=self._auth_user, password="") if self._auth_user else None
+            httpx.BasicAuth(username=self._auth_user, password=self._auth_password) if self._auth_user else None
         )
 
     async def explain(

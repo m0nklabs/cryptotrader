@@ -178,8 +178,8 @@ def main(argv: list[str] | None = None) -> int:
     gap_repair_unit = _REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-gap-repair@.service"
     gap_repair_timer = _REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-gap-repair@.timer"
 
-    _link_user_unit(backfill_unit, required=True)
-    _link_user_unit(realtime_timer, required=True)
+    _link_user_unit(backfill_unit)
+    _link_user_unit(realtime_timer)
     if args.enable_gap_repair:
         _link_user_unit(gap_repair_unit)
         _link_user_unit(gap_repair_timer)
