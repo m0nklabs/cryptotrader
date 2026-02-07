@@ -79,6 +79,14 @@ CONFIDENCE: (your confidence in the analysis)"""
         self.model = model or os.environ.get("OLLAMA_MODEL", self.DEFAULT_MODEL)
         self.host = host or os.environ.get("OLLAMA_HOST", self.DEFAULT_HOST)
         self.timeout = timeout
+        # HTTP Basic Auth for ollama_guardian proxy (optional)
+        self._auth_user = os.environ.get("OLLAMA_USER")
+        self._auth_password = os.environ.get("OLLAMA_PASSWORD")
+        self._auth: httpx.BasicAuth | None = (
+            httpx.BasicAuth(username=self._auth_user, password=self._auth_password)
+            if self._auth_user and self._auth_password
+            else None
+        )
 
     async def explain(
         self,
@@ -262,7 +270,7 @@ CONFIDENCE: (your confidence in the analysis)"""
             },
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(auth=self._auth) as client:
             response = await client.post(
                 url,
                 json=payload,
@@ -380,7 +388,7 @@ Note: LLM analysis unavailable ({error}). This is rule-based analysis only."""
     async def is_available(self) -> bool:
         """Check if Ollama is available."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(auth=self._auth) as client:
                 response = await client.get(f"{self.host}/api/tags", timeout=5.0)
                 return response.status_code == 200
         except Exception:
@@ -389,7 +397,7 @@ Note: LLM analysis unavailable ({error}). This is rule-based analysis only."""
     async def list_models(self) -> list[str]:
         """List available Ollama models."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(auth=self._auth) as client:
                 response = await client.get(f"{self.host}/api/tags", timeout=5.0)
                 response.raise_for_status()
                 data = response.json()

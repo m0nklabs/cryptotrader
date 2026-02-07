@@ -21,3 +21,4 @@ httpx>=0.25.0  # Async HTTP client for notifications
 
 # WebSocket support (for real-time market data)
 websocket-client>=1.8.0
+websockets>=12.0

@@ -118,6 +118,24 @@ Candles → [RSI, MACD, Stochastic, Bollinger, ATR] → IndicatorSignals[]
                     scoring.py (weighted average)
                             ↓
               Opportunity(score=0-100, explanation="...")
+
+---
+
+### Coin Dossier (LLM summaries)
+
+The dossier service generates per-coin summaries and is exposed via the API:
+
+- `GET /dossier/latest` — latest generated dossier entries
+- `GET /dossier/{symbol}` — dossier for a specific symbol
+- `POST /dossier/generate-all` — trigger dossier generation for all symbols
+
+Required environment variables (see `.env.example`):
+
+- `OLLAMA_HOST`
+- `OLLAMA_MODEL`
+- `OLLAMA_USER` (optional; only if proxy auth is enabled—no default auth header is sent)
+- `OLLAMA_PASSWORD` (optional; used with OLLAMA_USER when BasicAuth is required)
+- `DOSSIER_DEBUG` (optional; enable debug logging)
 ```
 
 **Usage:**

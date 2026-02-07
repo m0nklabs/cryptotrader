@@ -6,6 +6,8 @@ This document covers how to run the `cryptotrader` dashboard and related v2 comp
 
 - Frontend dashboard (this repo): `5176`
   - LAN URL example (if host is `192.168.1.6`): `http://192.168.1.6:5176/`
+- Dashboard API (DB-backed candles): `8787`
+- FastAPI (primary backend API): `8000`
 
 Notes:
 
@@ -92,6 +94,54 @@ Quickstart (examples use instance format `@SYMBOL-TIMEFRAME`, e.g. `@BTCUSD-1m`)
   `systemctl --user start cryptotrader-bitfinex-backfill@BTCUSD-1m.service`\
   `systemctl --user start cryptotrader-bitfinex-gap-repair@BTCUSD-1m.service`\
   `systemctl --user start cryptotrader-frontend.service`
+
+## Backend API service (FastAPI)
+
+The frontend proxies `/api/*`, `/candles/*`, `/ws/*` and other routes to FastAPI.
+
+- Command (dev): `python -m api.main` (binds to `127.0.0.1:8000`)
+
+In addition to REST endpoints, the backend serves:
+
+- Candle streaming via SSE: `/candles/stream`
+- Live prices via WebSocket: `/ws/prices`
+
+## Legacy dashboard API service (optional)
+
+Older iterations used a separate DB-backed helper API. It is optional now.
+
+- Script: `python scripts/api_server.py` (binds to `127.0.0.1:8787`)
+- Unit file: `systemd/cryptotrader-dashboard-api.service`
+
+Install + start:
+
+- `systemctl --user link /home/flip/cryptotrader/systemd/cryptotrader-dashboard-api.service`
+- `systemctl --user daemon-reload`
+- `systemctl --user enable --now cryptotrader-dashboard-api.service`
+
+Status / logs:
+
+- `systemctl --user status cryptotrader-dashboard-api.service`
+- `journalctl --user -u cryptotrader-dashboard-api.service -f`
+
+## Daily dossier (systemd timer)
+
+Generate a daily per-coin dossier summary.
+
+- Unit file: `systemd/cryptotrader-dossier.service`
+- Timer: `systemd/cryptotrader-dossier.timer` (08:00 UTC, + up to 5 min jitter)
+
+Install + enable:
+
+- `systemctl --user link /home/flip/cryptotrader/systemd/cryptotrader-dossier.service`
+- `systemctl --user link /home/flip/cryptotrader/systemd/cryptotrader-dossier.timer`
+- `systemctl --user daemon-reload`
+- `systemctl --user enable --now cryptotrader-dossier.timer`
+
+Monitor:
+
+- `systemctl --user status cryptotrader-dossier.timer`
+- `journalctl --user -u cryptotrader-dossier.service -f`
 
 ## Realtime candles into DB + periodic gap repair
 

@@ -35,6 +35,12 @@ data/postgres/
 data/postgres*/
 data/postgres.*
 
+# Local sqlite/db artifacts (never commit)
+data/*.db
+
+# Editor workspace files
+*.code-workspace
+
 # OS/Editor
 .DS_Store
 .vscode/

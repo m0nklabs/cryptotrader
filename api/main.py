@@ -40,7 +40,15 @@ from core.storage.postgres.stores import PostgresStores
 from core.types import FeeBreakdown
 
 # Import new route modules with aliases to avoid conflicts
-from api.routes import health as health_routes, ratelimit, notifications, export as export_routes
+from api.routes import (
+    health as health_routes,
+    ratelimit,
+    notifications,
+    export as export_routes,
+    ws as ws_routes,
+    arbitrage as arbitrage_routes,
+    dossier as dossier_routes,
+)
 
 # Import middleware for rate limit tracking
 from core.ratelimit import RateLimitMiddleware
@@ -184,6 +192,7 @@ class FeesEstimateResponse(BaseModel):
 
 
 @app.get("/health")
+@app.get("/healthz")
 async def health() -> dict[str, Any]:
     """Health check endpoint.
 
@@ -2029,3 +2038,6 @@ app.include_router(health_routes.router)
 app.include_router(ratelimit.router)
 app.include_router(notifications.router)
 app.include_router(export_routes.router)
+app.include_router(ws_routes.router)
+app.include_router(arbitrage_routes.router)
+app.include_router(dossier_routes.router)

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from '../App'
 
 // Mock API modules
@@ -12,7 +13,7 @@ vi.mock('../api/trading', () => ({
 }))
 
 vi.mock('../api/marketCap', () => ({
-  fetchMarketCap: vi.fn().mockResolvedValue({}),
+  fetchMarketCap: vi.fn().mockResolvedValue({ rankings: {}, source: 'fallback' }),
 }))
 
 vi.mock('../api/candleStream', () => ({
@@ -25,9 +26,9 @@ vi.mock('../api/candleStream', () => ({
 
 vi.mock('../api/systemStatus', () => ({
   fetchSystemStatus: vi.fn().mockResolvedValue({
-    status: 'healthy',
-    uptime_seconds: 100,
-    database: { connected: true },
+    backend: { status: 'ok', uptime_seconds: 100 },
+    database: { status: 'ok', connected: true, latency_ms: 12 },
+    timestamp: 0,
   }),
 }))
 
@@ -38,18 +39,29 @@ describe('App Component', () => {
       value: {
         getItem: vi.fn(() => 'dark'),
         setItem: vi.fn(),
+        removeItem: vi.fn(),
       },
       writable: true,
     })
   })
 
   it('renders without crashing', () => {
-    const { container } = render(<App />)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    )
     expect(container.firstChild).toBeTruthy()
   })
 
   it('renders the main application layout', () => {
-    render(<App />)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    )
     // Check that the app container exists with a more specific selector
     // The main container uses h-screen, not min-h-screen
     const appElement = document.querySelector('[class*="h-screen"]')
@@ -57,7 +69,12 @@ describe('App Component', () => {
   })
 
   it('applies dark mode by default', () => {
-    const { container } = render(<App />)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    )
     // Verify the component is rendered and dark mode class is applied
     expect(container.firstChild).toBeTruthy()
     expect(document.documentElement.classList.contains('dark')).toBe(true)

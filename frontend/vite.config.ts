@@ -1,47 +1,38 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// FastAPI backend defaults to port 8000 (see docs/PORTS.md in repo). Legacy helper script ran on 8787.
+const BACKEND_HTTP = 'http://127.0.0.1:8000'
+const BACKEND_WS = 'ws://127.0.0.1:8000'
+// Set VITE_DISABLE_SSL_VERIFY=true for self-signed certs in local dev.
+const DISABLE_SSL_VERIFY = process.env.VITE_DISABLE_SSL_VERIFY === 'true'
+const REST_PROXY = { target: BACKEND_HTTP, changeOrigin: true, secure: !DISABLE_SSL_VERIFY }
+
+const sharedProxy = {
+  '/api': {
+    ...REST_PROXY,
+    // Frontend uses /api as a convention; backend routes are mounted without it.
+    rewrite: (path: string) => path.replace(/^\/api/, ''),
+  },
+  '/ws': {
+    target: BACKEND_WS,
+    ws: true,
+    changeOrigin: true,
+  },
+  '/healthz': REST_PROXY,
+  '/system': REST_PROXY,
+  '/candles': REST_PROXY,
+}
+
 export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
     port: 5176,
     strictPort: true,
-    proxy: {
-      // NOTE: wallets-data service (port 8101) not yet running
-      // Uncomment when wallets-data is deployed:
-      // '/api/wallet': {
-      //   target: 'http://127.0.0.1:8101',
-      //   rewrite: (path) => path.replace(/^\/api\/wallet/, ''),
-      // },
-      '/api': {
-        target: 'http://127.0.0.1:8000',
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-      '/healthz': 'http://127.0.0.1:8000',
-      '/health': 'http://127.0.0.1:8000',
-      '/system': 'http://127.0.0.1:8000',
-      '/candles': 'http://127.0.0.1:8000',
-      '/ingestion': 'http://127.0.0.1:8000',
-    },
+    proxy: sharedProxy,
   },
   preview: {
-    proxy: {
-      // NOTE: wallets-data service (port 8101) not yet running
-      // Uncomment when wallets-data is deployed:
-      // '/api/wallet': {
-      //   target: 'http://127.0.0.1:8101',
-      //   rewrite: (path) => path.replace(/^\/api\/wallet/, ''),
-      // },
-      '/api': {
-        target: 'http://127.0.0.1:8000',
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-      '/healthz': 'http://127.0.0.1:8000',
-      '/health': 'http://127.0.0.1:8000',
-      '/system': 'http://127.0.0.1:8000',
-      '/candles': 'http://127.0.0.1:8000',
-      '/ingestion': 'http://127.0.0.1:8000',
-    },
+    proxy: sharedProxy,
   },
 })

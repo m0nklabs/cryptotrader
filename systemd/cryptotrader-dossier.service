@@ -1,0 +1,13 @@
+[Unit]
+Description=CryptoTrader Daily Dossier Generator
+After=network.target postgresql.service cryptotrader-api.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/cryptotrader
+ExecStart=%h/cryptotrader/.venv/bin/python -m scripts.generate_dossiers --exchange bitfinex
+Environment=PYTHONPATH=%h/cryptotrader
+EnvironmentFile=%h/cryptotrader/.env
+
+[Install]
+WantedBy=default.target

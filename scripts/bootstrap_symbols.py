@@ -74,11 +74,18 @@ def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     subprocess.run(cmd, cwd=str(_REPO_ROOT), env=env, check=True)
 
 
-def _link_user_unit(template_path: Path) -> None:
+def _link_user_unit(template_path: Path, *, required: bool = False) -> None:
     """Link a unit file into ~/.config/systemd/user via symlink.
 
     We avoid `systemctl --user link` to keep behavior predictable across distros.
     """
+
+    if not template_path.exists():
+        message = f"Missing systemd unit template: {template_path}"
+        if required:
+            raise SystemExit(message)
+        print(f"warning: {message}")
+        return
 
     user_dir = Path.home() / ".config" / "systemd" / "user"
     user_dir.mkdir(parents=True, exist_ok=True)
@@ -138,11 +145,24 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Continue even if some symbols fail backfill",
     )
+    parser.add_argument(
+        "--exchange",
+        default="bitfinex",
+        help="Exchange adapter to use for backfill (default: bitfinex)",
+    )
 
     args = parser.parse_args(argv)
 
     symbols = [s for s in (args.symbols.split(",") if args.symbols else []) if s.strip()]
     tf = str(args.timeframe)
+    exchange = str(args.exchange).strip().lower()
+
+    adapter_modules = {
+        "bitfinex": "core.market_data.bitfinex_backfill",
+        "binance": "core.market_data.binance_backfill",
+    }
+    if exchange not in adapter_modules:
+        raise SystemExit(f"Unsupported exchange '{exchange}'. Available: {', '.join(sorted(adapter_modules))}")
 
     # Load repo-local env if present (DATABASE_URL typically lives here).
     env = os.environ.copy()
@@ -153,11 +173,16 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("DATABASE_URL is not set (set it in environment or /home/flip/cryptotrader/.env)")
 
     # Link template units (safe if already present).
-    _link_user_unit(_REPO_ROOT / "systemd" / "cryptotrader-bitfinex-backfill@.service")
-    _link_user_unit(_REPO_ROOT / "systemd" / "cryptotrader-bitfinex-realtime@.timer")
+    backfill_unit = _REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-backfill@.service"
+    realtime_timer = _REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-realtime@.timer"
+    gap_repair_unit = _REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-gap-repair@.service"
+    gap_repair_timer = _REPO_ROOT / "systemd" / f"cryptotrader-{exchange}-gap-repair@.timer"
+
+    _link_user_unit(backfill_unit)
+    _link_user_unit(realtime_timer)
     if args.enable_gap_repair:
-        _link_user_unit(_REPO_ROOT / "systemd" / "cryptotrader-bitfinex-gap-repair@.service")
-        _link_user_unit(_REPO_ROOT / "systemd" / "cryptotrader-bitfinex-gap-repair@.timer")
+        _link_user_unit(gap_repair_unit)
+        _link_user_unit(gap_repair_timer)
 
     _run(["systemctl", "--user", "daemon-reload"], env=env)
 
@@ -169,20 +194,20 @@ def main(argv: list[str] | None = None) -> int:
     for inst in _instances(symbols, tf):
         instance_name = inst.instance_name
 
-        backfill_env_path = Path.home() / ".config" / "cryptotrader" / f"bitfinex-backfill-{instance_name}.env"
+        backfill_env_path = Path.home() / ".config" / "cryptotrader" / f"{exchange}-backfill-{instance_name}.env"
         _write_instance_env(backfill_env_path, symbol=inst.symbol, timeframe=inst.timeframe)
 
         # Initial backfill: for a brand new symbol, --resume would fail.
         cmd = [
             str(_REPO_ROOT / ".venv" / "bin" / "python"),
             "-m",
-            "core.market_data.bitfinex_backfill",
+            adapter_modules[exchange],
             "--symbol",
             inst.symbol,
             "--timeframe",
             inst.timeframe,
             "--exchange",
-            "bitfinex",
+            exchange,
             "--start",
             _iso_utc(start),
             "--end",
@@ -198,18 +223,20 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         if args.enable_gap_repair:
-            gap_env_path = Path.home() / ".config" / "cryptotrader" / f"bitfinex-gap-repair-{instance_name}.env"
+            gap_env_path = Path.home() / ".config" / "cryptotrader" / f"{exchange}-gap-repair-{instance_name}.env"
             _write_instance_env(gap_env_path, symbol=inst.symbol, timeframe=inst.timeframe)
 
         if args.no_enable_timers:
             continue
 
-        _run(
-            ["systemctl", "--user", "enable", "--now", f"cryptotrader-bitfinex-realtime@{instance_name}.timer"], env=env
-        )
-        if args.enable_gap_repair:
+        if realtime_timer.exists():
             _run(
-                ["systemctl", "--user", "enable", "--now", f"cryptotrader-bitfinex-gap-repair@{instance_name}.timer"],
+                ["systemctl", "--user", "enable", "--now", f"cryptotrader-{exchange}-realtime@{instance_name}.timer"],
+                env=env,
+            )
+        if args.enable_gap_repair and gap_repair_timer.exists():
+            _run(
+                ["systemctl", "--user", "enable", "--now", f"cryptotrader-{exchange}-gap-repair@{instance_name}.timer"],
                 env=env,
             )
 

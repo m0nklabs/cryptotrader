@@ -6,6 +6,37 @@ Real-time candle updates via WebSocket streaming.
 
 The WebSocket market data implementation provides real-time OHLCV candle updates for supported exchanges (currently Bitfinex). This complements the REST API-based backfill functionality with live streaming capabilities.
 
+## Dashboard Price Stream (`/ws/prices`)
+
+The dashboard also exposes a lightweight WebSocket for live price updates:
+
+- **Endpoint**: `ws://<host>/ws/prices` (or `wss://` when HTTPS)
+- **Subscribe payload** (client → server):
+
+```json
+{
+  "type": "subscribe",
+  "exchange": "bitfinex",
+  "symbols": ["BTCUSD"]
+}
+```
+
+Notes:
+
+- `action` is accepted as an alias for `type` (both resolve to `subscribe`).
+- The server rate-limits per (connection, symbol) to avoid flooding.
+
+**Server message types**:
+
+- `status` — connection lifecycle updates
+```json
+{ "type": "status", "exchange": "bitfinex", "status": "connected" }
+```
+- `price` — latest price updates
+```json
+{ "type": "price", "exchange": "bitfinex", "symbol": "BTCUSD", "price": 12345.67, "timestamp": 1710000000000 }
+```
+
 ## Architecture
 
 ### Components

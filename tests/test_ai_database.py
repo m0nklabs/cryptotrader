@@ -17,6 +17,7 @@ import io
 import os
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 import pytest_asyncio
@@ -100,6 +101,57 @@ def _iter_sql_statements(sql: str) -> Iterable[str]:
         yield tail
 
 
+def _redact_database_url(value: str) -> str:
+    """Redact credentials from a database URL for safe error messages."""
+    normalized = value
+    if "://" not in normalized:
+        normalized = f"postgresql+asyncpg://{normalized}"
+    try:
+        parts = urlsplit(normalized)
+    except ValueError:
+        return "***"
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = "***@" + netloc.split("@", 1)[1]
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
+def _normalize_database_url(database_url: str) -> str:
+    """Normalize DATABASE_URL to an async SQLAlchemy URL.
+
+    Supports:
+    - Bare: host:port/dbname or user:pass@host:port/dbname
+    - postgresql://
+    - postgres://
+    - postgresql+<driver>:// (e.g. psycopg2)
+    - postgresql+asyncpg://
+    """
+    if "://" not in database_url:
+        candidate = f"postgresql+asyncpg://{database_url}"
+        parsed = urlsplit(candidate)
+        if not parsed.netloc or parsed.path in {"", "/"}:
+            raise ValueError(
+                f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
+                "Expected host:port/dbname or user:pass@host:port/dbname"
+            )
+        database_url = candidate
+
+    if database_url.startswith("postgresql+asyncpg://"):
+        return database_url
+    if database_url.startswith("postgresql+"):
+        # Handle postgresql+psycopg2://, postgresql+psycopg://, etc.
+        return "postgresql+asyncpg://" + database_url.split("://", 1)[1]
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+
+    raise ValueError(
+        f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
+        "Expected postgresql://, postgres://, postgresql+<driver>://, or postgresql+asyncpg://"
+    )
+
+
 def _get_test_database_url() -> str:
     """Get DATABASE_URL normalized to asyncpg.
 
@@ -111,18 +163,10 @@ def _get_test_database_url() -> str:
 
     # Convert to async URL if needed
     # Ensure we always use postgresql+asyncpg:// scheme
-    # CI may use psycopg2 or other drivers — normalize to asyncpg
-    if database_url.startswith("postgresql+asyncpg://"):
-        pass  # Already correct
-    elif database_url.startswith("postgresql+"):
-        # Handle postgresql+psycopg2://, postgresql+psycopg://, etc.
-        database_url = "postgresql+asyncpg://" + database_url.split("://", 1)[1]
-    elif database_url.startswith("postgresql://"):
-        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    elif database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    else:
-        pytest.skip(f"Unsupported DATABASE_URL format: {database_url}")
+    try:
+        database_url = _normalize_database_url(database_url)
+    except ValueError as exc:
+        pytest.skip(str(exc))
 
     # Verify asyncpg is importable (required for SQLAlchemy async engine)
     try:
@@ -140,6 +184,31 @@ def _reset_prompt_registry_state() -> None:
     PromptRegistry._db_enabled = False
     PromptRegistry._db_loaded = False
     PromptRegistry._activation_lock = None
+
+
+def test_redact_database_url_masks_credentials() -> None:
+    assert (
+        _redact_database_url("postgresql+asyncpg://user:pass@localhost:5432/db")
+        == "postgresql+asyncpg://***@localhost:5432/db"
+    )
+
+
+def test_redact_database_url_without_credentials() -> None:
+    assert _redact_database_url("postgresql+asyncpg://localhost:5432/db") == "postgresql+asyncpg://localhost:5432/db"
+
+
+def test_redact_database_url_bare_format() -> None:
+    assert _redact_database_url("user:pass@localhost:5432/db") == "postgresql+asyncpg://***@localhost:5432/db"
+
+
+def test_normalize_database_url_accepts_bare_format() -> None:
+    assert _normalize_database_url("localhost:5432/testdb") == "postgresql+asyncpg://localhost:5432/testdb"
+
+
+@pytest.mark.parametrize("value", ["", "localhost:5432"])
+def test_normalize_database_url_rejects_empty_bare_format(value: str) -> None:
+    with pytest.raises(ValueError):
+        _normalize_database_url(value)
 
 
 @pytest_asyncio.fixture

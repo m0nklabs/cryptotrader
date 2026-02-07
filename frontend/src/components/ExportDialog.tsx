@@ -9,7 +9,7 @@ interface ExportDialogProps {
 type ExportType = 'candles' | 'trades' | 'portfolio';
 type ExportFormat = 'csv' | 'json';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// All API calls use relative paths, proxied by Vite to the backend
 
 export function ExportDialog({ onClose }: ExportDialogProps) {
   const [exportType, setExportType] = useState<ExportType>('candles');
@@ -26,11 +26,11 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
       let url = '';
 
       if (exportType === 'candles') {
-        url = `${API_BASE_URL}/export/candles?symbol=${encodeURIComponent(symbol)}&exchange=${encodeURIComponent(exchange)}&timeframe=${encodeURIComponent(timeframe)}&format=${encodeURIComponent(format)}`;
+        url = `/export/candles?symbol=${encodeURIComponent(symbol)}&exchange=${encodeURIComponent(exchange)}&timeframe=${encodeURIComponent(timeframe)}&format=${encodeURIComponent(format)}`;
       } else if (exportType === 'trades') {
-        url = `${API_BASE_URL}/export/trades?format=${encodeURIComponent(format)}`;
+        url = `/export/trades?format=${encodeURIComponent(format)}`;
       } else if (exportType === 'portfolio') {
-        url = `${API_BASE_URL}/export/portfolio?format=${encodeURIComponent(format)}`;
+        url = `/export/portfolio?format=${encodeURIComponent(format)}`;
       }
 
       const response = await fetch(url);

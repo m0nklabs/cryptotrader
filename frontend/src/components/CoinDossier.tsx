@@ -104,7 +104,7 @@ function NarrativeSection({
 }: {
   title: string
   icon: string
-  content: string
+  content?: string
   defaultOpen?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)

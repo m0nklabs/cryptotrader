@@ -135,6 +135,54 @@ class PostgresStores(
 
         return None if row is None else row[0]
 
+    def get_latest_candle_closes(
+        self,
+        *,
+        exchanges: Sequence[str],
+        timeframe: str,
+        symbols: Sequence[str] | None = None,
+    ) -> Sequence[tuple[str, str, Any]]:
+        if not exchanges:
+            return []
+
+        engine = self._get_engine()
+        _, text = self._require_sqlalchemy()
+
+        params: dict[str, Any] = {
+            "exchanges": list(exchanges),
+            "timeframe": timeframe,
+            "symbols": list(symbols) if symbols else [],
+        }
+
+        stmt = text(
+            """
+            SELECT exchange, symbol, close
+            FROM (
+                SELECT
+                    exchange,
+                    symbol,
+                    close,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY exchange, symbol
+                        ORDER BY open_time DESC
+                    ) AS rn
+                FROM candles
+                WHERE exchange = ANY(:exchanges)
+                  AND timeframe = :timeframe
+                  AND (
+                      cardinality(:symbols::text[]) = 0
+                      OR symbol = ANY(:symbols::text[])
+                  )
+            ) t
+            WHERE rn = 1
+            """
+        )
+
+        with engine.begin() as conn:
+            rows = conn.execute(stmt, params).fetchall()
+
+        return rows
+
     # ---- CandleStore
 
     def upsert_candles(self, *, candles: Sequence[Candle]) -> int:
