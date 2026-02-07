@@ -23,6 +23,7 @@ from core.ai.providers.base import (
 from core.ai.providers.deepseek import DeepSeekProvider
 from core.ai.providers.ollama import OllamaProvider
 from core.ai.providers.openai import OpenAIProvider
+from core.ai.providers.openrouter import OpenRouterProvider
 from core.ai.providers.xai import XAIProvider
 from core.ai.types import AIRequest, ProviderName, RoleName
 
@@ -375,6 +376,54 @@ async def test_openai_cost_calculation():
 
 
 # ---------------------------------------------------------------------------
+# OpenRouter Provider Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_openrouter_complete_success():
+    """Test successful OpenRouter completion."""
+    provider = OpenRouterProvider()
+
+    mock_response = {
+        "choices": [{"message": {"content": "Analysis complete"}}],
+        "usage": {"prompt_tokens": 150, "completion_tokens": 75},
+    }
+
+    with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = mock_response
+
+        request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Review risk")
+        response = await provider.complete(request, system_prompt="You are a strategist")
+
+        assert response.role == RoleName.STRATEGIST
+        assert response.provider == ProviderName.OPENROUTER
+        assert response.model == "openai/o3-mini"
+        assert response.cost_usd > 0
+
+
+@pytest.mark.asyncio
+async def test_openrouter_cost_calculation():
+    """Test cost calculation for OpenRouter (best-effort mapping)."""
+    provider = OpenRouterProvider()
+
+    mock_response = {
+        "choices": [{"message": {"content": "test"}}],
+        "usage": {"prompt_tokens": 1000, "completion_tokens": 1000},
+    }
+
+    with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = mock_response
+
+        request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Test")
+        response = await provider.complete(request, system_prompt="test")
+
+        # openai/o3-mini mapping: $1.10 input, $4.40 output per 1M tokens
+        expected_cost = (1000 * 1.10 + 1000 * 4.40) / 1_000_000
+        assert abs(response.cost_usd - expected_cost) < 0.0001
+
+
+# ---------------------------------------------------------------------------
 # xAI Provider Tests
 # ---------------------------------------------------------------------------
 
@@ -636,6 +685,40 @@ async def test_deepseek_streaming_fallback_on_error():
 async def test_openai_streaming_success():
     """Test OpenAI streaming with SSE format parsing."""
     provider = OpenAIProvider()
+
+    mock_lines = [
+        "data: " + '{"choices": [{"delta": {"content": "Hello"}}]}',
+        "data: " + '{"choices": [{"delta": {"content": " world"}}]}',
+        "data: [DONE]",
+    ]
+
+    async def mock_aiter_lines():
+        for line in mock_lines:
+            yield line
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        mock_response.raise_for_status = MagicMock()
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.return_value = mock_cm
+
+        request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Test streaming")
+
+        chunks = []
+        async for chunk in provider.complete_stream(request, system_prompt="test"):
+            chunks.append(chunk)
+
+        assert chunks == ["Hello", " world"]
+
+
+@pytest.mark.asyncio
+async def test_openrouter_streaming_success():
+    """Test OpenRouter streaming with SSE format parsing."""
+    provider = OpenRouterProvider()
 
     mock_lines = [
         "data: " + '{"choices": [{"delta": {"content": "Hello"}}]}',
