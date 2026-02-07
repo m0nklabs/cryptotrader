@@ -658,7 +658,11 @@ async def test_deepseek_streaming_fallback_on_error():
     provider = DeepSeekProvider()
 
     # Mock streaming to always fail with transient error
-    with patch("httpx.AsyncClient.stream") as mock_stream:
+    with (
+        patch("httpx.AsyncClient.stream") as mock_stream,
+        patch("core.ai.providers.base.calculate_backoff_delay", return_value=0),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
         # Create a mock that raises a transient error
         from core.ai.providers.base import TransientError
 
@@ -679,6 +683,42 @@ async def test_deepseek_streaming_fallback_on_error():
             assert "Fallback response" in chunks[0]
         # Stream should have been attempted 4 times (initial + 3 retries)
         assert mock_stream.call_count == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider_cls", "role"),
+    [
+        (OpenAIProvider, RoleName.STRATEGIST),
+        (OpenRouterProvider, RoleName.STRATEGIST),
+        (XAIProvider, RoleName.FUNDAMENTAL),
+        (OllamaProvider, RoleName.TACTICAL),
+    ],
+)
+async def test_provider_streaming_fallback_on_error(provider_cls, role):
+    """Test streaming retries then falls back to non-streaming."""
+    provider = provider_cls()
+
+    with (
+        patch("httpx.AsyncClient.stream") as mock_stream,
+        patch("core.ai.providers.base.calculate_backoff_delay", return_value=0),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        from core.ai.providers.base import TransientError
+
+        mock_stream.side_effect = TransientError("Service temporarily unavailable", 503)
+
+        with patch.object(provider, "complete", new_callable=AsyncMock) as mock_complete:
+            mock_complete.return_value.raw_text = "Fallback response"
+
+            request = AIRequest(role=role, user_prompt="Test fallback")
+
+            chunks = []
+            async for chunk in provider.complete_stream(request, system_prompt="test"):
+                chunks.append(chunk)
+
+            assert chunks == ["Fallback response"]
+            assert mock_stream.call_count == 4
 
 
 @pytest.mark.asyncio

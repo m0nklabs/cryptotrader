@@ -58,8 +58,16 @@ class OllamaProvider(LLMProvider):
         max_tokens: int | None = None,
     ) -> AIResponse:
         """Send a chat request to local Ollama instance."""
-        model = model or request.override_model or self.config.default_model
-        temperature = temperature or request.override_temperature or self.config.temperature
+        if model is None:
+            model = request.override_model if request.override_model is not None else self.config.default_model
+        if temperature is None:
+            temperature = (
+                request.override_temperature
+                if request.override_temperature is not None
+                else self.config.temperature
+            )
+        if max_tokens is None:
+            max_tokens = self.config.max_tokens
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -79,6 +87,7 @@ class OllamaProvider(LLMProvider):
                     "stream": False,
                     "options": {
                         "temperature": temperature,
+                        "num_predict": max_tokens,
                     },
                 },
             )
@@ -123,6 +132,7 @@ class OllamaProvider(LLMProvider):
         model: str,
         messages: list[dict],
         temperature: float,
+        max_tokens: int,
     ):
         """Single streaming attempt with error classification and rate limiting."""
         from core.ai.providers.base import TransientError, classify_http_error
@@ -140,6 +150,7 @@ class OllamaProvider(LLMProvider):
                     "stream": True,
                     "options": {
                         "temperature": temperature,
+                        "num_predict": max_tokens,
                     },
                 },
             ) as response:
@@ -187,8 +198,16 @@ class OllamaProvider(LLMProvider):
         """Stream chat response from Ollama with retry logic."""
         from core.ai.providers.base import PermanentError, TransientError
 
-        model = model or request.override_model or self.config.default_model
-        temperature = temperature or request.override_temperature or self.config.temperature
+        if model is None:
+            model = request.override_model if request.override_model is not None else self.config.default_model
+        if temperature is None:
+            temperature = (
+                request.override_temperature
+                if request.override_temperature is not None
+                else self.config.temperature
+            )
+        if max_tokens is None:
+            max_tokens = self.config.max_tokens
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -202,7 +221,7 @@ class OllamaProvider(LLMProvider):
 
         for attempt in range(max_retries + 1):
             try:
-                async for chunk in self._attempt_streaming(client, model, messages, temperature):
+                async for chunk in self._attempt_streaming(client, model, messages, temperature, max_tokens):
                     yield chunk
                 return
             except TransientError as e:

@@ -80,9 +80,16 @@ class DeepSeekProvider(LLMProvider):
         max_tokens: int | None = None,
     ) -> AIResponse:
         """Send a chat-completion request to DeepSeek."""
-        model = model or request.override_model or self.config.default_model
-        temperature = temperature or request.override_temperature or self.config.temperature
-        max_tokens = max_tokens or self.config.max_tokens
+        if model is None:
+            model = request.override_model if request.override_model is not None else self.config.default_model
+        if temperature is None:
+            temperature = (
+                request.override_temperature
+                if request.override_temperature is not None
+                else self.config.temperature
+            )
+        if max_tokens is None:
+            max_tokens = self.config.max_tokens
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -257,9 +264,16 @@ class DeepSeekProvider(LLMProvider):
 
         from core.ai.providers.base import PermanentError, TransientError
 
-        model = model or request.override_model or self.config.default_model
-        temperature = temperature or request.override_temperature or self.config.temperature
-        max_tokens = max_tokens or self.config.max_tokens
+        if model is None:
+            model = request.override_model if request.override_model is not None else self.config.default_model
+        if temperature is None:
+            temperature = (
+                request.override_temperature
+                if request.override_temperature is not None
+                else self.config.temperature
+            )
+        if max_tokens is None:
+            max_tokens = self.config.max_tokens
 
         messages = [
             {"role": "system", "content": system_prompt},
