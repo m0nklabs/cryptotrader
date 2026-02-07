@@ -100,15 +100,16 @@ class TacticalRole(AgentRole):
         - Stop Loss: 48500
         - Take Profit: 55000
         - entry at 50000
+        - Entry: $50,000 (with comma separators)
         """
         levels = {}
 
-        # Patterns to match
+        # Patterns to match (with optional comma separators)
         patterns = {
-            "entry": r"entry[:\s]+(?:at\s+)?\$?(\d+(?:\.\d+)?)",
-            "stop_loss": r"stop[- ]?loss[:\s]+\$?(\d+(?:\.\d+)?)",
-            "take_profit": r"take[- ]?profit[:\s]+\$?(\d+(?:\.\d+)?)",
-            "target": r"target[:\s]+\$?(\d+(?:\.\d+)?)",
+            "entry": r"entry[:\s]+(?:at\s+)?\$?([\d,]+(?:\.\d+)?)",
+            "stop_loss": r"stop[- ]?loss[:\s]+\$?([\d,]+(?:\.\d+)?)",
+            "take_profit": r"take[- ]?profit[:\s]+\$?([\d,]+(?:\.\d+)?)",
+            "target": r"target[:\s]+\$?([\d,]+(?:\.\d+)?)",
         }
 
         text_lower = response_text.lower()
@@ -116,7 +117,9 @@ class TacticalRole(AgentRole):
             match = re.search(pattern, text_lower)
             if match:
                 try:
-                    levels[key] = float(match.group(1))
+                    # Strip commas before converting to float
+                    price_str = match.group(1).replace(",", "")
+                    levels[key] = float(price_str)
                 except ValueError:
                     continue
 
@@ -216,14 +219,30 @@ class TacticalRole(AgentRole):
                 reasoning=f"Tactical error: {response.error}",
             )
 
-        action: SignalAction = "NEUTRAL"
-        confidence = 0.5
+        # Validate action and clamp confidence
+        raw_action = response.parsed.get("action", "NEUTRAL") if response.parsed else "NEUTRAL"
+        if isinstance(raw_action, str):
+            raw_action = raw_action.upper()
+        else:
+            raw_action = "NEUTRAL"
+        # Coerce unknown actions to NEUTRAL
+        if raw_action in ("BUY", "SELL", "NEUTRAL", "VETO"):
+            action: SignalAction = raw_action  # type: ignore[assignment]
+        else:
+            action = "NEUTRAL"
+
+        # Parse and clamp confidence into [0.0, 1.0]
+        raw_confidence = response.parsed.get("confidence", 0.5) if response.parsed else 0.5
+        try:
+            confidence = float(raw_confidence)
+        except (TypeError, ValueError):
+            confidence = 0.5
+        confidence = max(0.0, min(1.0, confidence))
+
         reasoning = response.raw_text
         metrics: dict[str, float] = {}
 
         if response.parsed and isinstance(response.parsed, dict):
-            action = response.parsed.get("action", "NEUTRAL")
-            confidence = float(response.parsed.get("confidence", 0.5))
             reasoning = response.parsed.get("reasoning", response.raw_text)
 
             # Extract price levels — support both top-level and nested `metrics` object

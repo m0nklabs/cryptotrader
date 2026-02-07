@@ -169,11 +169,33 @@ class ScreenerRole(AgentRole):
         metrics: dict[str, float] = {}
 
         if response.parsed and isinstance(response.parsed, dict):
-            action = response.parsed.get("action", "NEUTRAL")
+            # Extract and sanitize action
+            raw_action = response.parsed.get("action", "NEUTRAL")
+            if isinstance(raw_action, str):
+                raw_action = raw_action.upper()
+            else:
+                raw_action = "NEUTRAL"
             # Map invalid SKIP action to NEUTRAL (SKIP is not a valid SignalAction)
-            if action == "SKIP":
+            if raw_action == "SKIP":
+                raw_action = "NEUTRAL"
+            # Coerce any unknown action to NEUTRAL to keep SignalAction valid
+            if raw_action in ("BUY", "SELL", "NEUTRAL", "VETO"):
+                action = raw_action  # type: ignore[assignment]
+            else:
                 action = "NEUTRAL"
-            confidence = float(response.parsed.get("confidence", 0.5))
+
+            # Extract and clamp confidence into [0.0, 1.0]
+            raw_confidence = response.parsed.get("confidence", 0.5)
+            try:
+                parsed_confidence = float(raw_confidence)
+            except (TypeError, ValueError):
+                parsed_confidence = 0.5
+            if parsed_confidence < 0.0:
+                parsed_confidence = 0.0
+            elif parsed_confidence > 1.0:
+                parsed_confidence = 1.0
+            confidence = parsed_confidence
+
             reasoning = response.parsed.get("reasoning", response.raw_text)
 
             # Extract filtered symbol counts (accept both key sets for compatibility)

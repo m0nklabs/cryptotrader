@@ -58,6 +58,54 @@ class StrategistRole(AgentRole):
     def __init__(self, config: RoleConfig | None = None) -> None:
         super().__init__(config or DEFAULT_STRATEGIST_CONFIG)
 
+    async def evaluate(
+        self,
+        request: AIRequest,
+        system_prompt: str,
+    ) -> tuple[AIResponse, RoleVerdict]:
+        """Override evaluate to check risk limits before calling LLM.
+
+        This avoids storing mutable state on the singleton role instance,
+        which would leak between concurrent requests.
+        """
+        # Extract context for risk limit check
+        proposed_trade = request.context.get("proposed_trade", {})
+        positions = request.context.get("positions", [])
+        portfolio_metrics = request.context.get("portfolio", {})
+        risk_limits = request.context.get("risk_limits", {})
+
+        total_equity = float(portfolio_metrics.get("total_equity", 0))
+        available_balance = float(portfolio_metrics.get("available_balance", 0))
+        portfolio_state = format_portfolio_state(positions, total_equity, available_balance)
+
+        # Check hard risk limits BEFORE calling LLM
+        should_veto, veto_reason = self._check_risk_limits(proposed_trade, portfolio_state, risk_limits)
+
+        if should_veto:
+            # Return synthetic VETO verdict immediately without calling LLM
+            synthetic_response = AIResponse(
+                role=RoleName.STRATEGIST,
+                provider=self.config.provider,
+                model=self.config.model,
+                raw_text=f"Hard risk limit breach: {veto_reason}",
+                parsed={"action": "VETO", "confidence": 1.0, "reasoning": f"Hard risk limit breach: {veto_reason}"},
+                tokens_in=0,
+                tokens_out=0,
+                latency_ms=0.0,
+                cost_usd=0.0,
+            )
+            veto_verdict = RoleVerdict(
+                role=RoleName.STRATEGIST,
+                action="VETO",
+                confidence=1.0,
+                reasoning=f"Hard risk limit breach: {veto_reason}",
+                metrics={},
+            )
+            return synthetic_response, veto_verdict
+
+        # No hard veto — proceed with normal evaluation
+        return await super().evaluate(request, system_prompt)
+
     def _check_risk_limits(
         self,
         proposed_trade: dict,
@@ -189,9 +237,9 @@ class StrategistRole(AgentRole):
     def build_prompt(self, request: AIRequest) -> str:
         """Build a risk-focused prompt with portfolio context.
 
-        NOTE: If hard risk limits are violated, this stores the veto
-        state so that parse_response() can enforce it regardless of
-        what the LLM returns. See `_hard_veto_reason`.
+        NOTE: Hard risk limit checks are now handled in evaluate() override
+        to avoid mutable instance state (which would leak between concurrent
+        requests on singleton role instances).
         """
         symbol = request.context.get("symbol", "UNKNOWN")
         proposed_action = request.context.get("proposed_action", "UNKNOWN")
@@ -205,10 +253,6 @@ class StrategistRole(AgentRole):
         available_balance = float(portfolio_metrics.get("available_balance", 0))
         portfolio_state = format_portfolio_state(positions, total_equity, available_balance)
 
-        # Check hard risk limits — store for enforcement in parse_response()
-        should_veto, veto_reason = self._check_risk_limits(proposed_trade, portfolio_state, risk_limits)
-        self._hard_veto_reason: str | None = veto_reason if should_veto else None
-
         # Calculate correlation risk
         correlation_score = self._calculate_correlation_penalty(symbol, positions)
 
@@ -218,91 +262,54 @@ class StrategistRole(AgentRole):
         prompt_parts = [
             f"Evaluate proposed {proposed_action} on {symbol}.",
             "",
+            "=== CURRENT PORTFOLIO STATE ===",
+            json.dumps(portfolio_state, indent=2, default=str),
+            "",
+            "=== PROPOSED TRADE ===",
+            json.dumps(proposed_trade, indent=2, default=str),
+            "",
+            "=== RISK LIMITS ===",
+            json.dumps(risk_limits, indent=2, default=str),
+            "",
+            "=== CORRELATION ANALYSIS ===",
+            json.dumps(
+                {
+                    "correlation_score": correlation_score,
+                    "risk_level": "HIGH"
+                    if correlation_score > 0.7
+                    else "MODERATE"
+                    if correlation_score > 0.3
+                    else "LOW",
+                },
+                indent=2,
+            ),
+            "",
+            "=== POSITION SIZING RECOMMENDATION ===",
+            json.dumps(sizing_suggestion, indent=2, default=str),
+            "",
+            request.user_prompt,
+            "",
+            "RESPONSE FORMAT:",
+            "Provide your analysis in JSON format with the following structure:",
+            "{",
+            '  "action": "BUY" | "SELL" | "NEUTRAL" | "VETO",',
+            '  "confidence": 0.0-1.0,',
+            '  "reasoning": "detailed risk analysis",',
+            '  "position_size_pct": 0.0-1.0,  // Recommended position size as % of equity',
+            '  "portfolio_risk_pct": 0.0-1.0,  // Estimated portfolio risk after trade',
+            '  "correlation_score": 0.0-1.0,  // Correlation with existing positions',
+            '  "veto_reason": "..." // Required if action is VETO',
+            "}",
         ]
-
-        if should_veto:
-            prompt_parts.extend(
-                [
-                    "=== AUTOMATIC VETO ===",
-                    f"REASON: {veto_reason}",
-                    "This trade violates hard risk limits and must be rejected.",
-                    "",
-                ]
-            )
-
-        prompt_parts.extend(
-            [
-                "=== CURRENT PORTFOLIO STATE ===",
-                json.dumps(portfolio_state, indent=2, default=str),
-                "",
-                "=== PROPOSED TRADE ===",
-                json.dumps(proposed_trade, indent=2, default=str),
-                "",
-                "=== RISK LIMITS ===",
-                json.dumps(risk_limits, indent=2, default=str),
-                "",
-                "=== CORRELATION ANALYSIS ===",
-                json.dumps(
-                    {
-                        "correlation_score": correlation_score,
-                        "risk_level": "HIGH"
-                        if correlation_score > 0.7
-                        else "MODERATE"
-                        if correlation_score > 0.3
-                        else "LOW",
-                    },
-                    indent=2,
-                ),
-                "",
-                "=== POSITION SIZING RECOMMENDATION ===",
-                json.dumps(sizing_suggestion, indent=2, default=str),
-                "",
-                request.user_prompt,
-                "",
-                "RESPONSE FORMAT:",
-                "Provide your analysis in JSON format with the following structure:",
-                "{",
-                '  "action": "BUY" | "SELL" | "NEUTRAL" | "VETO",',
-                '  "confidence": 0.0-1.0,',
-                '  "reasoning": "detailed risk analysis",',
-                '  "position_size_pct": 0.0-1.0,  // Recommended position size as % of equity',
-                '  "portfolio_risk_pct": 0.0-1.0,  // Estimated portfolio risk after trade',
-                '  "correlation_score": 0.0-1.0,  // Correlation with existing positions',
-                '  "veto_reason": "..." // Required if action is VETO',
-                "}",
-            ]
-        )
-
-        # If we already determined a veto, note it
-        if should_veto:
-            prompt_parts.extend(
-                [
-                    "",
-                    'NOTE: action MUST be "VETO" due to hard risk limit violation.',
-                ]
-            )
 
         return "\n".join(prompt_parts)
 
     def parse_response(self, response: AIResponse) -> RoleVerdict:
         """Parse strategist response — can VETO trades.
 
-        If build_prompt() detected a hard risk-limit breach, this method
-        enforces a VETO regardless of LLM output (the LLM may hallucinate
-        an approval even when told to VETO).
+        NOTE: Hard risk-limit enforcement now happens in evaluate() override,
+        so this method only handles normal LLM responses.
         """
-        # Enforce hard VETO from risk-limit check (set by build_prompt)
-        hard_veto = getattr(self, "_hard_veto_reason", None)
-        if hard_veto:
-            self._hard_veto_reason = None  # reset for next call
-            return RoleVerdict(
-                role=RoleName.STRATEGIST,
-                action="VETO",
-                confidence=1.0,
-                reasoning=f"Hard risk limit breach: {hard_veto}",
-                metrics={},
-            )
-
         if response.error:
             # On error, default to VETO for safety
             return RoleVerdict(
@@ -312,14 +319,25 @@ class StrategistRole(AgentRole):
                 reasoning=f"Strategist error (defaulting to VETO): {response.error}",
             )
 
-        action: SignalAction = "NEUTRAL"
-        confidence = 0.5
+        # Validate action against allowed SignalAction values; default to VETO on unknown
+        raw_action = response.parsed.get("action", "NEUTRAL") if response.parsed else "NEUTRAL"
+        if isinstance(raw_action, str):
+            raw_action = raw_action.upper()
+        allowed_actions: set[SignalAction] = {"BUY", "SELL", "NEUTRAL", "VETO"}
+        action = raw_action if raw_action in allowed_actions else "VETO"
+
+        # Parse and clamp confidence into [0.0, 1.0]
+        raw_confidence = response.parsed.get("confidence", 0.5) if response.parsed else 0.5
+        try:
+            confidence = float(raw_confidence)
+        except (TypeError, ValueError):
+            confidence = 0.5
+        confidence = max(0.0, min(1.0, confidence))
+
         reasoning = response.raw_text
         metrics: dict[str, float] = {}
 
         if response.parsed and isinstance(response.parsed, dict):
-            action = response.parsed.get("action", "NEUTRAL")
-            confidence = float(response.parsed.get("confidence", 0.5))
             reasoning = response.parsed.get("reasoning", response.raw_text)
 
             # Extract risk metrics — handle both 0-1 and 0-100 scales

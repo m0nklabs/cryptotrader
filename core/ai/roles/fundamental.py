@@ -212,14 +212,28 @@ class FundamentalRole(AgentRole):
                 reasoning=f"Fundamental error: {response.error}",
             )
 
-        action: SignalAction = "NEUTRAL"
-        confidence = 0.5
+        # Normalize action to known values; default to NEUTRAL for unknowns
+        raw_action = response.parsed.get("action", "NEUTRAL") if response.parsed else "NEUTRAL"
+        if isinstance(raw_action, str):
+            normalized_action = raw_action.strip().upper()
+        else:
+            normalized_action = "NEUTRAL"
+        if normalized_action not in ("BUY", "SELL", "NEUTRAL", "VETO"):
+            normalized_action = "NEUTRAL"
+        action: SignalAction = normalized_action  # type: ignore[assignment]
+
+        # Safely parse and clamp confidence to [0.0, 1.0]
+        raw_confidence = response.parsed.get("confidence", 0.5) if response.parsed else 0.5
+        try:
+            confidence = float(raw_confidence)
+        except (TypeError, ValueError):
+            confidence = 0.5
+        confidence = max(0.0, min(1.0, confidence))
+
         reasoning = response.raw_text
         metrics: dict[str, float] = {}
 
         if response.parsed and isinstance(response.parsed, dict):
-            action = response.parsed.get("action", "NEUTRAL")
-            confidence = float(response.parsed.get("confidence", 0.5))
             reasoning = response.parsed.get("reasoning", response.raw_text)
 
             # Extract sentiment metrics

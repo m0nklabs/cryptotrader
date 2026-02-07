@@ -862,26 +862,46 @@ async def test_strategist_parse_response_pct_0_100_conversion():
 
 @pytest.mark.asyncio
 async def test_strategist_hard_veto_enforced():
-    """Hard risk-limit breach should enforce VETO regardless of LLM response."""
+    """Hard risk-limit breach should enforce VETO via evaluate() override."""
     strategist = StrategistRole()
 
-    # Simulate build_prompt() detecting a hard veto
-    strategist._hard_veto_reason = "Exceeds max positions (3/3)"
-
-    response = AIResponse(
+    # Build request that will trigger hard veto (max positions exceeded)
+    request = AIRequest(
         role=RoleName.STRATEGIST,
-        provider=ProviderName.OPENAI,
-        model="o3-mini",
-        raw_text="Approved — looks good!",
-        parsed={
-            "action": "BUY",
-            "confidence": 0.9,
-            "reasoning": "Trade looks great",
+        user_prompt="Should I enter this trade?",
+        context={
+            "symbol": "BTCUSD",
+            "proposed_action": "BUY",
+            "proposed_trade": {
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "size": 1.0,
+                "risk_pct": 0.02,
+            },
+            "positions": [
+                {"symbol": "ETHUSD", "side": "LONG", "size": 10.0},
+                {"symbol": "SOLUSD", "side": "LONG", "size": 5.0},
+                {"symbol": "ADAUSD", "side": "LONG", "size": 100.0},
+            ],
+            "portfolio": {
+                "total_equity": 10000,
+                "available_balance": 2000,
+            },
+            "risk_limits": {
+                "max_positions": 3,  # Already at limit with 3 positions
+                "max_exposure_pct": 0.95,
+                "max_trade_risk_pct": 0.02,
+            },
         },
     )
 
-    verdict = strategist.parse_response(response)
+    # evaluate() should detect hard veto and return synthetic VETO verdict
+    # without calling LLM
+    response, verdict = await strategist.evaluate(request, "Test system prompt")
 
-    assert verdict.action == "VETO", "Hard veto should override LLM approval"
+    assert verdict.action == "VETO", "Hard veto should enforce VETO before LLM call"
     assert verdict.confidence == 1.0
-    assert "max positions" in verdict.reasoning.lower()
+    assert "max positions" in verdict.reasoning.lower() or "risk limit" in verdict.reasoning.lower()
+    # Response should be synthetic (not from LLM)
+    assert response.tokens_in == 0 and response.tokens_out == 0, "Should not call LLM when hard veto triggers"
+
