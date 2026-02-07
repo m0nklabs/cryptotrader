@@ -1,0 +1,10 @@
+[Unit]
+Description=CryptoTrader Daily Dossier Timer (runs at 08:00 UTC)
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
