@@ -129,8 +129,9 @@ class PostgresStores(
         params: dict[str, Any] = {
             "exchanges": list(exchanges),
             "timeframe": timeframe,
-            "symbols": list(symbols) if symbols else None,
+            "symbols": list(symbols) if symbols else [],
         }
+
         stmt = text(
             """
             SELECT exchange, symbol, close
@@ -146,7 +147,10 @@ class PostgresStores(
                 FROM candles
                 WHERE exchange = ANY(:exchanges)
                   AND timeframe = :timeframe
-                  AND (:symbols IS NULL OR symbol = ANY(:symbols))
+                  AND (
+                      cardinality(:symbols::text[]) = 0
+                      OR symbol = ANY(:symbols::text[])
+                  )
             ) t
             WHERE rn = 1
             """

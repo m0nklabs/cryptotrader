@@ -36,14 +36,19 @@ export default function LivePrice({ symbol, exchange, timeframe, className }: Li
     return `${wsProtocol}//${host}/api/ws/prices`
   }, [])
 
+  const subscribeMessage = useMemo(
+    () => ({
+      type: 'subscribe' as const,
+      exchange,
+      symbols: [symbol],
+    }),
+    [exchange, symbol],
+  )
+
   useWebSocket<PriceMessage>({
     url: socketUrl,
     enabled: Boolean(symbol),
-    subscribeMessage: {
-      type: 'subscribe',
-      exchange,
-      symbols: [symbol],
-    },
+    subscribeMessage,
     onMessage: (data) => {
       if (data.type === 'status' && data.exchange && data.status) {
         setStatus(data.exchange, data.status as PriceStatus)
@@ -75,8 +80,8 @@ export default function LivePrice({ symbol, exchange, timeframe, className }: Li
 
     const poll = async () => {
       try {
-        const baseUrl = API_BASE || window.location.origin
-        const url = `${baseUrl}/candles/latest?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(
+        const fetchBaseUrl = API_BASE || `${window.location.origin}/api`
+        const url = `${fetchBaseUrl}/candles/latest?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(
           symbol
         )}&timeframe=${encodeURIComponent(timeframe)}&limit=1`
         const resp = await fetch(url, { signal: controller.signal })

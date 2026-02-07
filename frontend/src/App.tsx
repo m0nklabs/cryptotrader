@@ -80,6 +80,10 @@ const GAP_STATS_REFRESH_INTERVAL_MS = 60_000
 const SIGNALS_REFRESH_INTERVAL_MS = 30_000
 const INGESTION_STATUS_REFRESH_INTERVAL_MS = 15_000
 const WALLET_REFRESH_INTERVAL_MS = 30_000
+
+const CANDLE_WS_SUPPORT: Record<string, boolean> = {
+  bitfinex: true,
+}
 const MARKET_CAP_REFRESH_INTERVAL_MS = 600_000 // 10 minutes
 const SYSTEM_STATUS_REFRESH_INTERVAL_MS = 10_000 // 10 seconds
 const MARKET_WATCH_REFRESH_INTERVAL_MS = 30_000 // 30 seconds
@@ -177,8 +181,9 @@ export default function App() {
   const [chartError, setChartError] = useState<string | null>(null)
   const [chartLoading, setChartLoading] = useState(false)
   const [useWebSocket, setUseWebSocket] = useState(true) // Enable WebSocket by default
-  const wsStatus = usePriceStore((state) => state.statusByExchange[selectedExchange] || 'disconnected')
-  const wsConnected = wsStatus === 'connected'
+  const [candleWsConnected, setCandleWsConnected] = useState(false)
+  const candleWsSupported = Boolean(CANDLE_WS_SUPPORT[selectedExchange]) && useWebSocket
+  const wsConnected = candleWsSupported && candleWsConnected
   const livePrice = usePriceStore((state) => state.prices[`${selectedExchange}:${chartSymbol}`])
 
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([])
@@ -359,6 +364,10 @@ export default function App() {
     const exchange = selectedExchange
     const timeframe = chartTimeframe
 
+    if (!candleWsSupported) {
+      setCandleWsConnected(false)
+    }
+
     // Load initial candles from database
     const loadInitialCandles = () => {
       if (!mounted) return
@@ -469,17 +478,19 @@ export default function App() {
     loadInitialCandles()
 
     // Try to establish WebSocket connection if enabled
-    if (useWebSocket && exchange === 'bitfinex') {
+    if (candleWsSupported) {
       try {
         candleStream = createCandleStream(
           chartSymbol,
           timeframe,
           (candle) => {
             updateCandle(candle)
+            setCandleWsConnected(true)
           },
           (error) => {
             console.error('WebSocket error, falling back to polling:', error)
             setUseWebSocket(false) // Disable WebSocket to reflect actual state
+            setCandleWsConnected(false)
             // Set up polling as fallback (if not already set up at line 410)
             if (!pollInterval) {
               setupPolling()
@@ -510,6 +521,7 @@ export default function App() {
       if (inFlight) {
         inFlight.abort()
       }
+      setCandleWsConnected(false)
     }
   }, [chartSymbol, chartTimeframe, chartLimit, useWebSocket, selectedExchange])
 
@@ -1578,7 +1590,6 @@ export default function App() {
                 <span className={`ml-2 text-xs ${wsConnected ? 'text-green-500' : 'text-gray-400'}`}>
                   {wsConnected ? '● Live' : '○ Polling'}
                 </span>
-                <LivePrice symbol={chartSymbol} exchange={selectedExchange} timeframe={chartTimeframe} className="sr-only" />
               </div>
               <div className="min-h-100 flex-1 rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
                 <CandlestickChart
