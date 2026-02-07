@@ -84,7 +84,12 @@ class PostgresStores(
         if self._engine is None:
             create_engine, _ = self._require_sqlalchemy()
             # Do not log the URL (it may contain secrets).
-            self._engine = create_engine(self._config.database_url, echo=False, pool_pre_ping=True)
+            self._engine = create_engine(
+                self._config.database_url,
+                echo=False,
+                pool_pre_ping=True,
+                connect_args={"connect_timeout": 10},
+            )
         return self._engine
 
     def _get_latest_candle_open_time(self, *, exchange: str, symbol: str, timeframe: str) -> datetime | None:
