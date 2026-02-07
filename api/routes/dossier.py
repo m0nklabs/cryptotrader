@@ -178,6 +178,11 @@ def _as_float(value: Decimal | float | int | None) -> float | None:
         return None
     if isinstance(value, (Decimal, float, int)):
         return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
     return None
 
 
