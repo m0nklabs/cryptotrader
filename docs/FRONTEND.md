@@ -53,6 +53,8 @@ Candles are also streamed in near real-time via Server-Sent Events (SSE) on `/ca
 
 Live prices are streamed via WebSocket on `/ws/prices`.
 
+Note: Candle WebSocket streaming is currently enabled for Bitfinex only (`CANDLE_WS_SUPPORT`). Other exchanges rely on polling for chart candles, while live price updates still use `/ws/prices`.
+
 ## Chart timeframe
 
 The chart supports selecting the candle timeframe (e.g. `1m`, `5m`, `1h`) via the timeframe dropdown in the Chart panel header.
