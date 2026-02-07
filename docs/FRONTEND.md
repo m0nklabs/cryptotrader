@@ -38,7 +38,7 @@ Theme state is stored in `localStorage` under the key `theme` and applied by tog
 - `npm run build`
 - `npm run preview`
 
-Note: the dashboard’s `/api/*` endpoints are expected to be served by the local dashboard API (DB-backed).
+Note: the dashboard uses relative paths and is proxied by Vite to the FastAPI backend.
 
 ## Chart zoom (mouse wheel)
 
@@ -48,6 +48,10 @@ The candlestick chart supports mouse-wheel zoom:
 - Scroll down: zoom out (more candles)
 
 This adjusts the candle window size fetched from `/api/candles`.
+
+Candles are also streamed in near real-time via Server-Sent Events (SSE) on `/candles/stream`.
+
+Live prices are streamed via WebSocket on `/ws/prices`.
 
 ## Chart timeframe
 
@@ -76,7 +80,19 @@ The service serves the built UI via `npm run preview` on port 5176.
 
 ### Dashboard API (DB-backed candles)
 
-To render charts from our Postgres `candles` table, run the local API:
+To render charts from our Postgres `candles` table, run the FastAPI backend:
+
+- Command: `python -m api.main` (binds to `127.0.0.1:8000`)
+
+The frontend proxies:
+
+- `/api/*` → FastAPI (with `/api` prefix stripped)
+- `/candles/*`, `/market-watch`, `/gaps`, `/arbitrage/*`, `/dossier/*`, `/export/*`, etc. → FastAPI
+- `/ws/*` → FastAPI (WebSocket)
+
+### Legacy dashboard API (optional)
+
+This repo also contains a legacy DB-backed helper API used in older iterations:
 
 - Script: `python scripts/api_server.py` (binds to `127.0.0.1:8787`)
 - Systemd unit: `systemd/cryptotrader-dashboard-api.service`

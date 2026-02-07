@@ -7,7 +7,7 @@ This document covers how to run the `cryptotrader` dashboard and related v2 comp
 - Frontend dashboard (this repo): `5176`
   - LAN URL example (if host is `192.168.1.6`): `http://192.168.1.6:5176/`
 - Dashboard API (DB-backed candles): `8787`
-- FastAPI (read-only API): `8000`
+- FastAPI (primary backend API): `8000`
 
 Notes:
 
@@ -95,9 +95,20 @@ Quickstart (examples use instance format `@SYMBOL-TIMEFRAME`, e.g. `@BTCUSD-1m`)
   `systemctl --user start cryptotrader-bitfinex-gap-repair@BTCUSD-1m.service`\
   `systemctl --user start cryptotrader-frontend.service`
 
-## Dashboard API service (DB-backed)
+## Backend API service (FastAPI)
 
-The frontend proxies `/api/*` to the local dashboard API for chart data.
+The frontend proxies `/api/*`, `/candles/*`, `/ws/*` and other routes to FastAPI.
+
+- Command (dev): `python -m api.main` (binds to `127.0.0.1:8000`)
+
+In addition to REST endpoints, the backend serves:
+
+- Candle streaming via SSE: `/candles/stream`
+- Live prices via WebSocket: `/ws/prices`
+
+## Legacy dashboard API service (optional)
+
+Older iterations used a separate DB-backed helper API. It is optional now.
 
 - Script: `python scripts/api_server.py` (binds to `127.0.0.1:8787`)
 - Unit file: `systemd/cryptotrader-dashboard-api.service`

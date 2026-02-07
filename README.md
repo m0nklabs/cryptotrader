@@ -97,9 +97,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
 # Access services
 # - Frontend: http://localhost:5176
-# - Dashboard API (DB-backed, used by the frontend proxy): http://localhost:8787
-# - API (FastAPI): http://localhost:8000
+# - API (FastAPI, used by the frontend proxy): http://localhost:8000
 # - API Docs (FastAPI): http://localhost:8000/docs
+# - Legacy dashboard API (optional dev helper): http://localhost:8787
 
 # Seed sample data (optional)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api bash -c "export DATABASE_URL=postgresql://cryptotrader:cryptotrader@postgres:5432/cryptotrader && ./scripts/seed-data.sh"
@@ -127,7 +127,7 @@ pytest
 # Start backend
 python -m api.main
 
-# (Optional) Start dashboard API (DB-backed candles used by the frontend)
+# (Optional) Start legacy dashboard API (old DB-backed helper)
 python scripts/api_server.py --host 127.0.0.1 --port 8787
 
 # Frontend (separate terminal)
