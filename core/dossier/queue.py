@@ -160,9 +160,7 @@ class DossierQueue:
                 delay_seconds=self.delay_seconds,
             )
 
-            logger.info(
-                f"🚀 Dossier queue started: {len(symbols)} symbols, " f"{self.delay_seconds}s delay between each"
-            )
+            logger.info(f"🚀 Dossier queue started: {len(symbols)} symbols, {self.delay_seconds}s delay between each")
 
             # Fire background task
             self._task = asyncio.create_task(self._process_queue(exchange))
@@ -204,7 +202,7 @@ class DossierQueue:
                 item.started_at = time.monotonic()
                 self._status.current_symbol = item.symbol
 
-                logger.info(f"📝 [{i + 1}/{self._status.total}] Generating dossier for " f"{exchange}:{item.symbol}")
+                logger.info(f"📝 [{i + 1}/{self._status.total}] Generating dossier for {exchange}:{item.symbol}")
 
                 try:
                     entry = await self._service.generate_entry(exchange, item.symbol)
