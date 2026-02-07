@@ -100,7 +100,7 @@ class TacticalRole(AgentRole):
         - Stop Loss: 48500
         - Take Profit: 55000
         - entry at 50000
-        - Entry: $50,000 (with comma separators)
+        - entry at 50,000 (with comma separators)
         """
         levels = {}
 
