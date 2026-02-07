@@ -6,8 +6,10 @@ Multi-Brain provider interface.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import random
 
 import httpx
 
@@ -181,9 +183,6 @@ class OllamaProvider(LLMProvider):
         max_tokens: int | None = None,
     ):
         """Stream chat response from Ollama with retry logic."""
-        import asyncio
-        import random
-
         from core.ai.providers.base import PermanentError, TransientError
 
         model = model or request.override_model or self.config.default_model

@@ -9,7 +9,7 @@ import math
 import random
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from typing import Any, Callable, NoReturn
 
 import httpx
 
@@ -234,7 +234,7 @@ def with_retry(
 # ---------------------------------------------------------------------------
 
 
-def _reject_non_finite_constants(value: str) -> float:
+def _reject_non_finite_constants(value: str) -> NoReturn:
     raise ValueError(f"Invalid JSON constant: {value}")
 
 

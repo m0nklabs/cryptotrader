@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
+import random
 
 import httpx
 
@@ -192,9 +194,6 @@ class OpenAIProvider(LLMProvider):
         max_tokens: int | None = None,
     ):
         """Stream chat-completion response from OpenAI with retry logic."""
-        import asyncio
-        import random
-
         from core.ai.providers.base import PermanentError, TransientError
 
         model = model or request.override_model or self.config.default_model
