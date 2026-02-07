@@ -20,8 +20,17 @@ const sharedProxy = {
     changeOrigin: true,
   },
   '/healthz': REST_PROXY,
+  '/health': REST_PROXY,
   '/system': REST_PROXY,
   '/candles': REST_PROXY,
+  '/dossier': REST_PROXY,
+  '/signals': REST_PROXY,
+  '/orders': REST_PROXY,
+  '/positions': REST_PROXY,
+  '/ingestion': REST_PROXY,
+  '/market-cap': REST_PROXY,
+  '/wallets': REST_PROXY,
+  '/opportunities': REST_PROXY,
 }
 
 export default defineConfig({
