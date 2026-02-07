@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import logging
 import os
-import ssl
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -35,43 +34,6 @@ def _debug(msg: str) -> None:
     if DEBUG:
         print(f"🔍 [Dossier] {msg}", flush=True)
     logger.debug(msg)
-
-
-def _build_pg_ssl_context_from_env() -> ssl.SSLContext | None:
-    """Build an SSL context for Postgres connections from PGSSL* env vars.
-
-    Environment variables (standard libpq names):
-    - PGSSLMODE: disable|prefer|require|verify-ca|verify-full
-    - PGSSLROOTCERT: path to CA cert
-    - PGSSLCERT: path to client cert
-    - PGSSLKEY: path to client key
-    """
-
-    mode = (os.environ.get("PGSSLMODE") or "").strip().lower()
-    if mode in ("", "disable"):
-        return None
-
-    cafile = os.environ.get("PGSSLROOTCERT")
-    certfile = os.environ.get("PGSSLCERT")
-    keyfile = os.environ.get("PGSSLKEY")
-
-    ctx = ssl.create_default_context(cafile=cafile) if cafile else ssl.create_default_context()
-
-    if certfile and keyfile:
-        ctx.load_cert_chain(certfile=certfile, keyfile=keyfile)
-
-    if mode == "require":
-        # Encrypted transport but no certificate verification.
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-    elif mode == "verify-ca":
-        # Verify cert chain but skip hostname verification.
-        ctx.check_hostname = False
-    else:
-        # verify-full (default): keep hostname verification enabled.
-        pass
-
-    return ctx
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +208,6 @@ Structure your response EXACTLY as follows (use these exact headers):
         )
         self.model = model or os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL)
         self.host = host or os.environ.get("OLLAMA_HOST", DEFAULT_HOST)
-        self._pg_ssl = _build_pg_ssl_context_from_env()
         self._auth_user = os.environ.get("OLLAMA_USER", "cryptotrader")
         self._auth: httpx.BasicAuth | None = (
             httpx.BasicAuth(username=self._auth_user, password="") if self._auth_user else None
@@ -349,7 +310,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         import asyncpg
 
         try:
-            conn = await asyncpg.connect(self.db_url, timeout=3, ssl=self._pg_ssl)
+            conn = await asyncpg.connect(self.db_url)
             try:
                 rows = await conn.fetch(
                     """
@@ -372,7 +333,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         import asyncpg
 
         try:
-            conn = await asyncpg.connect(self.db_url, timeout=3, ssl=self._pg_ssl)
+            conn = await asyncpg.connect(self.db_url)
             try:
                 rows = await conn.fetch(
                     """
@@ -399,7 +360,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         """Gather current stats from the candles table."""
         import asyncpg
 
-        conn = await asyncpg.connect(self.db_url, timeout=3, ssl=self._pg_ssl)
+        conn = await asyncpg.connect(self.db_url)
         try:
             # Get last 200 hourly candles for indicator calculation
             rows = await conn.fetch(
@@ -511,7 +472,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         """Get available symbols from candle data."""
         import asyncpg
 
-        conn = await asyncpg.connect(self.db_url, timeout=3, ssl=self._pg_ssl)
+        conn = await asyncpg.connect(self.db_url)
         try:
             rows = await conn.fetch(
                 """
@@ -544,7 +505,7 @@ Structure your response EXACTLY as follows (use these exact headers):
         since = target - timedelta(days=days)
 
         try:
-            conn = await asyncpg.connect(self.db_url, timeout=3, ssl=self._pg_ssl)
+            conn = await asyncpg.connect(self.db_url)
             try:
                 rows = await conn.fetch(
                     """
@@ -814,7 +775,7 @@ If this is the first entry, skip the retrospective section and focus on laying a
         import asyncpg
 
         try:
-            conn = await asyncpg.connect(self.db_url, timeout=3, ssl=self._pg_ssl)
+            conn = await asyncpg.connect(self.db_url)
             try:
                 await conn.execute(
                     """
@@ -838,7 +799,7 @@ If this is the first entry, skip the retrospective section and focus on laying a
         """Store or update a dossier entry in the database."""
         import asyncpg
 
-        conn = await asyncpg.connect(self.db_url, timeout=3, ssl=self._pg_ssl)
+        conn = await asyncpg.connect(self.db_url)
         try:
             row = await conn.fetchrow(
                 """
