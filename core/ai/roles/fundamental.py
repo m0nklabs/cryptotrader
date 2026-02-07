@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from core.ai.roles.base import AgentRole
 from core.ai.types import (
@@ -78,7 +78,7 @@ class FundamentalRole(AgentRole):
                     items.append({
                         "title": chunk.strip()[:200],
                         "source": "unknown",
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                     })
 
         return items[:10]  # Limit to 10 items
@@ -141,7 +141,7 @@ class FundamentalRole(AgentRole):
         # Build time context for news search
         lookback_hours = {"1m": 6, "5m": 12, "15m": 24, "1h": 48, "4h": 168, "1d": 336}
         hours = lookback_hours.get(timeframe, 48)
-        since_date = (datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%d")
+        since_date = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d")
 
         prompt_parts = [
             f"Provide a fundamental analysis for {symbol}.",

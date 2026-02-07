@@ -107,7 +107,7 @@ class TacticalRole(AgentRole):
 
         # Patterns to match
         patterns = {
-            "entry": r"entry[:\s]+\$?(\d+(?:\.\d+)?)",
+            "entry": r"entry[:\s]+(?:at\s+)?\$?(\d+(?:\.\d+)?)",
             "stop_loss": r"stop[- ]?loss[:\s]+\$?(\d+(?:\.\d+)?)",
             "take_profit": r"take[- ]?profit[:\s]+\$?(\d+(?:\.\d+)?)",
             "target": r"target[:\s]+\$?(\d+(?:\.\d+)?)",
