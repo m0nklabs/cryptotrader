@@ -904,3 +904,215 @@ async def test_strategist_hard_veto_enforced():
     assert "max positions" in verdict.reasoning.lower() or "risk limit" in verdict.reasoning.lower()
     # Response should be synthetic (not from LLM)
     assert response.tokens_in == 0 and response.tokens_out == 0, "Should not call LLM when hard veto triggers"
+
+
+# ---------------------------------------------------------------------------
+# Confidence Normalization Tests (0-100 scale support)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tactical_parse_response_confidence_normalization():
+    """Test tactical role normalizes 0-100 confidence scale to 0-1."""
+    tactical = TacticalRole()
+
+    # Test percentage-style confidence (70 -> 0.7)
+    response_70 = AIResponse(
+        role=RoleName.TACTICAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-reasoner",
+        raw_text="Signal",
+        parsed={
+            "action": "BUY",
+            "confidence": 70,  # 0-100 scale
+            "reasoning": "Test",
+        },
+    )
+    verdict = tactical.parse_response(response_70)
+    assert verdict.confidence == 0.7, "Confidence 70 should normalize to 0.7"
+
+    # Test percentage-style confidence (100 -> 1.0)
+    response_100 = AIResponse(
+        role=RoleName.TACTICAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-reasoner",
+        raw_text="Signal",
+        parsed={
+            "action": "BUY",
+            "confidence": 100,  # 0-100 scale
+            "reasoning": "Test",
+        },
+    )
+    verdict = tactical.parse_response(response_100)
+    assert verdict.confidence == 1.0, "Confidence 100 should normalize to 1.0"
+
+    # Test already-normalized confidence (0.8 -> 0.8)
+    response_08 = AIResponse(
+        role=RoleName.TACTICAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-reasoner",
+        raw_text="Signal",
+        parsed={
+            "action": "BUY",
+            "confidence": 0.8,  # Already 0-1 scale
+            "reasoning": "Test",
+        },
+    )
+    verdict = tactical.parse_response(response_08)
+    assert verdict.confidence == 0.8, "Confidence 0.8 should remain 0.8"
+
+    # Test out-of-range value (150 -> 1.0)
+    response_150 = AIResponse(
+        role=RoleName.TACTICAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-reasoner",
+        raw_text="Signal",
+        parsed={
+            "action": "BUY",
+            "confidence": 150,  # Out of range
+            "reasoning": "Test",
+        },
+    )
+    verdict = tactical.parse_response(response_150)
+    assert verdict.confidence == 1.0, "Confidence 150 should clamp to 1.0"
+
+    # Test negative value (-10 -> 0.0)
+    response_neg = AIResponse(
+        role=RoleName.TACTICAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-reasoner",
+        raw_text="Signal",
+        parsed={
+            "action": "BUY",
+            "confidence": -10,  # Negative
+            "reasoning": "Test",
+        },
+    )
+    verdict = tactical.parse_response(response_neg)
+    assert verdict.confidence == 0.0, "Confidence -10 should clamp to 0.0"
+
+    # Test invalid type (string -> 0.5 default)
+    response_invalid = AIResponse(
+        role=RoleName.TACTICAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-reasoner",
+        raw_text="Signal",
+        parsed={
+            "action": "BUY",
+            "confidence": "invalid",  # Invalid type
+            "reasoning": "Test",
+        },
+    )
+    verdict = tactical.parse_response(response_invalid)
+    assert verdict.confidence == 0.5, "Invalid confidence should default to 0.5"
+
+
+@pytest.mark.asyncio
+async def test_fundamental_parse_response_confidence_normalization():
+    """Test fundamental role normalizes 0-100 confidence scale to 0-1."""
+    fundamental = FundamentalRole()
+
+    # Test percentage-style confidence (65 -> 0.65)
+    response_65 = AIResponse(
+        role=RoleName.FUNDAMENTAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-chat",
+        raw_text="Analysis",
+        parsed={
+            "action": "SELL",
+            "confidence": 65,  # 0-100 scale
+            "reasoning": "Negative sentiment",
+        },
+    )
+    verdict = fundamental.parse_response(response_65)
+    assert verdict.confidence == 0.65, "Confidence 65 should normalize to 0.65"
+
+    # Test percentage-style confidence (100 -> 1.0)
+    response_100 = AIResponse(
+        role=RoleName.FUNDAMENTAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-chat",
+        raw_text="Analysis",
+        parsed={
+            "action": "BUY",
+            "confidence": 100,  # 0-100 scale
+            "reasoning": "Strong fundamentals",
+        },
+    )
+    verdict = fundamental.parse_response(response_100)
+    assert verdict.confidence == 1.0, "Confidence 100 should normalize to 1.0"
+
+    # Test already-normalized confidence (0.75 -> 0.75)
+    response_075 = AIResponse(
+        role=RoleName.FUNDAMENTAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-chat",
+        raw_text="Analysis",
+        parsed={
+            "action": "NEUTRAL",
+            "confidence": 0.75,  # Already 0-1 scale
+            "reasoning": "Mixed signals",
+        },
+    )
+    verdict = fundamental.parse_response(response_075)
+    assert verdict.confidence == 0.75, "Confidence 0.75 should remain 0.75"
+
+    # Test out-of-range value (200 -> 1.0)
+    response_200 = AIResponse(
+        role=RoleName.FUNDAMENTAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-chat",
+        raw_text="Analysis",
+        parsed={
+            "action": "BUY",
+            "confidence": 200,  # Out of range
+            "reasoning": "Test",
+        },
+    )
+    verdict = fundamental.parse_response(response_200)
+    assert verdict.confidence == 1.0, "Confidence 200 should clamp to 1.0"
+
+    # Test negative value (-5 -> 0.0)
+    response_neg = AIResponse(
+        role=RoleName.FUNDAMENTAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-chat",
+        raw_text="Analysis",
+        parsed={
+            "action": "NEUTRAL",
+            "confidence": -5,  # Negative
+            "reasoning": "Test",
+        },
+    )
+    verdict = fundamental.parse_response(response_neg)
+    assert verdict.confidence == 0.0, "Confidence -5 should clamp to 0.0"
+
+    # Test invalid type (None -> 0.5 default)
+    response_none = AIResponse(
+        role=RoleName.FUNDAMENTAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-chat",
+        raw_text="Analysis",
+        parsed={
+            "action": "NEUTRAL",
+            "confidence": None,  # Invalid type
+            "reasoning": "Test",
+        },
+    )
+    verdict = fundamental.parse_response(response_none)
+    assert verdict.confidence == 0.5, "None confidence should default to 0.5"
+
+    # Test float conversion from string number ("80" -> 0.8)
+    response_str = AIResponse(
+        role=RoleName.FUNDAMENTAL,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-chat",
+        raw_text="Analysis",
+        parsed={
+            "action": "BUY",
+            "confidence": "80",  # String number
+            "reasoning": "Test",
+        },
+    )
+    verdict = fundamental.parse_response(response_str)
+    assert verdict.confidence == 0.8, "String '80' should convert and normalize to 0.8"
