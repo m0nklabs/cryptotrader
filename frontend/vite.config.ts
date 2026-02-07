@@ -14,6 +14,7 @@ const sharedProxy = {
   '/ws': {
     target: BACKEND_WS,
     ws: true,
+    changeOrigin: true,
   },
   '/healthz': REST_PROXY,
   '/system': REST_PROXY,
