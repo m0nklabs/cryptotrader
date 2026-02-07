@@ -308,19 +308,10 @@ async def get_usage_summary(
 
     Returns:
         Dict with keys: total_requests, total_tokens_in, total_tokens_out,
-        total_cost, avg_latency, success_rate. All values default to 0 when
-        no matching records exist.
+        total_cost_usd, avg_latency, success_rate, by_role, by_provider.
+        All values default to 0 when no matching records exist.
     """
-    query = select(
-        func.count(AIUsageLog.id).label("total_requests"),
-        func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
-        func.sum(AIUsageLog.tokens_out).label("total_tokens_out"),
-        func.sum(AIUsageLog.cost_usd).label("total_cost"),
-        func.avg(AIUsageLog.latency_ms).label("avg_latency"),
-        func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
-    )
-
-    # Apply filters
+    # Build base conditions for filtering
     conditions = []
     if role:
         conditions.append(AIUsageLog.role == role)
@@ -333,6 +324,15 @@ async def get_usage_summary(
     if end_date:
         conditions.append(AIUsageLog.created_at <= end_date)
 
+    # Get overall totals
+    query = select(
+        func.count(AIUsageLog.id).label("total_requests"),
+        func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
+        func.sum(AIUsageLog.tokens_out).label("total_tokens_out"),
+        func.sum(AIUsageLog.cost_usd).label("total_cost_usd"),
+        func.avg(AIUsageLog.latency_ms).label("avg_latency"),
+        func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
+    )
     if conditions:
         query = query.where(and_(*conditions))
 
@@ -344,18 +344,68 @@ async def get_usage_summary(
             "total_requests": 0,
             "total_tokens_in": 0,
             "total_tokens_out": 0,
-            "total_cost": 0.0,
+            "total_cost_usd": 0.0,
+            "total_cost": 0.0,  # Backwards-compatible alias
             "avg_latency": 0.0,
             "success_rate": 0.0,
+            "by_role": {},
+            "by_provider": {},
         }
+
+    # Get breakdown by role
+    by_role_query = select(
+        AIUsageLog.role,
+        func.count(AIUsageLog.id).label("requests"),
+        func.sum(AIUsageLog.tokens_in).label("tokens_in"),
+        func.sum(AIUsageLog.tokens_out).label("tokens_out"),
+        func.sum(AIUsageLog.cost_usd).label("cost_usd"),
+    ).group_by(AIUsageLog.role)
+    if conditions:
+        by_role_query = by_role_query.where(and_(*conditions))
+
+    by_role_result = await db.execute(by_role_query)
+    by_role = {
+        row.role: {
+            "requests": row.requests,
+            "tokens_in": row.tokens_in or 0,
+            "tokens_out": row.tokens_out or 0,
+            "cost_usd": float(row.cost_usd or 0.0),
+        }
+        for row in by_role_result
+    }
+
+    # Get breakdown by provider
+    by_provider_query = select(
+        AIUsageLog.provider,
+        func.count(AIUsageLog.id).label("requests"),
+        func.sum(AIUsageLog.tokens_in).label("tokens_in"),
+        func.sum(AIUsageLog.tokens_out).label("tokens_out"),
+        func.sum(AIUsageLog.cost_usd).label("cost_usd"),
+    ).group_by(AIUsageLog.provider)
+    if conditions:
+        by_provider_query = by_provider_query.where(and_(*conditions))
+
+    by_provider_result = await db.execute(by_provider_query)
+    by_provider = {
+        row.provider: {
+            "requests": row.requests,
+            "tokens_in": row.tokens_in or 0,
+            "tokens_out": row.tokens_out or 0,
+            "cost_usd": float(row.cost_usd or 0.0),
+        }
+        for row in by_provider_result
+    }
 
     return {
         "total_requests": row.total_requests,
         "total_tokens_in": row.total_tokens_in or 0,
         "total_tokens_out": row.total_tokens_out or 0,
-        "total_cost": float(row.total_cost or 0.0),
+        "total_cost_usd": float(row.total_cost_usd or 0.0),
+        "total_cost": float(row.total_cost_usd or 0.0),  # Backwards-compatible alias
         "avg_latency": float(row.avg_latency or 0.0),
         "success_rate": (row.successful_requests / row.total_requests) if row.total_requests > 0 else 0.0,
+        "by_role": by_role,
+        "by_provider": by_provider,
     }
 
 
@@ -447,3 +497,55 @@ async def get_decisions(
 
     result = await db.execute(query)
     return result.scalars().all()
+
+
+async def get_daily_usage(
+    db: AsyncSession,
+    days: int = 30,
+) -> list[dict]:
+    """Get daily usage breakdown for the past N days.
+
+    Args:
+        days: Number of days to return (default 30)
+
+    Returns:
+        List of dicts with keys: date, total_requests, total_cost_usd,
+        total_tokens_in, total_tokens_out, avg_latency_ms, success_rate.
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import cast, Date
+
+    # Calculate start date (use timezone-aware UTC datetime)
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+
+    query = (
+        select(
+            cast(AIUsageLog.created_at, Date).label("date"),
+            func.count(AIUsageLog.id).label("total_requests"),
+            func.sum(AIUsageLog.cost_usd).label("total_cost_usd"),
+            func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
+            func.sum(AIUsageLog.tokens_out).label("total_tokens_out"),
+            func.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
+            func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
+        )
+        .where(AIUsageLog.created_at >= start_date)
+        .group_by(cast(AIUsageLog.created_at, Date))
+        .order_by(cast(AIUsageLog.created_at, Date).desc())
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    return [
+        {
+            "date": str(row.date),
+            "total_requests": row.total_requests,
+            "total_cost_usd": float(row.total_cost_usd or 0.0),
+            "total_tokens_in": row.total_tokens_in or 0,
+            "total_tokens_out": row.total_tokens_out or 0,
+            "avg_latency_ms": float(row.avg_latency_ms or 0.0),
+            "success_rate": (row.successful_requests / row.total_requests) if row.total_requests > 0 else 0.0,
+        }
+        for row in rows
+    ]
