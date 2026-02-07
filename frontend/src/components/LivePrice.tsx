@@ -18,23 +18,14 @@ type PriceMessage = {
   status?: string
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || ''
-
 export default function LivePrice({ symbol, exchange, timeframe, className }: LivePriceProps) {
   const setPrice = usePriceStore((state) => state.setPrice)
   const setStatus = usePriceStore((state) => state.setStatus)
   const priceSnapshot = usePriceStore((state) => state.prices[`${exchange}:${symbol}`])
   const status = usePriceStore((state) => state.statusByExchange[exchange] || 'disconnected')
 
-  const socketUrl = useMemo(() => {
-    if (API_BASE) {
-      const base = API_BASE.replace(/^http/, 'ws')
-      return `${base}/ws/prices`
-    }
-    const { protocol, host } = window.location
-    const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${wsProtocol}//${host}/api/ws/prices`
-  }, [])
+  // Use relative path — Vite proxy handles /ws with ws:true
+  const socketUrl = useMemo(() => '/ws/prices', [])
 
   const subscribeMessage = useMemo(
     () => ({
@@ -80,8 +71,7 @@ export default function LivePrice({ symbol, exchange, timeframe, className }: Li
 
     const poll = async () => {
       try {
-        const fetchBaseUrl = API_BASE || `${window.location.origin}/api`
-        const url = `${fetchBaseUrl}/candles/latest?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(
+        const url = `/candles/latest?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(
           symbol
         )}&timeframe=${encodeURIComponent(timeframe)}&limit=1`
         const resp = await fetch(url, { signal: controller.signal })

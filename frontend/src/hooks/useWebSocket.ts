@@ -32,6 +32,12 @@ export function useWebSocket<T = unknown>({
   const reconnectTimeoutRef = useRef<number | null>(null)
   const [status, setStatus] = useState<WebSocketStatus>('idle')
 
+  // Store callbacks in refs to avoid re-running the effect when they change
+  const onMessageRef = useRef(onMessage)
+  onMessageRef.current = onMessage
+  const onStatusChangeRef = useRef(onStatusChange)
+  onStatusChangeRef.current = onStatusChange
+
   const subscribePayload = useMemo(
     () => (subscribeMessage ? JSON.stringify(subscribeMessage) : null),
     [subscribeMessage]
@@ -40,9 +46,9 @@ export function useWebSocket<T = unknown>({
   const updateStatus = useCallback(
     (next: WebSocketStatus) => {
       setStatus(next)
-      onStatusChange?.(next)
+      onStatusChangeRef.current?.(next)
     },
-    [onStatusChange]
+    []
   )
 
   const sendJson = useCallback((payload: Record<string, unknown>) => {
@@ -90,7 +96,7 @@ export function useWebSocket<T = unknown>({
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as T
-          onMessage(data)
+          onMessageRef.current(data)
         } catch (err) {
           console.error('[WebSocket] Failed to parse message', err)
         }
@@ -134,7 +140,6 @@ export function useWebSocket<T = unknown>({
     initialReconnectDelayMs,
     maxReconnectAttempts,
     maxReconnectDelayMs,
-    onMessage,
     protocols,
     reconnect,
     subscribePayload,
