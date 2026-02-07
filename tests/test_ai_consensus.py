@@ -69,9 +69,9 @@ def test_consensus_simple_buy(engine):
             reasoning="Good risk/reward",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     assert decision.final_action == "BUY"
     assert decision.final_confidence > 0.6
     assert decision.vetoed_by is None
@@ -95,9 +95,9 @@ def test_consensus_simple_sell(engine):
             reasoning="Bearish pattern",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     assert decision.final_action == "SELL"
     assert decision.final_confidence > 0.6
     assert decision.vetoed_by is None
@@ -128,9 +128,9 @@ def test_consensus_mixed_votes_buy_wins(engine):
             reasoning="Favorable risk",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # BUY should win due to higher weights (1.5 + 1.2 vs 0.5)
     assert decision.final_action == "BUY"
     assert decision.vetoed_by is None
@@ -160,9 +160,9 @@ def test_consensus_below_threshold_becomes_neutral(engine):
             reasoning="Mixed sentiment",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # With disagreement, no action should reach 60% threshold
     # So should become NEUTRAL
     assert decision.final_action == "NEUTRAL"
@@ -191,9 +191,9 @@ def test_consensus_insufficient_agreement(engine):
             reasoning="Mixed sentiment",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Should become NEUTRAL because only 1 role agrees on BUY (need 2)
     assert decision.final_action == "NEUTRAL"
 
@@ -232,9 +232,9 @@ def test_veto_blocks_unanimous_buy(engine):
             reasoning="Portfolio correlation risk too high",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     assert decision.final_action == "NEUTRAL"
     assert decision.final_confidence == 0.0
     assert decision.vetoed_by == RoleName.STRATEGIST
@@ -259,9 +259,9 @@ def test_veto_from_any_role(engine):
             reasoning="Bullish pattern",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     assert decision.final_action == "NEUTRAL"
     assert decision.vetoed_by == RoleName.SCREENER
     assert "VETOED by screener" in decision.reasoning
@@ -283,9 +283,9 @@ def test_multiple_vetos_first_wins(engine):
             reasoning="Risk too high",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     assert decision.final_action == "NEUTRAL"
     # First VETO in list should be reported
     assert decision.vetoed_by == RoleName.TACTICAL
@@ -299,7 +299,7 @@ def test_multiple_vetos_first_wins(engine):
 def test_empty_verdicts_list(engine):
     """Test that empty verdicts list returns NEUTRAL."""
     decision = engine.aggregate([])
-    
+
     assert decision.final_action == "NEUTRAL"
     assert decision.final_confidence == 0.0
     assert decision.vetoed_by is None
@@ -328,9 +328,9 @@ def test_all_neutral_verdicts(engine):
             reasoning="Mixed news",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     assert decision.final_action == "NEUTRAL"
     assert decision.vetoed_by is None
 
@@ -351,13 +351,13 @@ def test_tie_breaking_buy_vs_sell(engine):
             reasoning="Bearish reversal",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # With equal weights, one will win arbitrarily (depends on dict iteration)
     # But confidence should be relatively low due to disagreement
     assert decision.final_action in ["BUY", "SELL", "NEUTRAL"]
-    
+
     # If min_agreement=2 but only 1 role per action, should become NEUTRAL
     if decision.final_action != "NEUTRAL":
         # If not NEUTRAL, check that agreement threshold was met
@@ -374,9 +374,9 @@ def test_single_verdict_below_agreement_threshold(engine):
             reasoning="Strong signal",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # With min_agreement=2 and only 1 verdict, should be NEUTRAL
     assert decision.final_action == "NEUTRAL"
 
@@ -397,9 +397,9 @@ def test_zero_confidence_verdicts(engine):
             reasoning="Very uncertain",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Zero confidence should result in NEUTRAL
     assert decision.final_action == "NEUTRAL"
     assert decision.final_confidence == 0.0
@@ -426,9 +426,9 @@ def test_strict_threshold_rejects_marginal_consensus(strict_engine):
             reasoning="Moderate pattern",
         ),
     ]
-    
+
     decision = strict_engine.aggregate(verdicts)
-    
+
     # Strict engine needs 0.8 threshold and 3 agreements
     # Should be NEUTRAL due to insufficient confidence or agreement
     assert decision.final_action == "NEUTRAL"
@@ -440,7 +440,7 @@ def test_lenient_threshold_accepts_marginal_consensus():
         confidence_threshold=0.5,
         min_agreement=1,
     )
-    
+
     verdicts = [
         RoleVerdict(
             role=RoleName.TACTICAL,
@@ -449,9 +449,9 @@ def test_lenient_threshold_accepts_marginal_consensus():
             reasoning="Weak signal",
         ),
     ]
-    
+
     decision = lenient_engine.aggregate(verdicts)
-    
+
     # Lenient engine should accept this
     assert decision.final_action == "BUY"
     assert decision.final_confidence > 0.5
@@ -463,7 +463,7 @@ def test_custom_confidence_threshold():
         confidence_threshold=0.9,  # Very high threshold
         min_agreement=2,
     )
-    
+
     # To fail the 0.9 threshold, we need disagreement
     verdicts = [
         RoleVerdict(
@@ -485,9 +485,9 @@ def test_custom_confidence_threshold():
             reasoning="Uncertain",
         ),
     ]
-    
+
     decision = custom_engine.aggregate(verdicts)
-    
+
     # With disagreement and high threshold, should be NEUTRAL
     assert decision.final_action == "NEUTRAL"
 
@@ -513,9 +513,9 @@ def test_reasoning_summary_includes_all_verdicts(engine):
             reasoning="Unclear pattern",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Reasoning should mention both roles
     assert "screener" in decision.reasoning.lower()
     assert "tactical" in decision.reasoning.lower()
@@ -539,9 +539,9 @@ def test_veto_reasoning_includes_vetoer_explanation(engine):
             reasoning="Max position size already reached for this sector",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     assert decision.vetoed_by == RoleName.STRATEGIST
     assert "Max position size" in decision.reasoning
 
@@ -556,9 +556,9 @@ def test_weighted_confidence_with_custom_weights():
     # This test would ideally mock RoleRegistry.get() to return custom weights
     # For now, we test with known default weights:
     # Screener: 0.5, Tactical: 1.5, Fundamental: 1.0, Strategist: 1.2
-    
+
     engine = ConsensusEngine(confidence_threshold=0.6, min_agreement=2)
-    
+
     verdicts = [
         # Screener (weight 0.5): BUY with high confidence
         RoleVerdict(
@@ -575,9 +575,9 @@ def test_weighted_confidence_with_custom_weights():
             reasoning="Clear reversal",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Tactical's weight (1.5) > Screener's weight (0.5)
     # So SELL should win, but min_agreement=2 requires 2 roles
     # Since only 1 role per action, should become NEUTRAL
@@ -587,7 +587,7 @@ def test_weighted_confidence_with_custom_weights():
 def test_high_confidence_low_weight_vs_low_confidence_high_weight():
     """Test interaction between confidence and weight."""
     engine = ConsensusEngine(confidence_threshold=0.5, min_agreement=2)
-    
+
     verdicts = [
         # Screener (weight 0.5): BUY with max confidence
         RoleVerdict(
@@ -611,9 +611,9 @@ def test_high_confidence_low_weight_vs_low_confidence_high_weight():
             reasoning="Good sentiment",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # All agree on BUY with decent confidence
     # Weighted confidence should be high enough
     assert decision.final_action == "BUY"

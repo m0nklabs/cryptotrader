@@ -361,7 +361,7 @@ async def get_usage_summary(
     ).group_by(AIUsageLog.role)
     if conditions:
         by_role_query = by_role_query.where(and_(*conditions))
-    
+
     by_role_result = await db.execute(by_role_query)
     by_role = {
         row.role: {
@@ -383,7 +383,7 @@ async def get_usage_summary(
     ).group_by(AIUsageLog.provider)
     if conditions:
         by_provider_query = by_provider_query.where(and_(*conditions))
-    
+
     by_provider_result = await db.execute(by_provider_query)
     by_provider = {
         row.provider: {
@@ -502,40 +502,39 @@ async def get_daily_usage(
     days: int = 30,
 ) -> list[dict]:
     """Get daily usage breakdown for the past N days.
-    
+
     Args:
         days: Number of days to return (default 30)
-    
+
     Returns:
         List of dicts with keys: date, total_requests, total_cost_usd,
         total_tokens_in, total_tokens_out, avg_latency_ms, success_rate.
     """
     from datetime import datetime, timedelta
     from sqlalchemy import cast, Date
-    
+
     # Calculate start date
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=days)
-    
-    query = select(
-        cast(AIUsageLog.created_at, Date).label("date"),
-        func.count(AIUsageLog.id).label("total_requests"),
-        func.sum(AIUsageLog.cost_usd).label("total_cost_usd"),
-        func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
-        func.sum(AIUsageLog.tokens_out).label("total_tokens_out"),
-        func.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
-        func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
-    ).where(
-        AIUsageLog.created_at >= start_date
-    ).group_by(
-        cast(AIUsageLog.created_at, Date)
-    ).order_by(
-        cast(AIUsageLog.created_at, Date).desc()
+
+    query = (
+        select(
+            cast(AIUsageLog.created_at, Date).label("date"),
+            func.count(AIUsageLog.id).label("total_requests"),
+            func.sum(AIUsageLog.cost_usd).label("total_cost_usd"),
+            func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
+            func.sum(AIUsageLog.tokens_out).label("total_tokens_out"),
+            func.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
+            func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
+        )
+        .where(AIUsageLog.created_at >= start_date)
+        .group_by(cast(AIUsageLog.created_at, Date))
+        .order_by(cast(AIUsageLog.created_at, Date).desc())
     )
-    
+
     result = await db.execute(query)
     rows = result.all()
-    
+
     return [
         {
             "date": str(row.date),

@@ -37,17 +37,15 @@ def _get_session_factory():
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
             raise RuntimeError("DATABASE_URL environment variable is required")
-        
+
         # Convert postgres:// to postgresql+asyncpg://
         if database_url.startswith("postgres://"):
             database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
         elif database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        
+
         _engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
-        _async_session_factory = sessionmaker(
-            _engine, class_=AsyncSession, expire_on_commit=False
-        )
+        _async_session_factory = sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
     return _async_session_factory
 
 
@@ -77,7 +75,7 @@ def _get_router() -> LLMRouter:
 
 class ProviderHealthResponse(BaseModel):
     """Provider health status response."""
-    
+
     name: str
     available: bool
     message: str
@@ -86,7 +84,7 @@ class ProviderHealthResponse(BaseModel):
 
 class RoleConfigResponse(BaseModel):
     """Role configuration response."""
-    
+
     name: str
     provider: str
     model: str
@@ -102,7 +100,7 @@ class RoleConfigResponse(BaseModel):
 
 class RoleConfigUpdate(BaseModel):
     """Role configuration update request."""
-    
+
     provider: str | None = None
     model: str | None = None
     system_prompt_id: str | None = None
@@ -116,7 +114,7 @@ class RoleConfigUpdate(BaseModel):
 
 class SystemPromptResponse(BaseModel):
     """System prompt response."""
-    
+
     id: str
     role: str
     version: int
@@ -128,7 +126,7 @@ class SystemPromptResponse(BaseModel):
 
 class SystemPromptCreate(BaseModel):
     """Create new system prompt request."""
-    
+
     role: str
     content: str
     description: str = ""
@@ -137,7 +135,7 @@ class SystemPromptCreate(BaseModel):
 
 class EvaluationRequest(BaseModel):
     """Multi-Brain evaluation request."""
-    
+
     symbol: str
     timeframe: str = "1h"
     candles: list[dict] | None = None
@@ -149,7 +147,7 @@ class EvaluationRequest(BaseModel):
 
 class EvaluationResponse(BaseModel):
     """Multi-Brain evaluation response."""
-    
+
     symbol: str
     timeframe: str
     final_action: str
@@ -164,7 +162,7 @@ class EvaluationResponse(BaseModel):
 
 class UsageSummaryResponse(BaseModel):
     """Usage summary response."""
-    
+
     total_requests: int
     total_cost_usd: float
     total_tokens_in: int
@@ -181,22 +179,22 @@ class UsageSummaryResponse(BaseModel):
 @router.get("/providers", response_model=list[ProviderHealthResponse])
 async def list_providers():
     """List all providers and their health status.
-    
+
     Returns status for each configured LLM provider including availability
     and supported models.
     """
     providers = []
-    
+
     # Check each provider
     for provider in ProviderName:
         # Basic availability check - check if API key is configured
         api_key_env = f"{provider.value.upper()}_API_KEY"
         if provider == ProviderName.OLLAMA:
             api_key_env = "OLLAMA_BASE_URL"
-        
+
         api_key = os.environ.get(api_key_env)
         available = api_key is not None and len(api_key) > 0
-        
+
         # Get default models for this provider
         models = []
         if provider == ProviderName.DEEPSEEK:
@@ -209,7 +207,7 @@ async def list_providers():
             models = ["llama3.2:3b", "llama3.1:8b"]
         elif provider == ProviderName.GOOGLE:
             models = ["gemini-pro", "gemini-1.5-pro"]
-        
+
         providers.append(
             ProviderHealthResponse(
                 name=provider.value,
@@ -218,14 +216,14 @@ async def list_providers():
                 models=models,
             )
         )
-    
+
     return providers
 
 
 @router.get("/roles", response_model=list[RoleConfigResponse])
 async def list_roles():
     """List all role configurations.
-    
+
     Returns configuration for each agent role including provider assignment,
     model, prompts, and consensus weights.
     """
@@ -253,7 +251,7 @@ async def list_roles():
 @router.get("/roles/{role}", response_model=RoleConfigResponse)
 async def get_role(role: str = PathParam(..., description="Role name")):
     """Get configuration for a specific role.
-    
+
     Args:
         role: Role name (screener, tactical, fundamental, strategist)
     """
@@ -262,7 +260,7 @@ async def get_role(role: str = PathParam(..., description="Role name")):
         config = await ai_crud.get_role_config(db, role)
         if not config:
             raise HTTPException(status_code=404, detail=f"Role '{role}' not found")
-        
+
         return RoleConfigResponse(
             name=config.name,
             provider=config.provider,
@@ -284,10 +282,10 @@ async def update_role(
     update: RoleConfigUpdate = ...,
 ):
     """Update role configuration.
-    
+
     Updates provider assignment, model, temperature, weights, etc.
     Only provided fields will be updated.
-    
+
     Args:
         role: Role name (screener, tactical, fundamental, strategist)
         update: Fields to update
@@ -307,10 +305,10 @@ async def update_role(
             fallback_provider=update.fallback_provider,
             fallback_model=update.fallback_model,
         )
-        
+
         if not config:
             raise HTTPException(status_code=404, detail=f"Role '{role}' not found")
-        
+
         return RoleConfigResponse(
             name=config.name,
             provider=config.provider,
@@ -329,10 +327,10 @@ async def update_role(
 @router.get("/prompts/{role}", response_model=list[SystemPromptResponse])
 async def list_prompts(role: str = PathParam(..., description="Role name")):
     """List all prompt versions for a role.
-    
+
     Returns all prompt versions (active and inactive) for the specified role,
     ordered by version descending (newest first).
-    
+
     Args:
         role: Role name (screener, tactical, fundamental, strategist)
     """
@@ -356,10 +354,10 @@ async def list_prompts(role: str = PathParam(..., description="Role name")):
 @router.post("/prompts", response_model=SystemPromptResponse, status_code=201)
 async def create_prompt(request: SystemPromptCreate):
     """Create a new prompt version.
-    
+
     Creates a new versioned system prompt for the specified role.
     Version number is auto-incremented based on existing prompts for that role.
-    
+
     Args:
         request: Prompt creation request with role, content, and description
     """
@@ -367,10 +365,10 @@ async def create_prompt(request: SystemPromptCreate):
     async with factory() as db:
         # Get next version number
         next_version = await ai_crud.get_next_version(db, request.role)
-        
+
         # Generate prompt ID
         prompt_id = f"{request.role}_v{next_version}"
-        
+
         # Create prompt
         prompt = await ai_crud.create_prompt(
             db,
@@ -381,7 +379,7 @@ async def create_prompt(request: SystemPromptCreate):
             description=request.description,
             is_active=request.is_active,
         )
-        
+
         return SystemPromptResponse(
             id=prompt.id,
             role=prompt.role,
@@ -396,10 +394,10 @@ async def create_prompt(request: SystemPromptCreate):
 @router.put("/prompts/{prompt_id}/activate", response_model=SystemPromptResponse)
 async def activate_prompt(prompt_id: str = PathParam(..., description="Prompt ID")):
     """Activate a prompt version.
-    
+
     Activates the specified prompt and deactivates all other prompts for the same role.
     This changes which prompt will be used for future AI evaluations.
-    
+
     Args:
         prompt_id: Prompt ID (e.g., "tactical_v2")
     """
@@ -408,7 +406,7 @@ async def activate_prompt(prompt_id: str = PathParam(..., description="Prompt ID
         prompt = await ai_crud.activate_prompt(db, prompt_id)
         if not prompt:
             raise HTTPException(status_code=404, detail=f"Prompt '{prompt_id}' not found")
-        
+
         return SystemPromptResponse(
             id=prompt.id,
             role=prompt.role,
@@ -428,16 +426,16 @@ async def activate_prompt(prompt_id: str = PathParam(..., description="Prompt ID
 @router.post("/evaluate", response_model=EvaluationResponse)
 async def evaluate_opportunity(request: EvaluationRequest):
     """Trigger Multi-Brain evaluation for a symbol.
-    
+
     Runs the full Multi-Brain pipeline with all active roles to generate
     a consensus trading decision.
-    
+
     Args:
         request: Evaluation request with symbol, timeframe, and context data
     """
     router_instance = _get_router()
     factory = _get_session_factory()
-    
+
     # Convert string role names to RoleName enums if provided
     roles = None
     if request.roles:
@@ -448,7 +446,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
                 status_code=400,
                 detail=f"Invalid role name: {e}. Valid roles: {[r.value for r in RoleName]}",
             )
-    
+
     # Run evaluation
     decision = await router_instance.evaluate_opportunity(
         symbol=request.symbol,
@@ -459,7 +457,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
         risk_limits=request.risk_limits,
         roles=roles,
     )
-    
+
     # Log decision to database
     async with factory() as db:
         await ai_crud.log_decision(
@@ -474,7 +472,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
             total_cost_usd=decision.total_cost_usd,
             total_latency_ms=decision.total_latency_ms,
         )
-    
+
     return EvaluationResponse(
         symbol=request.symbol,
         timeframe=request.timeframe,
@@ -492,10 +490,10 @@ async def evaluate_opportunity(request: EvaluationRequest):
 @router.post("/evaluate/single", response_model=dict)
 async def evaluate_single_role(request: EvaluationRequest):
     """Test a single role (debugging endpoint).
-    
+
     Runs only a single role for debugging/testing purposes.
     Requires exactly one role to be specified in the request.
-    
+
     Args:
         request: Evaluation request with single role specified
     """
@@ -504,9 +502,9 @@ async def evaluate_single_role(request: EvaluationRequest):
             status_code=400,
             detail="Exactly one role must be specified for single-role evaluation",
         )
-    
+
     router_instance = _get_router()
-    
+
     # Convert string role name to RoleName enum
     try:
         role = RoleName(request.roles[0])
@@ -515,7 +513,7 @@ async def evaluate_single_role(request: EvaluationRequest):
             status_code=400,
             detail=f"Invalid role name '{request.roles[0]}'. Valid roles: {[r.value for r in RoleName]}",
         )
-    
+
     # Run evaluation with single role
     decision = await router_instance.evaluate_opportunity(
         symbol=request.symbol,
@@ -526,7 +524,7 @@ async def evaluate_single_role(request: EvaluationRequest):
         risk_limits=request.risk_limits,
         roles=[role],
     )
-    
+
     # Return detailed response including individual role verdict
     return {
         "symbol": request.symbol,
@@ -548,10 +546,10 @@ async def list_decisions(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of decisions to return"),
 ):
     """List past AI decisions (audit trail).
-    
+
     Returns recent consensus decisions with optional filtering by symbol or action.
     Useful for auditing, backtesting, and analyzing AI performance.
-    
+
     Args:
         symbol: Optional symbol filter
         action: Optional action filter (BUY, SELL, NEUTRAL, VETO)
@@ -565,7 +563,7 @@ async def list_decisions(
             action=action,
             limit=limit,
         )
-        
+
         return [
             EvaluationResponse(
                 symbol=d.symbol,
@@ -594,10 +592,10 @@ async def get_usage_summary(
     end_date: datetime | None = Query(None, description="End date for usage summary"),
 ):
     """Get usage summary (by role, provider, time range).
-    
+
     Returns aggregated token usage and costs across all AI evaluations.
     Useful for monitoring spending and identifying expensive operations.
-    
+
     Args:
         start_date: Optional start date (default: 30 days ago)
         end_date: Optional end date (default: now)
@@ -607,7 +605,7 @@ async def get_usage_summary(
         start_date = datetime.utcnow() - timedelta(days=30)
     if not end_date:
         end_date = datetime.utcnow()
-    
+
     factory = _get_session_factory()
     async with factory() as db:
         summary = await ai_crud.get_usage_summary(
@@ -615,7 +613,7 @@ async def get_usage_summary(
             start_date=start_date,
             end_date=end_date,
         )
-        
+
         return UsageSummaryResponse(
             total_requests=summary.get("total_requests", 0),
             total_cost_usd=summary.get("total_cost_usd", 0.0),
@@ -631,10 +629,10 @@ async def get_daily_usage(
     days: int = Query(30, ge=1, le=365, description="Number of days to return"),
 ):
     """Get daily cost breakdown.
-    
+
     Returns per-day cost breakdown for the specified number of days.
     Useful for tracking spending trends over time.
-    
+
     Args:
         days: Number of days to return (default 30, max 365)
     """
