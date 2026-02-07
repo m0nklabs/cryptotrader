@@ -317,7 +317,7 @@ async def get_usage_summary(
         func.sum(AIUsageLog.tokens_out).label("total_tokens_out"),
         func.sum(AIUsageLog.cost_usd).label("total_cost"),
         func.avg(AIUsageLog.latency_ms).label("avg_latency"),
-        func.sum(AIUsageLog.success).label("successful_requests"),
+        func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
     )
 
     # Apply filters

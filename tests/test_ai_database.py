@@ -12,14 +12,18 @@ Requires DATABASE_URL to be set and PostgreSQL running.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
+from pathlib import Path
+from typing import Iterable
 from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 import pytest_asyncio
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from core.ai.types import RoleName
@@ -40,9 +44,61 @@ from db.crud.ai import (
     get_decisions,
 )
 
-# Module-level singletons to avoid creating multiple engines/sessions
-_test_engine: AsyncEngine | None = None
-_async_session_maker: sessionmaker | None = None
+
+def _iter_sql_statements(sql: str) -> Iterable[str]:
+    """Split a SQL script into executable statements.
+
+    Supports:
+    - `--` line comments
+    - quoted strings (single and double quotes)
+
+    This is intentionally simple and designed for our migration SQL (no $$ quoting).
+    """
+
+    buf: list[str] = []
+    in_single = False
+    in_double = False
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+
+        # Handle -- comments (only when not in quotes)
+        if not in_single and not in_double and ch == "-" and i + 1 < len(sql) and sql[i + 1] == "-":
+            while i < len(sql) and sql[i] not in ("\n", "\r"):
+                i += 1
+            continue
+
+        if ch == "'" and not in_double:
+            # Toggle single quote state unless escaped by doubling ''
+            if in_single and i + 1 < len(sql) and sql[i + 1] == "'":
+                buf.append("''")
+                i += 2
+                continue
+            in_single = not in_single
+            buf.append(ch)
+            i += 1
+            continue
+
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            buf.append(ch)
+            i += 1
+            continue
+
+        if ch == ";" and not in_single and not in_double:
+            stmt = "".join(buf).strip()
+            buf = []
+            if stmt:
+                yield stmt
+            i += 1
+            continue
+
+        buf.append(ch)
+        i += 1
+
+    tail = "".join(buf).strip()
+    if tail:
+        yield tail
 
 
 def _redact_database_url(value: str) -> str:
@@ -61,6 +117,15 @@ def _redact_database_url(value: str) -> str:
 
 
 def _normalize_database_url(database_url: str) -> str:
+    """Normalize DATABASE_URL to an async SQLAlchemy URL.
+
+    Supports:
+    - Bare: host:port/dbname or user:pass@host:port/dbname
+    - postgresql://
+    - postgres://
+    - postgresql+<driver>:// (e.g. psycopg2)
+    - postgresql+asyncpg://
+    """
     if "://" not in database_url:
         candidate = f"postgresql+asyncpg://{database_url}"
         parsed = urlsplit(candidate)
@@ -71,39 +136,54 @@ def _normalize_database_url(database_url: str) -> str:
             )
         database_url = candidate
 
+    if database_url.startswith("postgresql+asyncpg://"):
+        return database_url
+    if database_url.startswith("postgresql+"):
+        # Handle postgresql+psycopg2://, postgresql+psycopg://, etc.
+        return "postgresql+asyncpg://" + database_url.split("://", 1)[1]
     if database_url.startswith("postgresql://"):
-        if "+asyncpg" not in database_url:
-            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     elif database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif not database_url.startswith("postgresql+asyncpg://"):
-        raise ValueError(
-            f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
-            "Expected postgresql://, postgres://, or postgresql+asyncpg://"
-        )
+        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
 
-    return database_url
+    raise ValueError(
+        f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
+        "Expected postgresql://, postgres://, postgresql+<driver>://, or postgresql+asyncpg://"
+    )
 
 
-def _get_test_engine() -> AsyncEngine:
-    """Get or create the test database engine (singleton)."""
-    global _test_engine, _async_session_maker
+def _get_test_database_url() -> str:
+    """Get DATABASE_URL normalized to asyncpg.
 
-    if _test_engine is not None:
-        return _test_engine
-
+    CI may use psycopg2 (sync) URL format, but these tests use SQLAlchemy async.
+    """
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         pytest.skip("DATABASE_URL not set")
 
     # Convert to async URL if needed
     # Ensure we always use postgresql+asyncpg:// scheme
-    database_url = _normalize_database_url(database_url)
+    try:
+        database_url = _normalize_database_url(database_url)
+    except ValueError as exc:
+        pytest.skip(str(exc))
 
-    _test_engine = create_async_engine(database_url, echo=False)
-    _async_session_maker = sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
+    # Verify asyncpg is importable (required for SQLAlchemy async engine)
+    try:
+        import asyncpg  # noqa: F401
+    except ImportError:
+        pytest.skip("asyncpg not installed — skipping async DB tests")
 
-    return _test_engine
+    return database_url
+
+
+@pytest.fixture(autouse=True)
+def _reset_prompt_registry_state() -> None:
+    """Reset PromptRegistry global state between tests for isolation."""
+    PromptRegistry._prompts = {}
+    PromptRegistry._db_enabled = False
+    PromptRegistry._db_loaded = False
+    PromptRegistry._activation_lock = None
 
 
 def test_redact_database_url_masks_credentials() -> None:
@@ -134,17 +214,40 @@ def test_normalize_database_url_rejects_empty_bare_format() -> None:
 async def db_session():
     """Create an async database session for testing.
 
-    Uses a module-level engine to avoid connection pool exhaustion.
-    """
-    engine = _get_test_engine()
-    # Reuse the cached session maker if available
-    if _async_session_maker is not None:
-        async_session = _async_session_maker
-    else:
-        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    Creates a fresh engine per test to avoid event-loop cross-contamination
+    under pytest-asyncio strict mode (default loop scope is function).
 
-    async with async_session() as session:
-        yield session
+    Also applies the AI tables migration to the CI-created database.
+    """
+    database_url = _get_test_database_url()
+    engine = create_async_engine(database_url, echo=False)
+
+    migrations_sql_path = Path(__file__).resolve().parents[1] / "db" / "migrations" / "001_ai_tables.sql"
+    migration_sql = migrations_sql_path.read_text(encoding="utf-8")
+
+    async with engine.begin() as conn:
+        # Apply migration (idempotent)
+        for stmt in _iter_sql_statements(migration_sql):
+            await conn.execute(text(stmt))
+
+        # Ensure a clean DB state per test
+        await conn.execute(
+            text("TRUNCATE system_prompts, ai_role_configs, ai_usage_log, ai_decisions RESTART IDENTITY CASCADE")
+        )
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with async_session() as session:
+            # Seed defaults for tests that expect a baseline DB state.
+            from scripts.seed_ai_defaults import seed_role_configs, seed_system_prompts
+
+            # Silence stdout from seed scripts to reduce test log noise
+            with contextlib.redirect_stdout(io.StringIO()):
+                await seed_system_prompts(session)
+                await seed_role_configs(session)
+            yield session
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -302,7 +405,7 @@ async def test_usage_logging(db_session):
         # Get summary for tactical role
         summary = await get_usage_summary(db_session, role="tactical")
         assert summary["total_requests"] >= 2
-        assert summary["total_cost"] >= 0.009
+        assert summary["total_cost"] == pytest.approx(0.009, abs=1e-6)
         assert summary["success_rate"] > 0.0
 
         # Get summary for a specific symbol

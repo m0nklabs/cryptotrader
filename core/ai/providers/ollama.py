@@ -68,7 +68,9 @@ class OllamaProvider(LLMProvider):
         start = self._start_timer()
         try:
             client = await self._get_client()
-            resp = await client.post(
+            data = await self._make_request(
+                client,
+                "POST",
                 "/api/chat",
                 json={
                     "model": model,
@@ -79,8 +81,6 @@ class OllamaProvider(LLMProvider):
                     },
                 },
             )
-            resp.raise_for_status()
-            data = resp.json()
         except Exception as exc:
             latency = self._elapsed_ms(start)
             logger.error("Ollama request failed: %s", exc)
@@ -115,7 +115,7 @@ class OllamaProvider(LLMProvider):
         """Check if Ollama is running locally."""
         try:
             client = await self._get_client()
-            resp = await client.get("/api/tags")
-            return resp.status_code == 200
+            await self._make_request(client, "GET", "/api/tags")
+            return True
         except Exception:
             return False
