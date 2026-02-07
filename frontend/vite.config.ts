@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// FastAPI backend defaults to port 8000 (see docs/PORTS.md). Legacy helper is 8787.
+// FastAPI backend defaults to port 8000 (see docs/PORTS.md). Legacy helper script ran on 8787.
 const BACKEND_HTTP = 'http://127.0.0.1:8000'
 const BACKEND_WS = 'ws://127.0.0.1:8000'
 const DISABLE_SSL_VERIFY = process.env.VITE_DISABLE_SSL_VERIFY === 'true'
