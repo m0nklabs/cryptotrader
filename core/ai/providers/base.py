@@ -277,7 +277,10 @@ def validate_json_response(raw_text: str, required_keys: list[str] | None = None
         parsed = json.loads(raw_text, parse_constant=_reject_non_finite_constant)
 
         if not isinstance(parsed, dict):
-            logger.warning("JSON response is not an object")
+            logger.warning(
+                "JSON response is not an object (got %s)",
+                type(parsed).__name__,
+            )
             return None
 
         # Validate required keys if specified
