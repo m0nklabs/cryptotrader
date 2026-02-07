@@ -133,7 +133,7 @@ Required environment variables (see `.env.example`):
 
 - `OLLAMA_HOST`
 - `OLLAMA_MODEL`
-- `OLLAMA_USER` (optional; only if proxy auth is enabled)
+- `OLLAMA_USER` (optional; only if proxy auth is enabled—no default auth header is sent)
 - `DOSSIER_DEBUG` (optional; enable debug logging)
 ```
 

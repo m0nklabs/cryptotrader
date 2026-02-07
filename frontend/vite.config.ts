@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 // FastAPI backend defaults to port 8000 (see docs/PORTS.md).
 const BACKEND_HTTP = 'http://127.0.0.1:8000'
 const BACKEND_WS = 'ws://127.0.0.1:8000'
-const REST_PROXY = { target: BACKEND_HTTP, changeOrigin: true }
+const REST_PROXY = { target: BACKEND_HTTP, changeOrigin: true, secure: false }
 
 const sharedProxy = {
   '/api': {
