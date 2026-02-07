@@ -30,6 +30,7 @@ const backendProxy = {
   '/export': 'http://127.0.0.1:8000',
   '/research': 'http://127.0.0.1:8000',
   '/orders': 'http://127.0.0.1:8000',
+  '/dossier': 'http://127.0.0.1:8000',
   '/ws': {
     target: 'http://127.0.0.1:8000',
     ws: true,

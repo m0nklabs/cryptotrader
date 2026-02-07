@@ -10,6 +10,7 @@ import Sidebar from './components/Sidebar'
 import { VIEW_IDS, type ViewId } from './nav'
 import ShortcutHelp from './components/ShortcutHelp'
 import OpportunityScore from './components/OpportunityScore'
+import CoinDossier from './components/CoinDossier'
 import {
   placeOrder,
   listOrders,
@@ -1986,6 +1987,13 @@ export default function App() {
                   })}
                 </div>
               )}
+            </Panel>
+          )}
+
+          {/* Coin Dossier view — daily LLM analysis per coin */}
+          {activeView === VIEW_IDS.COIN_DOSSIER && (
+            <Panel title="Coin Dossiers" subtitle="Daily AI-generated analysis per coin">
+              <CoinDossier exchange={selectedExchange} />
             </Panel>
           )}
         </main>
