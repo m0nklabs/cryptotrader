@@ -72,7 +72,7 @@ async def main() -> None:
 
         for entry in entries:
             status = "✅" if entry.id else "❌"
-            logger.info(f"  {status} {entry.symbol}: {entry.predicted_direction} → " f"${entry.predicted_target:,.2f}")
+            logger.info(f"  {status} {entry.symbol}: {entry.predicted_direction} → ${entry.predicted_target:,.2f}")
 
         logger.info(f"\n📊 Summary: {len(entries)} dossiers generated in {elapsed:.1f}s")
 
