@@ -2,6 +2,9 @@
 
 Provides endpoints for coin dossier entries — daily LLM-generated
 technical analysis narratives per trading pair.
+
+Route ordering: static/literal paths MUST come before parameterized
+/{symbol} paths to avoid FastAPI matching "queue" or "latest" as a symbol.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
+from core.dossier.queue import get_queue
 from core.dossier.service import DossierService
 
 logger = logging.getLogger(__name__)
@@ -30,9 +34,9 @@ def _get_service() -> DossierService:
     return _service
 
 
-# -----------------------------------------------------------------------
-# GET /dossier/symbols — list coins that have dossier entries
-# -----------------------------------------------------------------------
+# =======================================================================
+# STATIC ROUTES (must come before /{symbol} routes)
+# =======================================================================
 
 
 @router.get("/symbols")
@@ -43,11 +47,6 @@ async def list_dossier_symbols(
     svc = _get_service()
     symbols = await svc.get_available_symbols(exchange)
     return {"exchange": exchange, "symbols": symbols}
-
-
-# -----------------------------------------------------------------------
-# GET /dossier/latest — latest dossier entry per coin
-# -----------------------------------------------------------------------
 
 
 @router.get("/latest")
@@ -65,9 +64,50 @@ async def get_latest_dossiers(
     }
 
 
-# -----------------------------------------------------------------------
-# GET /dossier/{symbol} — dossier history for a specific coin
-# -----------------------------------------------------------------------
+@router.post("/generate-all")
+async def generate_all_dossiers(
+    exchange: str = Query("bitfinex", description="Exchange code"),
+    delay: float = Query(10.0, ge=0, le=120, description="Seconds between each generation (spreads hw load)"),
+):
+    """Queue today's dossier generation for all coins.
+
+    Returns immediately — generation runs in the background with
+    configurable delay between each coin to spread hardware load.
+    Check progress via GET /dossier/queue/status.
+    """
+    queue = get_queue(delay_seconds=delay)
+    status = await queue.enqueue_all(exchange)
+    return {
+        "status": "queued" if status.state.value == "running" else status.state.value,
+        "exchange": exchange,
+        "total": status.total,
+        "delay_seconds": delay,
+        "message": f"Generating {status.total} dossiers with {delay}s delay between each. "
+        f"Check GET /dossier/queue/status for progress.",
+    }
+
+
+@router.get("/queue/status")
+async def get_queue_status():
+    """Get current dossier generation queue status and progress."""
+    queue = get_queue()
+    return queue.status.to_dict()
+
+
+@router.post("/queue/cancel")
+async def cancel_queue():
+    """Cancel the currently running dossier generation queue."""
+    queue = get_queue()
+    cancelled = queue.cancel()
+    return {
+        "cancelled": cancelled,
+        "status": queue.status.to_dict(),
+    }
+
+
+# =======================================================================
+# PARAMETERIZED ROUTES (/{symbol} — must come AFTER static routes)
+# =======================================================================
 
 
 @router.get("/{symbol}")
@@ -92,11 +132,6 @@ async def get_coin_dossier(
     }
 
 
-# -----------------------------------------------------------------------
-# GET /dossier/{symbol}/{date} — specific date entry
-# -----------------------------------------------------------------------
-
-
 @router.get("/{symbol}/{entry_date}")
 async def get_coin_dossier_entry(
     symbol: str,
@@ -112,11 +147,6 @@ async def get_coin_dossier_entry(
             detail=f"No dossier entry for {exchange}:{symbol} on {entry_date}",
         )
     return _entry_to_dict(entry)
-
-
-# -----------------------------------------------------------------------
-# POST /dossier/{symbol}/generate — trigger generation for one coin
-# -----------------------------------------------------------------------
 
 
 @router.post("/{symbol}/generate")
@@ -137,36 +167,6 @@ async def generate_coin_dossier(
         raise HTTPException(
             status_code=500,
             detail=f"Dossier generation failed: {e}",
-        ) from e
-
-
-# -----------------------------------------------------------------------
-# POST /dossier/generate-all — trigger generation for all coins
-# -----------------------------------------------------------------------
-
-
-@router.post("/generate-all")
-async def generate_all_dossiers(
-    exchange: str = Query("bitfinex", description="Exchange code"),
-):
-    """Generate today's dossier entries for all coins on the exchange.
-
-    This may take several minutes depending on the number of coins and LLM speed.
-    """
-    svc = _get_service()
-    try:
-        entries = await svc.generate_all(exchange)
-        return {
-            "status": "completed",
-            "exchange": exchange,
-            "generated": len(entries),
-            "entries": [{"symbol": e.symbol, "id": e.id} for e in entries],
-        }
-    except Exception as e:
-        logger.exception("Failed to generate all dossiers")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Bulk dossier generation failed: {e}",
         ) from e
 
 
@@ -200,7 +200,6 @@ def _entry_to_dict(entry, *, compact: bool = False) -> dict:
         "exchange": entry.exchange,
         "symbol": entry.symbol,
         "entry_date": str(entry.entry_date),
-        # Stats
         "price": _as_float(entry.price),
         "change_24h": _as_float(entry.change_24h),
         "change_7d": _as_float(entry.change_7d),
@@ -211,7 +210,6 @@ def _entry_to_dict(entry, *, compact: bool = False) -> dict:
         "support_level": _as_float(entry.support_level),
         "resistance_level": _as_float(entry.resistance_level),
         "signal_score": _as_float(entry.signal_score),
-        # Prediction tracking
         "predicted_direction": entry.predicted_direction,
         "predicted_target": _as_float(entry.predicted_target),
         "predicted_timeframe": entry.predicted_timeframe,
@@ -221,20 +219,17 @@ def _entry_to_dict(entry, *, compact: bool = False) -> dict:
     if compact:
         return {
             **base,
-            # Minimal narrative summary for list views
             "stats_summary": entry.stats_summary,
         }
 
     return {
         **base,
-        # Narrative
         "lore": entry.lore,
         "stats_summary": entry.stats_summary,
         "tech_analysis": entry.tech_analysis,
         "retrospective": entry.retrospective,
         "prediction": entry.prediction,
         "full_narrative": entry.full_narrative,
-        # Meta
         "model_used": entry.model_used,
         "tokens_used": entry.tokens_used,
         "generation_time_ms": entry.generation_time_ms,

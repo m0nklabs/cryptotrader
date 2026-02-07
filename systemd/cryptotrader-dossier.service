@@ -5,7 +5,7 @@ After=network.target postgresql.service cryptotrader-api.service
 [Service]
 Type=oneshot
 WorkingDirectory=%h/cryptotrader
-ExecStart=%h/cryptotrader/.venv/bin/python -m scripts.generate_dossiers --exchange bitfinex
+ExecStart=%h/cryptotrader/.venv/bin/python -m scripts.generate_dossiers --exchange bitfinex --delay 15
 Environment=PYTHONPATH=%h/cryptotrader
 EnvironmentFile=%h/cryptotrader/.env
 

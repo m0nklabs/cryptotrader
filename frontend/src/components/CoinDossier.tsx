@@ -51,6 +51,16 @@ interface DossierEntry {
   created_at: string | null
 }
 
+interface QueueStatus {
+  state: 'idle' | 'running' | 'completed' | 'failed'
+  total: number
+  completed: number
+  failed: number
+  current_symbol: string | null
+  progress_pct: number
+  delay_seconds: number
+}
+
 // -----------------------------------------------------------------------
 // Sub-components
 // -----------------------------------------------------------------------
@@ -169,14 +179,46 @@ function CoinCard({
   )
 }
 
+function QueueProgress({ status }: { status: QueueStatus }) {
+  if (status.state === 'idle') return null
+  const pct = status.progress_pct
+
+  return (
+    <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-blue-300">
+          {status.state === 'running' ? (
+            <span className="flex items-center gap-2">
+              <span className="h-3 w-3 animate-spin rounded-full border border-blue-400/30 border-t-blue-400" />
+              Generating {status.current_symbol}...
+            </span>
+          ) : status.state === 'completed' ? (
+            `✅ Done — ${status.completed} dossiers generated`
+          ) : (
+            `❌ Queue failed`
+          )}
+        </span>
+        <span className="text-blue-400 font-mono">{status.completed}/{status.total}</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full rounded-full bg-gray-700/50">
+        <div
+          className="h-full rounded-full bg-blue-500 transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function EmptyState({ onGenerate, generating }: { onGenerate: () => void; generating: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="text-5xl mb-4">📁</div>
       <h3 className="text-lg font-semibold text-gray-300 mb-2">No Dossiers Yet</h3>
       <p className="text-sm text-gray-500 mb-6 max-w-md">
-        Coin dossiers are daily LLM-generated analysis reports for each trading pair.
-        Generate your first batch to get started.
+        Dossiers are generated automatically every day at 08:00 UTC.
+        You can also queue a batch now — it will run in the background with
+        pauses between each coin to keep hardware load low.
       </p>
       <button
         onClick={onGenerate}
@@ -186,10 +228,10 @@ function EmptyState({ onGenerate, generating }: { onGenerate: () => void; genera
         {generating ? (
           <span className="flex items-center gap-2">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-            Generating...
+            Queued...
           </span>
         ) : (
-          '🤖 Generate All Dossiers'
+          '🤖 Queue All Dossiers'
         )}
       </button>
     </div>
@@ -213,6 +255,7 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
   const [generating, setGenerating] = useState(false)
   const [generatingSymbol, setGeneratingSymbol] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null)
 
   // Fetch latest dossiers for all coins
   const fetchLatest = useCallback(async () => {
@@ -251,22 +294,51 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
     }
   }, [exchange])
 
-  // Generate all dossiers
+  // Generate all dossiers (via queue — fire-and-forget)
   const handleGenerateAll = async () => {
     setGenerating(true)
     setError(null)
     try {
-      const res = await fetch(`/dossier/generate-all?exchange=${encodeURIComponent(exchange)}`, {
+      const res = await fetch(`/dossier/generate-all?exchange=${encodeURIComponent(exchange)}&delay=10`, {
         method: 'POST',
       })
-      if (!res.ok) throw new Error(`Generation failed: ${res.status}`)
-      await fetchLatest()
+      if (!res.ok) throw new Error(`Queue failed: ${res.status}`)
+      // Start polling queue status
+      pollQueueStatus()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Generation failed')
-    } finally {
+      setError(err instanceof Error ? err.message : 'Queue failed')
       setGenerating(false)
     }
   }
+
+  // Poll queue status while generating
+  const pollQueueStatus = useCallback(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/dossier/queue/status')
+        if (!res.ok) return
+        const status: QueueStatus = await res.json()
+        setQueueStatus(status)
+
+        // Refresh the dossier list as new ones come in
+        if (status.completed > 0) {
+          fetchLatest()
+        }
+
+        // Stop polling when done
+        if (status.state !== 'running') {
+          clearInterval(interval)
+          setGenerating(false)
+          // Final refresh
+          await fetchLatest()
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 3000) // Poll every 3 seconds
+
+    return () => clearInterval(interval)
+  }, [fetchLatest])
 
   // Generate single dossier
   const handleGenerateSingle = async (symbol: string) => {
@@ -290,7 +362,18 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
   // Initial load
   useEffect(() => {
     fetchLatest()
-  }, [fetchLatest])
+    // Check if a queue is already running
+    fetch('/dossier/queue/status')
+      .then(r => r.ok ? r.json() : null)
+      .then((status: QueueStatus | null) => {
+        if (status && status.state === 'running') {
+          setQueueStatus(status)
+          setGenerating(true)
+          pollQueueStatus()
+        }
+      })
+      .catch(() => { /* ignore */ })
+  }, [fetchLatest, pollQueueStatus])
 
   // Load history when symbol selected
   useEffect(() => {
@@ -325,11 +408,16 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
             onClick={handleGenerateAll}
             disabled={generating}
             className="rounded bg-blue-600/80 px-2 py-1 text-[10px] font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-            title="Regenerate all dossiers"
+            title="Queue dossier generation for all coins (staggered)"
           >
             {generating ? '⏳' : '🔄'}
           </button>
         </div>
+
+        {/* Queue progress bar */}
+        {queueStatus && queueStatus.state !== 'idle' && (
+          <QueueProgress status={queueStatus} />
+        )}
 
         {error && (
           <div className="rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2 text-xs text-red-400">

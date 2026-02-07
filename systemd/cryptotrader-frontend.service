@@ -5,10 +5,11 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/cryptotrader/frontend
-Environment=NODE_ENV=development
+Environment=NODE_ENV=production
 
-# Run Vite dev server with proxy support
-ExecStart=/usr/bin/env npm run dev -- --host 0.0.0.0 --port 5176 --strictPort
+# Run Vite preview (serves dist/) for speed (was dev server)
+# To revert to dev mode (hot reload), change this back to 'npm run dev'
+ExecStart=/usr/bin/env npm run preview -- --host 0.0.0.0 --port 5176 --strictPort
 
 Restart=on-failure
 RestartSec=2
