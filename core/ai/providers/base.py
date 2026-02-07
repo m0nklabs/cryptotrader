@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import random
 import time
 from abc import ABC, abstractmethod
@@ -233,6 +234,20 @@ def with_retry(
 # ---------------------------------------------------------------------------
 
 
+def _reject_non_finite_constants(value: str) -> float:
+    raise ValueError(f"Invalid JSON constant: {value}")
+
+
+def _contains_non_finite_values(value: Any) -> bool:
+    if isinstance(value, float):
+        return not math.isfinite(value)
+    if isinstance(value, dict):
+        return any(_contains_non_finite_values(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_non_finite_values(item) for item in value)
+    return False
+
+
 def validate_json_response(raw_text: str, required_keys: list[str] | None = None) -> dict[str, Any] | None:
     """Validate and parse JSON response from LLM.
 
@@ -247,7 +262,7 @@ def validate_json_response(raw_text: str, required_keys: list[str] | None = None
         return None
 
     try:
-        parsed = json.loads(raw_text)
+        parsed = json.loads(raw_text, parse_constant=_reject_non_finite_constants)
 
         # Validate required keys if specified
         if required_keys:
@@ -256,8 +271,12 @@ def validate_json_response(raw_text: str, required_keys: list[str] | None = None
                 logger.warning("JSON response missing required keys: %s", missing)
                 return None
 
+        if _contains_non_finite_values(parsed):
+            logger.warning("JSON response contains non-finite values")
+            return None
+
         return parsed
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, ValueError) as e:
         logger.warning("Failed to parse JSON response: %s", e)
         return None
 

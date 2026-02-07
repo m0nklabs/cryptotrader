@@ -8,7 +8,7 @@ import os
 
 import httpx
 
-from core.ai.providers.base import LLMProvider
+from core.ai.providers.base import LLMProvider, validate_json_response
 from core.ai.types import AIRequest, AIResponse, ProviderConfig, ProviderName
 
 logger = logging.getLogger(__name__)
@@ -103,11 +103,7 @@ class XAIProvider(LLMProvider):
         cost = (tokens_in * pricing["input"] + tokens_out * pricing["output"]) / 1_000_000
 
         raw_text = choice["message"]["content"]
-        parsed = None
-        try:
-            parsed = json.loads(raw_text)
-        except (json.JSONDecodeError, TypeError):
-            pass
+        parsed = validate_json_response(raw_text)
 
         return AIResponse(
             role=request.role,
@@ -129,3 +125,130 @@ class XAIProvider(LLMProvider):
             return True
         except Exception:
             return False
+
+    async def _attempt_streaming(
+        self,
+        client: httpx.AsyncClient,
+        model: str,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Single streaming attempt with error classification and rate limiting."""
+        from core.ai.providers.base import TransientError, classify_http_error
+
+        rate_limiter = await self._get_rate_limiter()
+        await rate_limiter.acquire()
+
+        try:
+            async with client.stream(
+                "POST",
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "stream": True,
+                },
+            ) as response:
+                response.raise_for_status()
+
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code if e.response is not None else None
+            message = str(e)
+            try:
+                if e.response is not None:
+                    body_text = e.response.text or ""
+                    if body_text:
+                        message = f"{message} | body: {body_text[:512]}"
+            except Exception:
+                pass
+            error = classify_http_error(status_code, message)
+            raise error from e
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
+            raise TransientError(f"Network error: {e}", status_code=None) from e
+
+    async def complete_stream(
+        self,
+        request: AIRequest,
+        *,
+        system_prompt: str,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ):
+        """Stream chat-completion response from xAI with retry logic."""
+        import asyncio
+        import random
+
+        from core.ai.providers.base import PermanentError, TransientError
+
+        model = model or request.override_model or self.config.default_model
+        temperature = temperature or request.override_temperature or self.config.temperature
+        max_tokens = max_tokens or self.config.max_tokens
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": request.user_prompt},
+        ]
+
+        client = await self._get_client()
+        max_retries = 3
+        base_delay = 1.0
+        max_delay = 10.0
+
+        for attempt in range(max_retries + 1):
+            try:
+                async for chunk in self._attempt_streaming(client, model, messages, temperature, max_tokens):
+                    yield chunk
+                return
+            except TransientError as e:
+                if attempt >= max_retries:
+                    logger.error(
+                        "Max retries (%d) exceeded for streaming: %s",
+                        max_retries,
+                        e,
+                    )
+                    logger.info("Falling back to non-streaming mode")
+                    async for chunk in super().complete_stream(
+                        request,
+                        system_prompt=system_prompt,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    ):
+                        yield chunk
+                    return
+
+                delay = min(base_delay * (2**attempt), max_delay)
+                delay *= 0.5 + random.random()
+
+                logger.warning(
+                    "Transient error in streaming (attempt %d/%d): %s. Retrying in %.2fs",
+                    attempt + 1,
+                    max_retries + 1,
+                    e,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+            except PermanentError as e:
+                logger.error("Permanent error in streaming: %s. Not retrying.", e)
+                raise
+            except Exception as e:
+                logger.error("Unexpected error in streaming: %s", e)
+                raise

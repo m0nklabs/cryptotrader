@@ -8,7 +8,7 @@ import os
 
 import httpx
 
-from core.ai.providers.base import LLMProvider
+from core.ai.providers.base import LLMProvider, validate_json_response
 from core.ai.types import AIRequest, AIResponse, ProviderConfig, ProviderName
 
 logger = logging.getLogger(__name__)
@@ -115,12 +115,7 @@ class DeepSeekProvider(LLMProvider):
 
         raw_text = choice["message"]["content"]
 
-        # Try to parse JSON from the response
-        parsed = None
-        try:
-            parsed = json.loads(raw_text)
-        except (json.JSONDecodeError, TypeError):
-            pass
+        parsed = validate_json_response(raw_text)
 
         return AIResponse(
             role=request.role,

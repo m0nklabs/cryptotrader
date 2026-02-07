@@ -7,6 +7,7 @@ with mocked HTTP responses.
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -111,6 +112,18 @@ def test_validate_json_response_invalid():
     assert parsed is None
 
     parsed = validate_json_response("")
+    assert parsed is None
+
+
+def test_validate_json_response_rejects_non_finite_values():
+    """Test validation rejects NaN/Infinity values."""
+    parsed = validate_json_response('{"value": NaN}')
+    assert parsed is None
+
+    parsed = validate_json_response('{"value": Infinity}')
+    assert parsed is None
+
+    parsed = validate_json_response('{"value": -Infinity}')
     assert parsed is None
 
 
@@ -615,5 +628,107 @@ async def test_deepseek_streaming_fallback_on_error():
             # Should fall back to non-streaming after all retries exhausted
             assert len(chunks) == 1
             assert "Fallback response" in chunks[0]
-            # Stream should have been attempted 4 times (initial + 3 retries)
-            assert mock_stream.call_count == 4
+        # Stream should have been attempted 4 times (initial + 3 retries)
+        assert mock_stream.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_openai_streaming_success():
+    """Test OpenAI streaming with SSE format parsing."""
+    provider = OpenAIProvider()
+
+    mock_lines = [
+        "data: " + '{"choices": [{"delta": {"content": "Hello"}}]}',
+        "data: " + '{"choices": [{"delta": {"content": " world"}}]}',
+        "data: [DONE]",
+    ]
+
+    async def mock_aiter_lines():
+        for line in mock_lines:
+            yield line
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        mock_response.raise_for_status = MagicMock()
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.return_value = mock_cm
+
+        request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Test streaming")
+
+        chunks = []
+        async for chunk in provider.complete_stream(request, system_prompt="test"):
+            chunks.append(chunk)
+
+        assert chunks == ["Hello", " world"]
+
+
+@pytest.mark.asyncio
+async def test_xai_streaming_success():
+    """Test xAI streaming with SSE format parsing."""
+    provider = XAIProvider()
+
+    mock_lines = [
+        "data: " + '{"choices": [{"delta": {"content": "News"}}]}',
+        "data: " + '{"choices": [{"delta": {"content": " update"}}]}',
+        "data: [DONE]",
+    ]
+
+    async def mock_aiter_lines():
+        for line in mock_lines:
+            yield line
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        mock_response.raise_for_status = MagicMock()
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.return_value = mock_cm
+
+        request = AIRequest(role=RoleName.FUNDAMENTAL, user_prompt="Test streaming")
+
+        chunks = []
+        async for chunk in provider.complete_stream(request, system_prompt="test"):
+            chunks.append(chunk)
+
+        assert chunks == ["News", " update"]
+
+
+@pytest.mark.asyncio
+async def test_ollama_streaming_success():
+    """Test Ollama streaming with JSON lines parsing."""
+    provider = OllamaProvider()
+
+    mock_lines = [
+        json.dumps({"message": {"content": "Local"}, "done": False}),
+        json.dumps({"message": {"content": " stream"}, "done": False}),
+        json.dumps({"done": True}),
+    ]
+
+    async def mock_aiter_lines():
+        for line in mock_lines:
+            yield line
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        mock_response.raise_for_status = MagicMock()
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.return_value = mock_cm
+
+        request = AIRequest(role=RoleName.TACTICAL, user_prompt="Test streaming")
+
+        chunks = []
+        async for chunk in provider.complete_stream(request, system_prompt="test"):
+            chunks.append(chunk)
+
+        assert chunks == ["Local", " stream"]
