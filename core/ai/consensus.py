@@ -56,6 +56,10 @@ class ConsensusEngine:
         enable_calibration: bool = False,
         min_calibration_samples: int = DEFAULT_MIN_CALIBRATION_SAMPLES,
     ) -> None:
+        # Validate veto_mode to prevent misconfigured safety behavior
+        if veto_mode not in ("hard", "soft"):
+            raise ValueError(f"veto_mode must be 'hard' or 'soft', got {veto_mode!r}")
+        
         self.confidence_threshold = confidence_threshold
         self.min_agreement = min_agreement
         self.veto_mode = veto_mode

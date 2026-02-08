@@ -9,9 +9,34 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
+import pytest
 
 from core.ai.consensus import ConsensusEngine
 from core.ai.types import RoleName, RoleVerdict
+
+
+# ---------------------------------------------------------------------------
+# Test Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def reset_role_registry():
+    """Reset RoleRegistry before each test to avoid test interference."""
+    from core.ai.roles.base import RoleRegistry
+
+    # Save original state
+    original_roles = RoleRegistry._roles.copy()
+
+    # Clear registry before each test to avoid leakage
+    RoleRegistry.clear()
+
+    yield
+
+    # Restore original state after test
+    RoleRegistry.clear()
+    for role in original_roles.values():
+        RoleRegistry.register(role)
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +136,18 @@ def test_hard_veto_mode_default():
     assert decision.final_action == "NEUTRAL"
     assert decision.final_confidence == 0.0
     assert decision.vetoed_by == RoleName.STRATEGIST
+
+
+def test_invalid_veto_mode_raises_error():
+    """Test that invalid veto_mode raises ValueError."""
+    with pytest.raises(ValueError, match="veto_mode must be 'hard' or 'soft'"):
+        ConsensusEngine(veto_mode="invalid")
+    
+    with pytest.raises(ValueError, match="veto_mode must be 'hard' or 'soft'"):
+        ConsensusEngine(veto_mode="medium")
+    
+    with pytest.raises(ValueError, match="veto_mode must be 'hard' or 'soft'"):
+        ConsensusEngine(veto_mode="HARD")  # Case-sensitive
 
 
 # ---------------------------------------------------------------------------

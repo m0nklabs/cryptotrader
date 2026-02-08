@@ -224,7 +224,7 @@ class LLMRouter:
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Collect successful verdicts (partial evaluation)
+        # Collect verdicts and responses (partial evaluation)
         verdicts: list[RoleVerdict] = []
         responses: list[AIResponse] = []
         total_cost = 0.0
@@ -238,8 +238,9 @@ class LLMRouter:
                 continue
 
             if result is None:
+                # Circuit breaker is OPEN for this provider
                 logger.warning(
-                    "Role %s did not produce a result (timeout, circuit breaker, or internal error)",
+                    "Role %s skipped (circuit breaker OPEN)",
                     role.name.value,
                 )
                 failed_roles.append(role.name.value)
@@ -247,11 +248,8 @@ class LLMRouter:
 
             response, verdict = result
             responses.append(response)
-            verdicts.append(verdict)
-            total_cost += response.cost_usd
-            total_latency += response.latency_ms
-
-            # Track usage in memory
+            
+            # Track usage in memory (including error responses for audit trail)
             self._usage_log.append(
                 UsageRecord(
                     role=response.role,
@@ -265,6 +263,23 @@ class LLMRouter:
                     success=response.error is None,
                 )
             )
+            
+            # Only include non-error verdicts in consensus
+            # Error responses (timeout/exception) return NEUTRAL with conf=0.0
+            # but we still want to track them in the decision log
+            if response.error is not None:
+                logger.info(
+                    "Role %s returned error response: %s",
+                    role.name.value,
+                    response.error,
+                )
+                failed_roles.append(role.name.value)
+            else:
+                # Only successful responses contribute to consensus
+                verdicts.append(verdict)
+            
+            total_cost += response.cost_usd
+            total_latency += response.latency_ms
 
         # Partial evaluation: check if we have minimum required roles
         if len(verdicts) < self.min_roles_required:
@@ -353,7 +368,9 @@ class LLMRouter:
         """Evaluate a role with timeout and circuit breaker.
 
         Returns:
-            (response, verdict) tuple on success, None on timeout/circuit open
+            (response, verdict) tuple on success
+            (synthetic error response, NEUTRAL verdict) on timeout/exception
+            None only when circuit breaker is open
         """
         # Check circuit breaker
         provider = role.config.provider
@@ -393,14 +410,52 @@ class LLMRouter:
             # Timeout is a failure for circuit breaker
             if self.enable_circuit_breaker:
                 breaker.record_failure()
-            return None
+            
+            # Return synthetic AIResponse with error for audit trail
+            error_response = AIResponse(
+                role=role.name,
+                provider=provider,
+                model=role.config.model,
+                raw_text="",
+                error=f"timeout after {timeout}s",
+                tokens_in=0,
+                tokens_out=0,
+                cost_usd=0.0,
+                latency_ms=timeout * 1000,
+            )
+            neutral_verdict = RoleVerdict(
+                role=role.name,
+                action="NEUTRAL",
+                confidence=0.0,
+                reasoning=f"Role timed out after {timeout}s",
+            )
+            return (error_response, neutral_verdict)
 
         except Exception as exc:
             logger.error("Role %s evaluation failed: %s", role.name.value, exc)
             # Record failure in circuit breaker
             if self.enable_circuit_breaker:
                 breaker.record_failure()
-            return None
+            
+            # Return synthetic AIResponse with error details for audit trail
+            error_response = AIResponse(
+                role=role.name,
+                provider=provider,
+                model=role.config.model,
+                raw_text="",
+                error=str(exc),
+                tokens_in=0,
+                tokens_out=0,
+                cost_usd=0.0,
+                latency_ms=0.0,
+            )
+            neutral_verdict = RoleVerdict(
+                role=role.name,
+                action="NEUTRAL",
+                confidence=0.0,
+                reasoning=f"Role evaluation failed: {exc}",
+            )
+            return (error_response, neutral_verdict)
 
     async def _evaluate_role(
         self,
