@@ -128,15 +128,19 @@ class StrategistRole(AgentRole):
         sanitized_portfolio["total_equity"] = total_equity
         sanitized_portfolio["available_balance"] = available_balance
 
-        request.context = {
-            **request.context,
-            "proposed_trade": proposed_trade,
-            "positions": positions,
-            "portfolio": sanitized_portfolio,
-            "risk_limits": risk_limits,
-        }
+        sanitized_request = AIRequest(
+            role=request.role,
+            user_prompt=request.user_prompt,
+            context={
+                **request.context,
+                "proposed_trade": proposed_trade,
+                "positions": positions,
+                "portfolio": sanitized_portfolio,
+                "risk_limits": risk_limits,
+            },
+        )
 
-        return await super().evaluate(request, system_prompt)
+        return await super().evaluate(sanitized_request, system_prompt)
 
     def _check_risk_limits(
         self,

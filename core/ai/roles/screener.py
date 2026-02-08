@@ -173,7 +173,7 @@ class ScreenerRole(AgentRole):
             # Extract and sanitize action
             raw_action = response.parsed.get("action", "NEUTRAL")
             if isinstance(raw_action, str):
-                raw_action = raw_action.upper()
+                raw_action = raw_action.strip().upper()
             else:
                 raw_action = "NEUTRAL"
             # Map invalid SKIP action to NEUTRAL (SKIP is not a valid SignalAction)
