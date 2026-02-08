@@ -322,7 +322,7 @@ async def list_providers():
     checked_at = datetime.now(timezone.utc)
 
     # Check each provider
-    for provider in ProviderName:
+    for provider in ProviderName.__members__.values():
         factory = _provider_factory(provider)
         models = _provider_models(provider)
         if factory is None:
