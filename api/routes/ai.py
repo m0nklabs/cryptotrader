@@ -19,13 +19,20 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from core.ai.prompts.registry import PromptRegistry
+from core.ai.providers.base import ProviderRegistry
 from core.ai.providers.deepseek import DEEPSEEK_R1_CONFIG, DEEPSEEK_V3_CONFIG, DeepSeekProvider
 from core.ai.providers.ollama import OLLAMA_CONFIG, OllamaProvider
 from core.ai.providers.openai import OPENAI_CONFIG, OpenAIProvider
 from core.ai.providers.openrouter import OPENROUTER_CONFIG, OpenRouterProvider
 from core.ai.providers.xai import XAI_CONFIG, XAIProvider
 from core.ai.router import LLMRouter
-from core.ai.types import ProviderName, RoleName
+from core.ai.roles.base import RoleRegistry
+from core.ai.roles.fundamental import DEFAULT_FUNDAMENTAL_CONFIG, FundamentalRole
+from core.ai.roles.screener import DEFAULT_SCREENER_CONFIG, ScreenerRole
+from core.ai.roles.strategist import DEFAULT_STRATEGIST_CONFIG, StrategistRole
+from core.ai.roles.tactical import DEFAULT_TACTICAL_CONFIG, TacticalRole
+from core.ai.types import ProviderName, RoleConfig, RoleName
 from db.crud import ai as ai_crud
 
 logger = logging.getLogger(__name__)
@@ -51,16 +58,123 @@ def _asyncpg_ssl_connect_args_from_env() -> dict[str, ssl.SSLContext]:
     sslcert = os.environ.get("PGSSLCERT")
     sslkey = os.environ.get("PGSSLKEY")
 
-    context = ssl.create_default_context(cafile=sslrootcert or None)
-    if sslmode == "verify-full":
-        context.check_hostname = True
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    if sslmode in {"verify-ca", "verify-full"}:
+        context.check_hostname = sslmode == "verify-full"
+        context.verify_mode = ssl.CERT_REQUIRED
     else:
         context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+    if sslrootcert:
+        context.load_verify_locations(cafile=sslrootcert)
+    elif context.verify_mode == ssl.CERT_REQUIRED:
+        context.load_default_certs()
 
     if sslcert and sslkey:
         context.load_cert_chain(certfile=sslcert, keyfile=sslkey)
 
     return {"ssl": context}
+
+
+def _register_providers() -> None:
+    """Register default provider instances."""
+    ProviderRegistry.register(DeepSeekProvider())
+    ProviderRegistry.register(OpenAIProvider())
+    ProviderRegistry.register(XAIProvider())
+    ProviderRegistry.register(OllamaProvider())
+    ProviderRegistry.register(OpenRouterProvider())
+
+
+def _role_defaults() -> dict[RoleName, RoleConfig]:
+    return {
+        RoleName.SCREENER: DEFAULT_SCREENER_CONFIG,
+        RoleName.TACTICAL: DEFAULT_TACTICAL_CONFIG,
+        RoleName.FUNDAMENTAL: DEFAULT_FUNDAMENTAL_CONFIG,
+        RoleName.STRATEGIST: DEFAULT_STRATEGIST_CONFIG,
+    }
+
+
+def _role_factory() -> dict[RoleName, type]:
+    return {
+        RoleName.SCREENER: ScreenerRole,
+        RoleName.TACTICAL: TacticalRole,
+        RoleName.FUNDAMENTAL: FundamentalRole,
+        RoleName.STRATEGIST: StrategistRole,
+    }
+
+
+def _register_default_roles() -> None:
+    defaults = _role_defaults()
+    factories = _role_factory()
+    for role_name, role_config in defaults.items():
+        role_class = factories[role_name]
+        RoleRegistry.register(role_class(role_config))
+
+
+def _role_config_from_db(db_config) -> RoleConfig | None:
+    defaults = _role_defaults()
+    try:
+        role_name = RoleName(db_config.name)
+        provider = ProviderName(db_config.provider)
+        fallback_provider = ProviderName(db_config.fallback_provider) if db_config.fallback_provider else None
+    except ValueError as exc:
+        logger.warning("Skipping invalid role config %s: %s", db_config.name, exc)
+        return None
+
+    default_config = defaults.get(role_name)
+    if default_config is None:
+        return None
+    return RoleConfig(
+        name=role_name,
+        provider=provider,
+        model=db_config.model or default_config.model,
+        system_prompt_id=db_config.system_prompt_id or default_config.system_prompt_id,
+        temperature=db_config.temperature if db_config.temperature is not None else default_config.temperature,
+        max_tokens=db_config.max_tokens or default_config.max_tokens,
+        weight=db_config.weight if db_config.weight is not None else default_config.weight,
+        enabled=db_config.enabled if db_config.enabled is not None else default_config.enabled,
+        fallback_provider=fallback_provider or default_config.fallback_provider,
+        fallback_model=db_config.fallback_model or default_config.fallback_model,
+    )
+
+
+async def bootstrap_ai() -> None:
+    """Register providers, roles, and prompts for AI evaluation."""
+    await ProviderRegistry.close_all()
+    RoleRegistry.clear()
+    PromptRegistry.clear()
+    _register_providers()
+
+    try:
+        factory = _get_session_factory()
+    except Exception as exc:
+        logger.warning("AI bootstrap skipped DB load: %s", exc)
+        PromptRegistry.load_defaults()
+        _register_default_roles()
+        return
+
+    async with factory() as db:
+        await PromptRegistry.load_from_db(db)
+        configs = await ai_crud.get_role_configs(db)
+
+    if not configs:
+        _register_default_roles()
+        return
+
+    factories = _role_factory()
+    for config in configs:
+        role_config = _role_config_from_db(config)
+        if not role_config:
+            continue
+        role_class = factories.get(role_config.name)
+        if role_class is None:
+            continue
+        RoleRegistry.register(role_class(role_config))
+
+    if not RoleRegistry.active_roles():
+        _register_default_roles()
 
 
 def _normalize_database_url(database_url: str) -> str:
@@ -600,7 +714,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
         except ValueError as e:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid role name: {e}. Valid roles: {[r.value for r in RoleName]}",
+                detail=(f"Invalid role name: {e}. Valid roles: {[r.value for r in RoleName.__members__.values()]}"),
             )
 
     # Run evaluation
@@ -643,7 +757,8 @@ async def evaluate_opportunity(request: EvaluationRequest):
         )
 
         # Log per-role usage records from the router's usage log
-        for usage_record in router_instance.get_usage_log():
+        usage_records = router_instance.get_usage_log()
+        for usage_record in usage_records:
             await ai_crud.log_usage(
                 db,
                 role=usage_record.role.value,
@@ -657,6 +772,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
                 success=usage_record.success,
             )
 
+        if usage_records:
             router_instance.clear_usage_log()
 
     return EvaluationResponse(
@@ -724,7 +840,9 @@ async def evaluate_single_role(request: EvaluationRequest):
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid role name '{request.roles[0]}'. Valid roles: {[r.value for r in RoleName]}",
+            detail=(
+                f"Invalid role name '{request.roles[0]}'. Valid roles: {[r.value for r in RoleName.__members__.values()]}"
+            ),
         )
 
     # Run evaluation with single role

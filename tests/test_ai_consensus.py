@@ -28,10 +28,15 @@ def reset_role_registry():
     # Save original state
     original_roles = RoleRegistry._roles.copy()
 
+    # Clear registry before each test to avoid leakage
+    RoleRegistry.clear()
+
     yield
 
     # Restore original state after test
-    RoleRegistry._roles = original_roles
+    RoleRegistry.clear()
+    for role in original_roles.values():
+        RoleRegistry.register(role)
 
 
 @pytest.fixture
@@ -121,6 +126,27 @@ def test_consensus_simple_sell(engine):
 
 def test_consensus_mixed_votes_buy_wins(engine):
     """Test mixed votes where BUY wins due to higher weights."""
+    from core.ai.roles.base import RoleRegistry
+    from core.ai.types import RoleConfig, ProviderName
+
+    # Register mock roles with known weights
+    for role_name, weight in [
+        (RoleName.SCREENER, 0.5),
+        (RoleName.TACTICAL, 1.5),
+        (RoleName.STRATEGIST, 1.2),
+    ]:
+        mock_role = Mock()
+        mock_role.name = role_name
+        mock_role.weight = weight
+        mock_role.config = RoleConfig(
+            name=role_name,
+            provider=ProviderName.DEEPSEEK,
+            model="test",
+            system_prompt_id="test",
+            weight=weight,
+        )
+        RoleRegistry.register(mock_role)
+
     verdicts = [
         # Screener (weight 0.5) votes NEUTRAL
         RoleVerdict(
@@ -373,6 +399,7 @@ def test_tie_breaking_buy_vs_sell(engine):
     # With min_agreement=2 and split votes, consensus should be NEUTRAL
     assert decision.final_action == "NEUTRAL"
     assert decision.final_confidence == pytest.approx(0.5)
+    assert decision.vetoed_by is None
 
 
 def test_single_verdict_below_agreement_threshold(engine):

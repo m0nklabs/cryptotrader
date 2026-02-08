@@ -531,7 +531,7 @@ async def get_daily_usage(
             func.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
             func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
         )
-        .where(AIUsageLog.created_at >= start_date)
+        .where(AIUsageLog.created_at >= start_date, AIUsageLog.created_at <= end_date)
         .group_by(cast(AIUsageLog.created_at, Date))
         .order_by(cast(AIUsageLog.created_at, Date).desc())
     )

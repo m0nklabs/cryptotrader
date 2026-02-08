@@ -62,6 +62,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+@app.on_event("startup")
+async def _bootstrap_ai_stack() -> None:
+    await ai_routes.bootstrap_ai()
+
+
 # Add middleware for rate limit tracking
 app.add_middleware(RateLimitMiddleware)
 
