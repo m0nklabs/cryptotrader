@@ -108,8 +108,8 @@ class ConsensusEngine:
                 best_action = action
 
         # Detect 50/50 tie between BUY and SELL before applying thresholds
-        buy_score = action_scores.get("BUY", 0.0)
-        sell_score = action_scores.get("SELL", 0.0)
+        buy_score = action_scores.get("BUY", 0.0) / total_weight
+        sell_score = action_scores.get("SELL", 0.0) / total_weight
         is_tie = buy_score > 0 and sell_score > 0 and abs(buy_score - sell_score) < 1e-9
 
         # Step 4: Check thresholds

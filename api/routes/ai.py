@@ -177,6 +177,21 @@ async def bootstrap_ai() -> None:
         _register_default_roles()
 
 
+async def shutdown_ai() -> None:
+    """Shutdown AI resources (providers + DB engine)."""
+    global _engine, _async_session_factory
+
+    await ProviderRegistry.close_all()
+    RoleRegistry.clear()
+    PromptRegistry.clear()
+
+    if _engine is not None:
+        await _engine.dispose()
+
+    _engine = None
+    _async_session_factory = None
+
+
 def _normalize_database_url(database_url: str) -> str:
     """Normalize DATABASE_URL to an async SQLAlchemy URL.
 
@@ -743,10 +758,25 @@ async def evaluate_opportunity(request: EvaluationRequest):
         for v in decision.verdicts
     ]
 
-    # Persist decision and usage logs to database
+    # Persist decision + usage logs to database (single transaction)
+    usage_records = [
+        {
+            "role": u.role.value,
+            "provider": u.provider.value,
+            "model": u.model,
+            "tokens_in": u.tokens_in,
+            "tokens_out": u.tokens_out,
+            "cost_usd": u.cost_usd,
+            "latency_ms": u.latency_ms,
+            "symbol": u.symbol,
+            "success": u.success,
+            "error": getattr(u, "error", None),
+        }
+        for u in router_instance.get_usage_log()
+    ]
+
     async with factory() as db:
-        # Log the aggregated decision
-        logged_decision = await ai_crud.log_decision(
+        logged_decision = await ai_crud.log_decision_with_usage(
             db,
             symbol=request.symbol,
             timeframe=request.timeframe,
@@ -754,29 +784,14 @@ async def evaluate_opportunity(request: EvaluationRequest):
             final_confidence=decision.final_confidence,
             verdicts=verdict_dicts,
             reasoning=decision.reasoning,
-            vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
+            vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,
             total_cost_usd=decision.total_cost_usd,
             total_latency_ms=decision.total_latency_ms,
+            usage_records=usage_records,
         )
 
-        # Log per-role usage records from the router's usage log
-        usage_records = router_instance.get_usage_log()
-        for usage_record in usage_records:
-            await ai_crud.log_usage(
-                db,
-                role=usage_record.role.value,
-                provider=usage_record.provider.value,
-                model=usage_record.model,
-                tokens_in=usage_record.tokens_in,
-                tokens_out=usage_record.tokens_out,
-                cost_usd=usage_record.cost_usd,
-                latency_ms=usage_record.latency_ms,
-                symbol=usage_record.symbol,
-                success=usage_record.success,
-            )
-
-        if usage_records:
-            router_instance.clear_usage_log()
+    if usage_records:
+        router_instance.clear_usage_log()
 
     return EvaluationResponse(
         symbol=request.symbol,
@@ -864,7 +879,17 @@ async def evaluate_single_role(request: EvaluationRequest):
         "symbol": request.symbol,
         "timeframe": request.timeframe,
         "role": request.roles[0],
-        "verdict": decision.verdicts[0].__dict__ if decision.verdicts else None,
+        "verdict": (
+            {
+                "role": decision.verdicts[0].role.value,
+                "action": decision.verdicts[0].action,
+                "confidence": decision.verdicts[0].confidence,
+                "reasoning": decision.verdicts[0].reasoning,
+                "metrics": decision.verdicts[0].metrics,
+            }
+            if decision.verdicts
+            else None
+        ),
         "final_action": decision.final_action,
         "final_confidence": decision.final_confidence,
         "reasoning": decision.reasoning,

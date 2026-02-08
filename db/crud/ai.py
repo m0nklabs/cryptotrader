@@ -481,7 +481,7 @@ async def log_decision_with_usage(
     vetoed_by: str | None = None,
     total_cost_usd: float = 0.0,
     total_latency_ms: float = 0.0,
-    usage_records: list[dict] = None,
+    usage_records: list[dict] | None = None,
 ) -> AIDecision:
     """Log an AI consensus decision with usage records in a single transaction.
 
@@ -602,9 +602,11 @@ async def get_daily_usage(
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
 
+    date_expr = cast(func.timezone("UTC", AIUsageLog.created_at), Date)
+
     query = (
         select(
-            cast(AIUsageLog.created_at, Date).label("date"),
+            date_expr.label("date"),
             func.count(AIUsageLog.id).label("total_requests"),
             func.sum(AIUsageLog.cost_usd).label("total_cost_usd"),
             func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
@@ -613,8 +615,8 @@ async def get_daily_usage(
             func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
         )
         .where(AIUsageLog.created_at >= start_date, AIUsageLog.created_at <= end_date)
-        .group_by(cast(AIUsageLog.created_at, Date))
-        .order_by(cast(AIUsageLog.created_at, Date).desc())
+        .group_by(date_expr)
+        .order_by(date_expr.desc())
     )
 
     result = await db.execute(query)

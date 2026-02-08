@@ -60,11 +60,21 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await ai_routes.bootstrap_ai()
+    try:
+        await ai_routes.bootstrap_ai()
+    except Exception:
+        logger.exception("AI bootstrap failed")
+
     try:
         yield
     finally:
-        await ai_routes.shutdown_ai()
+        shutdown = getattr(ai_routes, "shutdown_ai", None)
+        if shutdown is None:
+            return
+        try:
+            await shutdown()
+        except Exception:
+            logger.exception("AI shutdown failed")
 
 
 app = FastAPI(
