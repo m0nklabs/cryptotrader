@@ -22,6 +22,7 @@ import logging
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -56,16 +57,19 @@ from core.ratelimit import RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await ai_routes.bootstrap_ai()
+    yield
+
+
 app = FastAPI(
     title="CryptoTrader API",
     description="API for candles, health checks, ingestion status, and paper trading",
     version="1.0.0",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("startup")
-async def _bootstrap_ai_stack() -> None:
-    await ai_routes.bootstrap_ai()
 
 
 # Add middleware for rate limit tracking

@@ -578,6 +578,12 @@ async def update_role(
         if not config:
             raise HTTPException(status_code=404, detail=f"Role '{role}' not found")
 
+        role_config = _role_config_from_db(config)
+        if role_config:
+            role_class = _role_factory().get(role_config.name)
+            if role_class is not None:
+                RoleRegistry.register(role_class(role_config))
+
         return RoleConfigResponse(
             name=config.name,
             provider=config.provider,
@@ -631,28 +637,31 @@ async def create_prompt(request: SystemPromptCreate):
         request: Prompt creation request with role, content, and description
     """
     factory = _get_session_factory()
-    async with factory() as db:
-        # Get next version number
-        next_version = await ai_crud.get_next_version(db, request.role)
-
-        # Generate prompt ID
-        prompt_id = f"{request.role}_v{next_version}"
-
-        # Force new prompts to be inactive by default to prevent multiple active prompts
-        # Use activate endpoint to make a prompt active (which deactivates others)
-        prompt = await ai_crud.create_prompt(
-            db,
-            prompt_id=prompt_id,
-            role=request.role,
-            version=next_version,
-            content=request.content,
-            description=request.description,
-            is_active=False,  # Always create as inactive
+    try:
+        role_name = RoleName(request.role)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid role name '{request.role}'. Valid roles: {[r.value for r in RoleName.__members__.values()]}"
+            ),
         )
+
+    async with factory() as db:
+        try:
+            prompt = await PromptRegistry.create_prompt(
+                db,
+                role=role_name,
+                content=request.content,
+                description=request.description,
+                is_active=False,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
         return SystemPromptResponse(
             id=prompt.id,
-            role=prompt.role,
+            role=prompt.role.value,
             version=prompt.version,
             content=prompt.content,
             description=prompt.description,
@@ -673,13 +682,17 @@ async def activate_prompt(prompt_id: str = PathParam(..., description="Prompt ID
     """
     factory = _get_session_factory()
     async with factory() as db:
-        prompt = await ai_crud.activate_prompt(db, prompt_id)
+        try:
+            prompt = await PromptRegistry.activate_prompt(db, prompt_id)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
         if not prompt:
             raise HTTPException(status_code=404, detail=f"Prompt '{prompt_id}' not found")
 
         return SystemPromptResponse(
             id=prompt.id,
-            role=prompt.role,
+            role=prompt.role.value,
             version=prompt.version,
             content=prompt.content,
             description=prompt.description,
@@ -857,11 +870,22 @@ async def evaluate_single_role(request: EvaluationRequest):
     )
 
     # Return detailed response including individual role verdict
+    verdict_payload = None
+    if decision.verdicts:
+        verdict = decision.verdicts[0]
+        verdict_payload = {
+            "role": verdict.role.value,
+            "action": verdict.action,
+            "confidence": verdict.confidence,
+            "reasoning": verdict.reasoning,
+            "metrics": verdict.metrics,
+        }
+
     return {
         "symbol": request.symbol,
         "timeframe": request.timeframe,
         "role": request.roles[0],
-        "verdict": decision.verdicts[0].__dict__ if decision.verdicts else None,
+        "verdict": verdict_payload,
         "final_action": decision.final_action,
         "final_confidence": decision.final_confidence,
         "reasoning": decision.reasoning,

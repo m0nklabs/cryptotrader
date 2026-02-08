@@ -515,15 +515,15 @@ async def get_daily_usage(
         total_tokens_in, total_tokens_out, avg_latency_ms, success_rate.
     """
     from datetime import datetime, timedelta, timezone
-    from sqlalchemy import cast, Date
 
     # Calculate start date (use timezone-aware UTC datetime)
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
 
+    day_bucket = func.date_trunc("day", func.timezone("utc", AIUsageLog.created_at)).label("day_bucket")
     query = (
         select(
-            cast(AIUsageLog.created_at, Date).label("date"),
+            day_bucket,
             func.count(AIUsageLog.id).label("total_requests"),
             func.sum(AIUsageLog.cost_usd).label("total_cost_usd"),
             func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
@@ -532,8 +532,8 @@ async def get_daily_usage(
             func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
         )
         .where(AIUsageLog.created_at >= start_date, AIUsageLog.created_at <= end_date)
-        .group_by(cast(AIUsageLog.created_at, Date))
-        .order_by(cast(AIUsageLog.created_at, Date).desc())
+        .group_by(day_bucket)
+        .order_by(day_bucket.desc())
     )
 
     result = await db.execute(query)
@@ -541,7 +541,7 @@ async def get_daily_usage(
 
     return [
         {
-            "date": str(row.date),
+            "date": row.day_bucket.date().isoformat() if row.day_bucket else None,
             "total_requests": row.total_requests,
             "total_cost_usd": float(row.total_cost_usd or 0.0),
             "total_tokens_in": row.total_tokens_in or 0,
