@@ -160,10 +160,23 @@ project/
 6. **DRY** - Don't repeat yourself, extract common patterns
 
 ### Git Discipline
+
 - **Atomic commits** - One logical change per commit
 - **Descriptive messages** - What changed AND why
 - **Branch naming** - `feat/`, `fix/`, `refactor/`, `docs/`
 - **Never commit** - Secrets, .env files, node_modules, __pycache__
+
+## PR Review Semantics
+
+When the user says (Dutch) "doe is een review van deze PR" / "review deze PR", they mean:
+
+1. Create a **new PR review** (a fresh review thread).
+2. Add **inline review comments** as GitHub **suggestions** (```suggestion blocks) where applicable.
+3. Submit the review as a **comment** (or request changes if warranted), keeping it concise and actionable.
+
+## PR Fix Semantics
+
+When the user points to a specific PR with a bug / possible improvement to fix, apply the fix on that PR's branch and commit + push to the PR branch. Do **not** commit such fixes directly to `master`/`main`.
 
 ### Testing Requirements
 - Test BEFORE saying something is fixed
