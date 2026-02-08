@@ -71,15 +71,22 @@ request = AIRequest(
 
 ### Output Format
 
-```json
-{
-  "action": "BUY",
-  "confidence": 0.75,
-  "reasoning": "Found 2 strong opportunities",
-  "passed_symbols": ["BTC/USD", "ETH/USD"],
-  "skipped_symbols": ["SOL/USD"]
-}
+**RoleVerdict Structure:**
+```python
+RoleVerdict(
+  role=RoleName.SCREENER,
+  action="BUY",  # Valid: BUY, SELL, NEUTRAL (SKIP/STRONG_BUY mapped to NEUTRAL)
+  confidence=0.75,  # 0.0-1.0
+  reasoning="Found 2 strong opportunities",
+  metrics={
+    "symbols_passed": 2.0,
+    "symbols_skipped": 1.0,
+    "strong_buy_count": 1.0
+  }
+)
 ```
+
+**Note:** The LLM may return lists like `passed_symbols` and `skipped_symbols`, but `ScreenerRole.parse_response()` only stores their **counts** in `metrics` (all values are floats). The lists themselves are not preserved in the verdict.
 
 ### Performance Target
 
@@ -159,18 +166,23 @@ request = AIRequest(
 
 ### Output Format
 
-```json
-{
-  "action": "BUY",
-  "confidence": 0.8,
-  "reasoning": "RSI oversold + MACD crossover + support level",
-  "entry": 50000,
-  "stop_loss": 49000,
-  "take_profit": 55000,
-  "risk_reward": 5.0,
-  "timeframe_alignment": "STRONG"
-}
+**RoleVerdict Structure:**
+```python
+RoleVerdict(
+  role=RoleName.TACTICAL,
+  action="BUY",
+  confidence=0.8,  # 0.0-1.0
+  reasoning="RSI oversold + MACD crossover + support level",
+  metrics={
+    "entry": 50000.0,
+    "stop_loss": 49000.0,
+    "take_profit": 55000.0,
+    "risk_reward": 5.0
+  }
+)
 ```
+
+**Note:** Price levels (`entry`, `stop_loss`, `take_profit`) and the calculated `risk_reward` ratio are stored in `metrics` as floats. The LLM may also return fields like `timeframe_alignment`, but these are **not** propagated into the `RoleVerdict` (they exist only in `AIResponse.parsed`).
 
 ### Consensus Weight
 
@@ -235,18 +247,23 @@ request = AIRequest(
 
 ### Output Format
 
-```json
-{
-  "action": "BUY",
-  "confidence": 0.7,
-  "reasoning": "Positive news flow with ETF approval, low event risk",
-  "sentiment_score": 0.6,
-  "event_risk": 0.1,
-  "social_volume": 0.8,
-  "key_events": ["ETF approval", "Exchange listing"],
-  "news_summary": "Two major positive developments in past 24h"
-}
+**RoleVerdict Structure:**
+```python
+RoleVerdict(
+  role=RoleName.FUNDAMENTAL,
+  action="BUY",
+  confidence=0.7,  # 0.0-1.0
+  reasoning="Positive news flow with ETF approval, low event risk",
+  metrics={
+    "sentiment_score": 0.6,  # -1.0 to 1.0
+    "event_risk": 0.1,  # 0.0-1.0
+    "social_volume": 0.8,  # 0.0-1.0
+    "key_events_count": 2.0  # Count of key events
+  }
+)
 ```
+
+**Note:** Only numeric metrics are stored in `RoleVerdict.metrics` (all floats). The LLM may return `key_events` (list) and `news_summary` (string), but `FundamentalRole.parse_response()` only persists `key_events_count`. The full lists/strings exist only in `AIResponse.parsed`, not in the verdict.
 
 ### Consensus Weight
 
@@ -344,27 +361,33 @@ request = AIRequest(
 
 ### Output Format
 
-```json
-{
-  "action": "BUY",
-  "confidence": 0.75,
-  "reasoning": "Risk within limits, low correlation with existing positions",
-  "position_size_pct": 0.05,
-  "portfolio_risk_pct": 0.18,
-  "correlation_score": 0.2
-}
+**RoleVerdict Structure (Approval):**
+```python
+RoleVerdict(
+  role=RoleName.STRATEGIST,
+  action="BUY",
+  confidence=0.75,  # 0.0-1.0
+  reasoning="Risk within limits, low correlation with existing positions",
+  metrics={
+    "position_size_pct": 0.05,  # 0.0-1.0
+    "portfolio_risk_pct": 0.18,  # 0.0-1.0
+    "correlation_score": 0.2  # 0.0-1.0
+  }
+)
 ```
 
-Or for VETO:
-
-```json
-{
-  "action": "VETO",
-  "confidence": 1.0,
-  "reasoning": "Hard risk limit breach: Max portfolio exposure: 96.0% >= 95.0%",
-  "veto_reason": "Portfolio exposure limit exceeded"
-}
+**RoleVerdict Structure (VETO):**
+```python
+RoleVerdict(
+  role=RoleName.STRATEGIST,
+  action="VETO",
+  confidence=1.0,
+  reasoning="Hard risk limit breach: Max portfolio exposure: 96.0% >= 95.0%",
+  metrics={}
+)
 ```
+
+**Note:** Risk metrics are stored in `metrics` as floats (0.0-1.0 range). The LLM may return `veto_reason` as a separate field, but `StrategistRole.parse_response()` **does not** propagate it into `RoleVerdict.metrics`. If downstream consumers need the veto reason, they should extract it from `AIResponse.parsed["veto_reason"]` or parse it from `reasoning`.
 
 ### Consensus Weight
 
