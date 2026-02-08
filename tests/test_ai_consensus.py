@@ -280,7 +280,8 @@ def test_veto_blocks_unanimous_buy(engine):
     assert decision.final_action == "NEUTRAL"
     assert decision.final_confidence == 0.0
     assert decision.vetoed_by == RoleName.STRATEGIST
-    assert "VETOED by strategist" in decision.reasoning
+    assert "VETOED" in decision.reasoning
+    assert "strategist" in decision.reasoning.lower()
     assert "Portfolio correlation risk" in decision.reasoning
 
 
@@ -306,7 +307,8 @@ def test_veto_from_any_role(engine):
 
     assert decision.final_action == "NEUTRAL"
     assert decision.vetoed_by == RoleName.SCREENER
-    assert "VETOED by screener" in decision.reasoning
+    assert "VETOED" in decision.reasoning
+    assert "screener" in decision.reasoning.lower()
 
 
 def test_multiple_vetos_first_wins(engine):

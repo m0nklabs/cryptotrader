@@ -3,15 +3,19 @@
 The router is the main entry point for the Multi-Brain system.
 It orchestrates:
 1. Prompt lookup
-2. Parallel role evaluation
-3. Consensus aggregation
-4. Usage tracking
+2. Parallel role evaluation with timeouts
+3. Circuit breaker per provider
+4. Consensus aggregation
+5. Usage tracking and database persistence
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from dataclasses import dataclass
+from enum import Enum
 
 from core.ai.consensus import ConsensusEngine
 from core.ai.prompts.registry import PromptRegistry
@@ -20,6 +24,7 @@ from core.ai.types import (
     AIRequest,
     AIResponse,
     ConsensusDecision,
+    ProviderName,
     RoleName,
     RoleVerdict,
     UsageRecord,
@@ -27,9 +32,95 @@ from core.ai.types import (
 
 logger = logging.getLogger(__name__)
 
+# Default timeout per role (seconds)
+DEFAULT_ROLE_TIMEOUT = 30.0
+TACTICAL_TIMEOUT = 60.0  # Tactical needs more time for reasoning
+
+# Circuit breaker configuration
+CIRCUIT_FAILURE_THRESHOLD = 5  # Consecutive failures to open circuit
+CIRCUIT_COOLDOWN_SECONDS = 300  # 5 minutes
+CIRCUIT_HALF_OPEN_LIMIT = 1  # Number of test requests in half-open state
+
+
+class CircuitState(str, Enum):
+    """Circuit breaker state."""
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"  # Blocking requests (cooldown)
+    HALF_OPEN = "half_open"  # Testing recovery
+
+
+@dataclass
+class CircuitBreaker:
+    """Circuit breaker for a provider to prevent cascading failures.
+    
+    State transitions:
+    - CLOSED → OPEN: After N consecutive failures
+    - OPEN → HALF_OPEN: After cooldown period
+    - HALF_OPEN → CLOSED: After successful request
+    - HALF_OPEN → OPEN: After failed request
+    """
+    provider: ProviderName
+    state: CircuitState = CircuitState.CLOSED
+    failure_count: int = 0
+    last_failure_time: float = 0.0
+    half_open_successes: int = 0
+    
+    def should_allow_request(self) -> bool:
+        """Check if request should be allowed through."""
+        if self.state == CircuitState.CLOSED:
+            return True
+        
+        if self.state == CircuitState.OPEN:
+            # Check if cooldown period has elapsed
+            if time.monotonic() - self.last_failure_time >= CIRCUIT_COOLDOWN_SECONDS:
+                logger.info("Circuit breaker for %s entering HALF_OPEN state", self.provider.value)
+                self.state = CircuitState.HALF_OPEN
+                self.half_open_successes = 0
+                return True
+            return False
+        
+        # HALF_OPEN: Allow limited requests to test recovery
+        return self.half_open_successes < CIRCUIT_HALF_OPEN_LIMIT
+    
+    def record_success(self) -> None:
+        """Record a successful request."""
+        if self.state == CircuitState.HALF_OPEN:
+            self.half_open_successes += 1
+            if self.half_open_successes >= CIRCUIT_HALF_OPEN_LIMIT:
+                logger.info("Circuit breaker for %s closing (recovered)", self.provider.value)
+                self.state = CircuitState.CLOSED
+                self.failure_count = 0
+        elif self.state == CircuitState.CLOSED:
+            # Reset failure count on success
+            self.failure_count = 0
+    
+    def record_failure(self) -> None:
+        """Record a failed request."""
+        self.failure_count += 1
+        self.last_failure_time = time.monotonic()
+        
+        if self.state == CircuitState.CLOSED:
+            if self.failure_count >= CIRCUIT_FAILURE_THRESHOLD:
+                logger.error(
+                    "Circuit breaker for %s OPENING after %d consecutive failures",
+                    self.provider.value,
+                    self.failure_count,
+                )
+                self.state = CircuitState.OPEN
+        elif self.state == CircuitState.HALF_OPEN:
+            logger.warning("Circuit breaker for %s reopening (failed during recovery)", self.provider.value)
+            self.state = CircuitState.OPEN
+            self.half_open_successes = 0
+
 
 class LLMRouter:
     """Central router for the Multi-Brain agent topology.
+
+    Features:
+    - Parallel role evaluation with per-role timeouts
+    - Circuit breaker per provider to prevent cascading failures
+    - Database persistence for usage tracking
+    - Partial evaluation (graceful degradation)
 
     Usage::
 
@@ -49,9 +140,24 @@ class LLMRouter:
     def __init__(
         self,
         consensus_engine: ConsensusEngine | None = None,
+        min_roles_required: int = 2,
+        enable_circuit_breaker: bool = True,
     ) -> None:
         self.consensus = consensus_engine or ConsensusEngine()
+        self.min_roles_required = min_roles_required
+        self.enable_circuit_breaker = enable_circuit_breaker
         self._usage_log: list[UsageRecord] = []
+        
+        # Circuit breakers per provider
+        self._circuit_breakers: dict[ProviderName, CircuitBreaker] = {}
+        
+        # Role-specific timeouts
+        self._role_timeouts: dict[RoleName, float] = {
+            RoleName.SCREENER: DEFAULT_ROLE_TIMEOUT,
+            RoleName.TACTICAL: TACTICAL_TIMEOUT,  # Longer for reasoning models
+            RoleName.FUNDAMENTAL: DEFAULT_ROLE_TIMEOUT,
+            RoleName.STRATEGIST: DEFAULT_ROLE_TIMEOUT,
+        }
 
     async def evaluate_opportunity(
         self,
@@ -62,6 +168,7 @@ class LLMRouter:
         portfolio: dict | None = None,
         risk_limits: dict | None = None,
         roles: list[RoleName] | None = None,
+        db_session=None,  # Optional AsyncSession for database persistence
     ) -> ConsensusDecision:
         """Run the full Multi-Brain evaluation pipeline.
 
@@ -73,9 +180,11 @@ class LLMRouter:
             portfolio: Current portfolio state (for strategist).
             risk_limits: Risk parameters (for strategist).
             roles: Specific roles to query (default: all active).
+            db_session: Optional database session for usage logging.
 
         Returns:
             Aggregated ConsensusDecision from all queried roles.
+            Uses partial evaluation if some roles fail/timeout.
         """
         active_roles = self._resolve_roles(roles)
         if not active_roles:
@@ -96,7 +205,7 @@ class LLMRouter:
             "risk_limits": risk_limits or {},
         }
 
-        # Dispatch to all roles in parallel
+        # Dispatch to all roles in parallel with timeouts
         tasks = []
         for role in active_roles:
             request = AIRequest(
@@ -106,27 +215,38 @@ class LLMRouter:
             )
             prompt = PromptRegistry.get_active(role.name)
             system_prompt = prompt.content if prompt else ""
-            tasks.append(self._evaluate_role(role, request, system_prompt))
+            
+            # Wrap evaluation with timeout
+            timeout = self._role_timeouts.get(role.name, DEFAULT_ROLE_TIMEOUT)
+            tasks.append(self._evaluate_role_with_timeout(role, request, system_prompt, timeout))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Collect successful verdicts
+        # Collect successful verdicts (partial evaluation)
         verdicts: list[RoleVerdict] = []
         responses: list[AIResponse] = []
         total_cost = 0.0
         total_latency = 0.0
+        failed_roles = []
 
-        for result in results:
+        for role, result in zip(active_roles, results):
             if isinstance(result, Exception):
-                logger.error("Role evaluation failed: %s", result)
+                logger.error("Role %s evaluation failed: %s", role.name.value, result)
+                failed_roles.append(role.name.value)
                 continue
+            
+            if result is None:
+                logger.warning("Role %s timed out", role.name.value)
+                failed_roles.append(role.name.value)
+                continue
+            
             response, verdict = result
             responses.append(response)
             verdicts.append(verdict)
             total_cost += response.cost_usd
             total_latency += response.latency_ms
 
-            # Track usage
+            # Track usage in memory
             self._usage_log.append(
                 UsageRecord(
                     role=response.role,
@@ -141,19 +261,41 @@ class LLMRouter:
                 )
             )
 
-        # Run consensus
-        decision = self.consensus.aggregate(verdicts)
+        # Partial evaluation: check if we have minimum required roles
+        if len(verdicts) < self.min_roles_required:
+            logger.warning(
+                "Only %d/%d roles responded (need %d) — returning low-confidence NEUTRAL",
+                len(verdicts),
+                len(active_roles),
+                self.min_roles_required,
+            )
+            decision = ConsensusDecision(
+                final_action="NEUTRAL",
+                final_confidence=0.0,
+                verdicts=verdicts,
+                reasoning=f"Insufficient roles responded: {len(verdicts)}/{len(active_roles)}. Failed: {', '.join(failed_roles)}",
+            )
+        else:
+            # Run consensus with available verdicts
+            decision = self.consensus.aggregate(verdicts)
+        
         decision.total_cost_usd = total_cost
         decision.total_latency_ms = total_latency
 
         logger.info(
-            "Multi-Brain decision for %s: %s (confidence=%.2f, cost=$%.4f, latency=%.0fms)",
+            "Multi-Brain decision for %s: %s (confidence=%.2f, %d/%d roles, cost=$%.4f, latency=%.0fms)",
             symbol,
             decision.final_action,
             decision.final_confidence,
+            len(verdicts),
+            len(active_roles),
             decision.total_cost_usd,
             decision.total_latency_ms,
         )
+
+        # Persist to database if session provided
+        if db_session:
+            await self._persist_decision(db_session, symbol, timeframe, decision, responses)
 
         return decision
 
@@ -196,6 +338,61 @@ class LLMRouter:
             return [r for r in (RoleRegistry.get(n) for n in names) if r is not None and r.config.enabled]
         return RoleRegistry.active_roles()
 
+    async def _evaluate_role_with_timeout(
+        self,
+        role: AgentRole,
+        request: AIRequest,
+        system_prompt: str,
+        timeout: float,
+    ) -> tuple[AIResponse, RoleVerdict] | None:
+        """Evaluate a role with timeout and circuit breaker.
+        
+        Returns:
+            (response, verdict) tuple on success, None on timeout/circuit open
+        """
+        # Check circuit breaker
+        provider = role.config.provider
+        if self.enable_circuit_breaker:
+            breaker = self._get_circuit_breaker(provider)
+            if not breaker.should_allow_request():
+                logger.warning(
+                    "Circuit breaker OPEN for %s, skipping role %s",
+                    provider.value,
+                    role.name.value,
+                )
+                return None
+        
+        try:
+            # Execute with timeout
+            result = await asyncio.wait_for(
+                self._evaluate_role(role, request, system_prompt),
+                timeout=timeout,
+            )
+            
+            # Record success in circuit breaker
+            if self.enable_circuit_breaker:
+                breaker.record_success()
+            
+            return result
+        
+        except asyncio.TimeoutError:
+            logger.error(
+                "Role %s timed out after %.1fs",
+                role.name.value,
+                timeout,
+            )
+            # Timeout is a failure for circuit breaker
+            if self.enable_circuit_breaker:
+                breaker.record_failure()
+            return None
+        
+        except Exception as exc:
+            logger.error("Role %s evaluation failed: %s", role.name.value, exc)
+            # Record failure in circuit breaker
+            if self.enable_circuit_breaker:
+                breaker.record_failure()
+            return None
+
     async def _evaluate_role(
         self,
         role: AgentRole,
@@ -208,3 +405,97 @@ class LLMRouter:
         except Exception as exc:
             logger.error("Role %s evaluation failed: %s", role.name.value, exc)
             raise
+
+    def _get_circuit_breaker(self, provider: ProviderName) -> CircuitBreaker:
+        """Get or create circuit breaker for provider."""
+        if provider not in self._circuit_breakers:
+            self._circuit_breakers[provider] = CircuitBreaker(provider=provider)
+        return self._circuit_breakers[provider]
+
+    async def _persist_decision(
+        self,
+        db_session,
+        symbol: str,
+        timeframe: str,
+        decision: ConsensusDecision,
+        responses: list[AIResponse],
+    ) -> None:
+        """Persist decision and usage logs to database.
+        
+        Uses log_decision_with_usage for atomic transaction.
+        """
+        try:
+            from db.crud.ai import log_decision_with_usage
+            
+            # Convert verdicts to dict for JSON storage
+            verdicts_dict = [
+                {
+                    "role": v.role.value,
+                    "action": v.action,
+                    "confidence": v.confidence,
+                    "reasoning": v.reasoning,
+                    "metrics": v.metrics,
+                }
+                for v in decision.verdicts
+            ]
+            
+            # Convert usage records
+            usage_records = [
+                {
+                    "role": r.role.value,
+                    "provider": r.provider.value,
+                    "model": r.model,
+                    "tokens_in": r.tokens_in,
+                    "tokens_out": r.tokens_out,
+                    "cost_usd": r.cost_usd,
+                    "latency_ms": r.latency_ms,
+                    "symbol": symbol,
+                    "success": r.error is None,
+                    "error": r.error,
+                }
+                for r in responses
+            ]
+            
+            await log_decision_with_usage(
+                db=db_session,
+                symbol=symbol,
+                timeframe=timeframe,
+                final_action=decision.final_action,
+                final_confidence=decision.final_confidence,
+                verdicts=verdicts_dict,
+                reasoning=decision.reasoning,
+                vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,
+                total_cost_usd=decision.total_cost_usd,
+                total_latency_ms=decision.total_latency_ms,
+                usage_records=usage_records,
+            )
+            
+            logger.debug("Persisted decision and %d usage records to database", len(usage_records))
+        
+        except Exception as exc:
+            logger.error("Failed to persist decision to database: %s", exc)
+            # Don't raise - database errors shouldn't block trading decisions
+
+    def get_circuit_breaker_status(self) -> dict[str, dict]:
+        """Get status of all circuit breakers.
+        
+        Returns:
+            Dict mapping provider name to status dict with keys:
+            state, failure_count, last_failure_time
+        """
+        return {
+            provider.value: {
+                "state": breaker.state.value,
+                "failure_count": breaker.failure_count,
+                "last_failure_time": breaker.last_failure_time,
+            }
+            for provider, breaker in self._circuit_breakers.items()
+        }
+
+    def reset_circuit_breaker(self, provider: ProviderName) -> None:
+        """Manually reset a circuit breaker (admin operation)."""
+        if provider in self._circuit_breakers:
+            breaker = self._circuit_breakers[provider]
+            breaker.state = CircuitState.CLOSED
+            breaker.failure_count = 0
+            logger.info("Circuit breaker for %s manually reset", provider.value)
