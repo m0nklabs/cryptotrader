@@ -62,11 +62,7 @@ const normalizeEquity = (points: EquityPoint[]): EquityPoint[] => {
     .filter((p) => Number.isFinite(p.value))
     .map((p, idx) => {
       const sortKey = timeToNumber(p.time, idx)
-      const validTime: Time =
-        typeof p.time === 'number' || typeof p.time === 'string' || (typeof p.time === 'object' && p.time !== null)
-          ? p.time
-          : (sortKey as Time)
-      return { time: validTime, value: p.value, sortKey }
+      return { time: p.time, value: p.value, sortKey }
     })
 
   return withSortKey
@@ -75,7 +71,7 @@ const normalizeEquity = (points: EquityPoint[]): EquityPoint[] => {
 }
 
 const toLineData = (points: EquityPoint[]): LineData[] =>
-  points.map((p) => ({
+  normalizeEquity(points).map((p) => ({
     time: p.time as LineData['time'],
     value: p.value,
   }))
