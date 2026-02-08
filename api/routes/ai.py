@@ -877,7 +877,7 @@ async def evaluate_opportunity_get(
         None,
         description="Optional comma-separated role list (e.g., tactical,strategist)",
     ),
-    response: Response | None = None,
+    response: Response = None,
 ):
     """GET wrapper for Multi-Brain evaluation.
 
