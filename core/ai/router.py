@@ -238,7 +238,10 @@ class LLMRouter:
                 continue
 
             if result is None:
-                logger.warning("Role %s timed out", role.name.value)
+                logger.warning(
+                    "Role %s did not produce a result (timeout, circuit breaker, or internal error)",
+                    role.name.value,
+                )
                 failed_roles.append(role.name.value)
                 continue
 
