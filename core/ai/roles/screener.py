@@ -196,7 +196,7 @@ class ScreenerRole(AgentRole):
                 parsed_confidence = 0.5
             # Normalize 0-100 scale to 0-1 before clamping
             if 1.0 < parsed_confidence <= 100.0:
-                parsed_confidence = parsed_confidence / 100.0
+                parsed_confidence = parsed_confidence / 100.0 if parsed_confidence > 2.0 else 1.0
             # Clamp to [0.0, 1.0]
             if parsed_confidence < 0.0:
                 parsed_confidence = 0.0

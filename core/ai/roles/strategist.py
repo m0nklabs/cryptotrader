@@ -128,10 +128,13 @@ class StrategistRole(AgentRole):
         sanitized_portfolio["total_equity"] = total_equity
         sanitized_portfolio["available_balance"] = available_balance
 
-        request.context["proposed_trade"] = proposed_trade
-        request.context["positions"] = positions
-        request.context["portfolio"] = sanitized_portfolio
-        request.context["risk_limits"] = risk_limits
+        request.context = {
+            **request.context,
+            "proposed_trade": proposed_trade,
+            "positions": positions,
+            "portfolio": sanitized_portfolio,
+            "risk_limits": risk_limits,
+        }
 
         return await super().evaluate(request, system_prompt)
 
@@ -366,7 +369,7 @@ class StrategistRole(AgentRole):
             confidence = 0.5
         # Auto-detect 0-100 scale and convert to 0-1 before clamping
         if 1.0 < confidence <= 100.0:
-            confidence = confidence / 100.0
+            confidence = confidence / 100.0 if confidence > 2.0 else 1.0
         confidence = max(0.0, min(1.0, confidence))
 
         reasoning = response.raw_text

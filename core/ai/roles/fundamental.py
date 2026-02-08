@@ -234,7 +234,7 @@ class FundamentalRole(AgentRole):
             confidence = 0.5
         # Support both 0-1 and 0-100 confidence scales by normalizing percentages
         if 1.0 < confidence <= 100.0:
-            confidence /= 100.0
+            confidence = confidence / 100.0 if confidence > 2.0 else 1.0
         confidence = max(0.0, min(1.0, confidence))
 
         reasoning = response.raw_text
