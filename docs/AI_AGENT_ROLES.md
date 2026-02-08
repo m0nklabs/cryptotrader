@@ -34,7 +34,8 @@ Pre-filters symbols before LLM calls to save costs:
 - Accepts list of symbols with their indicator snapshots
 - Applies quick-reject to each symbol
 - Passes only filtered symbols to LLM
-- Returns both passed and rejected symbols with reasons
+- Pre-rejected symbols (and rejection reasons) included in LLM prompt context only
+- Returns aggregate metrics in `RoleVerdict.metrics` (`symbols_passed`, `symbols_skipped`, `strong_buy_count`)
 
 #### Indicator Injection
 Serializes indicator snapshots for each symbol:
@@ -398,7 +399,11 @@ High weight (1.2) - risk management is critical.
 All roles produce outputs compatible with CoinDossier assessment fields:
 
 ### Tactical → CoinDossier Mapping
-- `action` → `action` (BUY/SELL/HOLD)
+- `action` → `action` mapping:
+  - `BUY` → `BUY`
+  - `SELL` → `SELL`
+  - `NEUTRAL` → `HOLD`
+  - `VETO` → `AVOID`
 - `confidence * 10` → `confidence` (1-10 scale)
 - `metrics.entry` → `entry_zone[0]` (can add ±1% for zone)
 - `metrics.stop_loss` → `stop_loss`
@@ -417,7 +422,7 @@ All roles produce outputs compatible with CoinDossier assessment fields:
 
 ## Testing
 
-### Unit Tests (72 tests, 100% passing)
+### Unit Tests
 
 All roles have comprehensive test coverage:
 
