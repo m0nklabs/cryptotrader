@@ -128,6 +128,8 @@ class StrategistRole(AgentRole):
         sanitized_portfolio["total_equity"] = total_equity
         sanitized_portfolio["available_balance"] = available_balance
 
+        # Use a new AIRequest instance to avoid mutating the singleton's incoming request object
+        # which can leak state between requests if the same object is reused.
         sanitized_request = AIRequest(
             role=request.role,
             user_prompt=request.user_prompt,
