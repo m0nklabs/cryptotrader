@@ -223,7 +223,7 @@ class TacticalRole(AgentRole):
         # Validate action and clamp confidence
         raw_action = response.parsed.get("action", "NEUTRAL") if response.parsed else "NEUTRAL"
         if isinstance(raw_action, str):
-            raw_action = raw_action.upper()
+            raw_action = raw_action.strip().upper()
         else:
             raw_action = "NEUTRAL"
         # Coerce unknown actions to NEUTRAL
