@@ -755,8 +755,25 @@ async def evaluate_opportunity(request: EvaluationRequest):
 
     # Persist decision and usage logs to database
     async with factory() as db:
-        # Log the aggregated decision
-        logged_decision = await ai_crud.log_decision(
+        usage_records = router_instance.get_usage_log()
+        usage_payloads = [
+            {
+                "role": usage_record.role.value,
+                "provider": usage_record.provider.value,
+                "model": usage_record.model,
+                "tokens_in": usage_record.tokens_in,
+                "tokens_out": usage_record.tokens_out,
+                "cost_usd": usage_record.cost_usd,
+                "latency_ms": usage_record.latency_ms,
+                "symbol": usage_record.symbol,
+                "success": usage_record.success,
+                "error": None,
+            }
+            for usage_record in usage_records
+        ]
+
+        # Log the decision + usage records in a single transaction
+        logged_decision = await ai_crud.log_decision_with_usage(
             db,
             symbol=request.symbol,
             timeframe=request.timeframe,
@@ -764,26 +781,11 @@ async def evaluate_opportunity(request: EvaluationRequest):
             final_confidence=decision.final_confidence,
             verdicts=verdict_dicts,
             reasoning=decision.reasoning,
-            vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
+            vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,
             total_cost_usd=decision.total_cost_usd,
             total_latency_ms=decision.total_latency_ms,
+            usage_records=usage_payloads,
         )
-
-        # Log per-role usage records from the router's usage log
-        usage_records = router_instance.get_usage_log()
-        for usage_record in usage_records:
-            await ai_crud.log_usage(
-                db,
-                role=usage_record.role.value,
-                provider=usage_record.provider.value,
-                model=usage_record.model,
-                tokens_in=usage_record.tokens_in,
-                tokens_out=usage_record.tokens_out,
-                cost_usd=usage_record.cost_usd,
-                latency_ms=usage_record.latency_ms,
-                symbol=usage_record.symbol,
-                success=usage_record.success,
-            )
 
         if usage_records:
             router_instance.clear_usage_log()
