@@ -44,6 +44,7 @@ CIRCUIT_HALF_OPEN_LIMIT = 1  # Number of test requests in half-open state
 
 class CircuitState(str, Enum):
     """Circuit breaker state."""
+
     CLOSED = "closed"  # Normal operation
     OPEN = "open"  # Blocking requests (cooldown)
     HALF_OPEN = "half_open"  # Testing recovery
@@ -52,24 +53,25 @@ class CircuitState(str, Enum):
 @dataclass
 class CircuitBreaker:
     """Circuit breaker for a provider to prevent cascading failures.
-    
+
     State transitions:
     - CLOSED → OPEN: After N consecutive failures
     - OPEN → HALF_OPEN: After cooldown period
     - HALF_OPEN → CLOSED: After successful request
     - HALF_OPEN → OPEN: After failed request
     """
+
     provider: ProviderName
     state: CircuitState = CircuitState.CLOSED
     failure_count: int = 0
     last_failure_time: float = 0.0
     half_open_successes: int = 0
-    
+
     def should_allow_request(self) -> bool:
         """Check if request should be allowed through."""
         if self.state == CircuitState.CLOSED:
             return True
-        
+
         if self.state == CircuitState.OPEN:
             # Check if cooldown period has elapsed
             if time.monotonic() - self.last_failure_time >= CIRCUIT_COOLDOWN_SECONDS:
@@ -78,10 +80,10 @@ class CircuitBreaker:
                 self.half_open_successes = 0
                 return True
             return False
-        
+
         # HALF_OPEN: Allow limited requests to test recovery
         return self.half_open_successes < CIRCUIT_HALF_OPEN_LIMIT
-    
+
     def record_success(self) -> None:
         """Record a successful request."""
         if self.state == CircuitState.HALF_OPEN:
@@ -93,12 +95,12 @@ class CircuitBreaker:
         elif self.state == CircuitState.CLOSED:
             # Reset failure count on success
             self.failure_count = 0
-    
+
     def record_failure(self) -> None:
         """Record a failed request."""
         self.failure_count += 1
         self.last_failure_time = time.monotonic()
-        
+
         if self.state == CircuitState.CLOSED:
             if self.failure_count >= CIRCUIT_FAILURE_THRESHOLD:
                 logger.error(
@@ -147,10 +149,10 @@ class LLMRouter:
         self.min_roles_required = min_roles_required
         self.enable_circuit_breaker = enable_circuit_breaker
         self._usage_log: list[UsageRecord] = []
-        
+
         # Circuit breakers per provider
         self._circuit_breakers: dict[ProviderName, CircuitBreaker] = {}
-        
+
         # Role-specific timeouts
         self._role_timeouts: dict[RoleName, float] = {
             RoleName.SCREENER: DEFAULT_ROLE_TIMEOUT,
@@ -215,7 +217,7 @@ class LLMRouter:
             )
             prompt = PromptRegistry.get_active(role.name)
             system_prompt = prompt.content if prompt else ""
-            
+
             # Wrap evaluation with timeout
             timeout = self._role_timeouts.get(role.name, DEFAULT_ROLE_TIMEOUT)
             tasks.append(self._evaluate_role_with_timeout(role, request, system_prompt, timeout))
@@ -234,12 +236,12 @@ class LLMRouter:
                 logger.error("Role %s evaluation failed: %s", role.name.value, result)
                 failed_roles.append(role.name.value)
                 continue
-            
+
             if result is None:
                 logger.warning("Role %s timed out", role.name.value)
                 failed_roles.append(role.name.value)
                 continue
-            
+
             response, verdict = result
             responses.append(response)
             verdicts.append(verdict)
@@ -278,7 +280,7 @@ class LLMRouter:
         else:
             # Run consensus with available verdicts
             decision = self.consensus.aggregate(verdicts)
-        
+
         decision.total_cost_usd = total_cost
         decision.total_latency_ms = total_latency
 
@@ -346,7 +348,7 @@ class LLMRouter:
         timeout: float,
     ) -> tuple[AIResponse, RoleVerdict] | None:
         """Evaluate a role with timeout and circuit breaker.
-        
+
         Returns:
             (response, verdict) tuple on success, None on timeout/circuit open
         """
@@ -361,20 +363,20 @@ class LLMRouter:
                     role.name.value,
                 )
                 return None
-        
+
         try:
             # Execute with timeout
             result = await asyncio.wait_for(
                 self._evaluate_role(role, request, system_prompt),
                 timeout=timeout,
             )
-            
+
             # Record success in circuit breaker
             if self.enable_circuit_breaker:
                 breaker.record_success()
-            
+
             return result
-        
+
         except asyncio.TimeoutError:
             logger.error(
                 "Role %s timed out after %.1fs",
@@ -385,7 +387,7 @@ class LLMRouter:
             if self.enable_circuit_breaker:
                 breaker.record_failure()
             return None
-        
+
         except Exception as exc:
             logger.error("Role %s evaluation failed: %s", role.name.value, exc)
             # Record failure in circuit breaker
@@ -421,12 +423,12 @@ class LLMRouter:
         responses: list[AIResponse],
     ) -> None:
         """Persist decision and usage logs to database.
-        
+
         Uses log_decision_with_usage for atomic transaction.
         """
         try:
             from db.crud.ai import log_decision_with_usage
-            
+
             # Convert verdicts to dict for JSON storage
             verdicts_dict = [
                 {
@@ -438,7 +440,7 @@ class LLMRouter:
                 }
                 for v in decision.verdicts
             ]
-            
+
             # Convert usage records
             usage_records = [
                 {
@@ -455,7 +457,7 @@ class LLMRouter:
                 }
                 for r in responses
             ]
-            
+
             await log_decision_with_usage(
                 db=db_session,
                 symbol=symbol,
@@ -469,16 +471,16 @@ class LLMRouter:
                 total_latency_ms=decision.total_latency_ms,
                 usage_records=usage_records,
             )
-            
+
             logger.debug("Persisted decision and %d usage records to database", len(usage_records))
-        
+
         except Exception as exc:
             logger.error("Failed to persist decision to database: %s", exc)
             # Don't raise - database errors shouldn't block trading decisions
 
     def get_circuit_breaker_status(self) -> dict[str, dict]:
         """Get status of all circuit breakers.
-        
+
         Returns:
             Dict mapping provider name to status dict with keys:
             state, failure_count, last_failure_time

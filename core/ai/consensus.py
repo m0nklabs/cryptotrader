@@ -62,7 +62,7 @@ class ConsensusEngine:
         self.agreement_multiplier = agreement_multiplier
         self.enable_calibration = enable_calibration
         self.min_calibration_samples = min_calibration_samples
-        
+
         # Historical accuracy tracking per role (role_name -> accuracy)
         # In production, this would be loaded from database
         self._role_accuracy: dict[str, float] = {}
@@ -89,7 +89,7 @@ class ConsensusEngine:
         veto_verdicts = [v for v in verdicts if v.action == "VETO"]
         if veto_verdicts:
             vetoer = veto_verdicts[0]
-            
+
             if self.veto_mode == "hard":
                 # Hard VETO: override majority, final action is NEUTRAL
                 return ConsensusDecision(
@@ -138,11 +138,11 @@ class ConsensusEngine:
         for verdict in verdicts_to_process:
             role = RoleRegistry.get(verdict.role)
             weight = role.weight if role else 1.0
-            
+
             # Apply calibration if enabled
             if self.enable_calibration:
                 weight = self._apply_calibration(verdict.role.value, weight)
-            
+
             action = verdict.action
             if action in action_scores:
                 action_scores[action] += verdict.confidence * weight
@@ -211,7 +211,7 @@ class ConsensusEngine:
                 reason_snippet = v.reasoning[:100] + "..." if len(v.reasoning) > 100 else v.reasoning
                 role_str += f" [{reason_snippet}]"
             reasoning_parts.append(role_str)
-        
+
         reasoning = f"Consensus: {best_action} (conf={best_score:.2f}) | " + " | ".join(reasoning_parts)
 
         # Include soft VETO info if applicable
@@ -228,11 +228,11 @@ class ConsensusEngine:
 
     def _apply_calibration(self, role_name: str, base_weight: float) -> float:
         """Apply confidence calibration based on historical accuracy.
-        
+
         Args:
             role_name: Name of the role
             base_weight: Base weight from role config
-            
+
         Returns:
             Calibrated weight adjusted for historical accuracy
         """
@@ -240,17 +240,17 @@ class ConsensusEngine:
         sample_count = self._role_sample_counts.get(role_name, 0)
         if sample_count < self.min_calibration_samples:
             return base_weight
-        
+
         # Get historical accuracy (default to 0.5 if unknown)
         accuracy = self._role_accuracy.get(role_name, 0.5)
-        
+
         # Bayesian weight adjustment:
         # - accuracy > 0.5 → increase weight
         # - accuracy < 0.5 → decrease weight
         # - accuracy = 0.5 → no change
         calibration_factor = accuracy / 0.5  # Range: 0.0 to 2.0
         calibrated = base_weight * calibration_factor
-        
+
         logger.debug(
             "Role %s calibration: %.1f%% accuracy → weight %.2f -> %.2f",
             role_name,
@@ -258,29 +258,29 @@ class ConsensusEngine:
             base_weight,
             calibrated,
         )
-        
+
         return calibrated
 
     def update_role_accuracy(self, role_name: str, was_correct: bool) -> None:
         """Update historical accuracy for a role (for calibration).
-        
+
         This should be called after each trade outcome is known.
         In production, this would persist to database.
-        
+
         Args:
             role_name: Name of the role
             was_correct: Whether the role's verdict was correct
         """
         current_accuracy = self._role_accuracy.get(role_name, 0.5)
         current_count = self._role_sample_counts.get(role_name, 0)
-        
+
         # Exponential moving average with more weight on recent samples
         alpha = 0.1  # Learning rate
         new_accuracy = (1 - alpha) * current_accuracy + alpha * (1.0 if was_correct else 0.0)
-        
+
         self._role_accuracy[role_name] = new_accuracy
         self._role_sample_counts[role_name] = current_count + 1
-        
+
         logger.info(
             "Updated %s accuracy: %.1f%% -> %.1f%% (n=%d)",
             role_name,
@@ -291,7 +291,7 @@ class ConsensusEngine:
 
     def get_role_accuracy(self, role_name: str) -> tuple[float, int]:
         """Get accuracy stats for a role.
-        
+
         Returns:
             Tuple of (accuracy, sample_count)
         """

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
-import pytest
 
 from core.ai.consensus import ConsensusEngine
 from core.ai.types import RoleName, RoleVerdict
@@ -27,7 +26,7 @@ def test_soft_veto_reduces_confidence():
         min_agreement=2,
         veto_mode="soft",
     )
-    
+
     verdicts = [
         RoleVerdict(
             role=RoleName.SCREENER,
@@ -48,9 +47,9 @@ def test_soft_veto_reduces_confidence():
             reasoning="Minor concern",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Should still be BUY, but with reduced confidence
     assert decision.final_action == "BUY"
     assert decision.final_confidence < 0.9  # Reduced by soft VETO penalty
@@ -63,7 +62,7 @@ def test_soft_veto_all_vetos_treated_as_hard():
     engine = ConsensusEngine(
         veto_mode="soft",
     )
-    
+
     verdicts = [
         RoleVerdict(
             role=RoleName.SCREENER,
@@ -78,9 +77,9 @@ def test_soft_veto_all_vetos_treated_as_hard():
             reasoning="Bad pattern",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # All VETOs should be treated as hard
     assert decision.final_action == "NEUTRAL"
     assert decision.final_confidence == 0.0
@@ -90,7 +89,7 @@ def test_soft_veto_all_vetos_treated_as_hard():
 def test_hard_veto_mode_default():
     """Test that hard VETO is the default mode."""
     engine = ConsensusEngine()
-    
+
     verdicts = [
         RoleVerdict(
             role=RoleName.SCREENER,
@@ -105,9 +104,9 @@ def test_hard_veto_mode_default():
             reasoning="Risk too high",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Hard VETO should block
     assert decision.final_action == "NEUTRAL"
     assert decision.final_confidence == 0.0
@@ -126,10 +125,10 @@ def test_agreement_multiplier_unanimous():
         min_agreement=2,
         agreement_multiplier=1.2,
     )
-    
+
     from core.ai.roles.base import RoleRegistry
     from core.ai.types import ProviderName, RoleConfig
-    
+
     # Register mock roles
     for role_name in [RoleName.SCREENER, RoleName.TACTICAL, RoleName.FUNDAMENTAL]:
         mock_role = Mock()
@@ -142,7 +141,7 @@ def test_agreement_multiplier_unanimous():
             system_prompt_id="test",
         )
         RoleRegistry.register(mock_role)
-    
+
     # All agree on BUY with moderate confidence
     verdicts = [
         RoleVerdict(
@@ -164,9 +163,9 @@ def test_agreement_multiplier_unanimous():
             reasoning="Good news",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Should be boosted by 20% but capped at 1.0
     assert decision.final_action == "BUY"
     assert decision.final_confidence > 0.7  # Boosted
@@ -181,10 +180,10 @@ def test_agreement_multiplier_mixed_no_boost():
         min_agreement=1,  # Lower requirement for this test
         agreement_multiplier=1.2,
     )
-    
+
     from core.ai.roles.base import RoleRegistry
     from core.ai.types import ProviderName, RoleConfig
-    
+
     # Register mock roles
     for role_name in [RoleName.SCREENER, RoleName.TACTICAL]:
         mock_role = Mock()
@@ -197,7 +196,7 @@ def test_agreement_multiplier_mixed_no_boost():
             system_prompt_id="test",
         )
         RoleRegistry.register(mock_role)
-    
+
     # Mixed votes
     verdicts = [
         RoleVerdict(
@@ -213,9 +212,9 @@ def test_agreement_multiplier_mixed_no_boost():
             reasoning="Uncertain",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # No agreement boost for mixed votes
     # BUY should win but without boost (confidence will be based on weighted average)
     assert decision.final_action == "BUY"
@@ -228,10 +227,10 @@ def test_agreement_multiplier_caps_at_one():
         min_agreement=2,
         agreement_multiplier=1.5,
     )
-    
+
     from core.ai.roles.base import RoleRegistry
     from core.ai.types import ProviderName, RoleConfig
-    
+
     # Register mock roles
     for role_name in [RoleName.SCREENER, RoleName.TACTICAL]:
         mock_role = Mock()
@@ -244,7 +243,7 @@ def test_agreement_multiplier_caps_at_one():
             system_prompt_id="test",
         )
         RoleRegistry.register(mock_role)
-    
+
     # High confidence unanimous
     verdicts = [
         RoleVerdict(
@@ -260,9 +259,9 @@ def test_agreement_multiplier_caps_at_one():
             reasoning="Strong pattern",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Should be capped at 1.0
     assert decision.final_action == "BUY"
     assert decision.final_confidence <= 1.0
@@ -276,14 +275,14 @@ def test_agreement_multiplier_caps_at_one():
 def test_calibration_disabled_by_default():
     """Test that calibration is disabled by default."""
     engine = ConsensusEngine(enable_calibration=False)
-    
+
     # Update accuracy, but it shouldn't affect anything
     engine.update_role_accuracy("tactical", was_correct=False)
     engine.update_role_accuracy("tactical", was_correct=False)
-    
+
     from core.ai.roles.base import RoleRegistry
     from core.ai.types import ProviderName, RoleConfig
-    
+
     mock_role = Mock()
     mock_role.name = RoleName.TACTICAL
     mock_role.weight = 1.0
@@ -294,7 +293,7 @@ def test_calibration_disabled_by_default():
         system_prompt_id="test",
     )
     RoleRegistry.register(mock_role)
-    
+
     verdicts = [
         RoleVerdict(
             role=RoleName.TACTICAL,
@@ -303,7 +302,7 @@ def test_calibration_disabled_by_default():
             reasoning="Test",
         ),
     ]
-    
+
     # Calibration disabled, so weight shouldn't change
     decision = engine.aggregate(verdicts)
     # Just verify it runs without error
@@ -316,14 +315,14 @@ def test_calibration_requires_min_samples():
         enable_calibration=True,
         min_calibration_samples=10,
     )
-    
+
     # Add only 5 samples (below threshold)
     for i in range(5):
         engine.update_role_accuracy("tactical", was_correct=(i % 2 == 0))
-    
+
     accuracy, count = engine.get_role_accuracy("tactical")
     assert count == 5  # Below threshold
-    
+
     # Calibration shouldn't apply yet (not enough samples)
     base_weight = 1.0
     calibrated = engine._apply_calibration("tactical", base_weight)
@@ -336,15 +335,15 @@ def test_calibration_increases_weight_for_accurate_role():
         enable_calibration=True,
         min_calibration_samples=10,
     )
-    
+
     # Record 20 samples with 80% accuracy
     for i in range(20):
         engine.update_role_accuracy("tactical", was_correct=(i < 16))
-    
+
     accuracy, count = engine.get_role_accuracy("tactical")
     assert count == 20
     assert accuracy > 0.5  # Should be above baseline
-    
+
     # Weight should be increased for accurate role
     base_weight = 1.0
     calibrated = engine._apply_calibration("tactical", base_weight)
@@ -357,15 +356,15 @@ def test_calibration_decreases_weight_for_inaccurate_role():
         enable_calibration=True,
         min_calibration_samples=10,
     )
-    
+
     # Record 20 samples with 30% accuracy (mostly wrong)
     for i in range(20):
         engine.update_role_accuracy("tactical", was_correct=(i < 6))
-    
+
     accuracy, count = engine.get_role_accuracy("tactical")
     assert count == 20
     assert accuracy < 0.5  # Below baseline
-    
+
     # Weight should be decreased for inaccurate role
     base_weight = 1.0
     calibrated = engine._apply_calibration("tactical", base_weight)
@@ -378,17 +377,17 @@ def test_calibration_exponential_moving_average():
         enable_calibration=True,
         min_calibration_samples=2,
     )
-    
+
     # Start with some wrong predictions
     engine.update_role_accuracy("tactical", was_correct=False)
     engine.update_role_accuracy("tactical", was_correct=False)
     first_accuracy, _ = engine.get_role_accuracy("tactical")
-    
+
     # Then add correct predictions
     engine.update_role_accuracy("tactical", was_correct=True)
     engine.update_role_accuracy("tactical", was_correct=True)
     second_accuracy, _ = engine.get_role_accuracy("tactical")
-    
+
     # Accuracy should improve but not jump to 1.0 (EMA smoothing)
     assert second_accuracy > first_accuracy
     assert second_accuracy < 1.0  # Not instant jump
@@ -402,10 +401,10 @@ def test_calibration_exponential_moving_average():
 def test_reasoning_includes_verdict_snippets():
     """Test that reasoning includes snippets of role reasoning."""
     engine = ConsensusEngine()
-    
+
     from core.ai.roles.base import RoleRegistry
     from core.ai.types import ProviderName, RoleConfig
-    
+
     # Register mock roles
     for role_name in [RoleName.SCREENER, RoleName.TACTICAL]:
         mock_role = Mock()
@@ -418,9 +417,9 @@ def test_reasoning_includes_verdict_snippets():
             system_prompt_id="test",
         )
         RoleRegistry.register(mock_role)
-    
+
     long_reasoning = "This is a very long reasoning text " * 10  # > 100 chars
-    
+
     verdicts = [
         RoleVerdict(
             role=RoleName.SCREENER,
@@ -435,9 +434,9 @@ def test_reasoning_includes_verdict_snippets():
             reasoning="Short reason",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Reasoning should include role names and actions
     assert "screener" in decision.reasoning.lower()
     assert "tactical" in decision.reasoning.lower()
@@ -448,10 +447,10 @@ def test_reasoning_includes_verdict_snippets():
 def test_reasoning_includes_confidence_in_summary():
     """Test that reasoning summary includes final confidence."""
     engine = ConsensusEngine()
-    
+
     from core.ai.roles.base import RoleRegistry
     from core.ai.types import ProviderName, RoleConfig
-    
+
     mock_role = Mock()
     mock_role.name = RoleName.TACTICAL
     mock_role.weight = 1.0
@@ -462,7 +461,7 @@ def test_reasoning_includes_confidence_in_summary():
         system_prompt_id="test",
     )
     RoleRegistry.register(mock_role)
-    
+
     verdicts = [
         RoleVerdict(
             role=RoleName.TACTICAL,
@@ -471,8 +470,8 @@ def test_reasoning_includes_confidence_in_summary():
             reasoning="test",
         ),
     ]
-    
+
     decision = engine.aggregate(verdicts)
-    
+
     # Reasoning should include confidence value
     assert "conf=" in decision.reasoning.lower()
