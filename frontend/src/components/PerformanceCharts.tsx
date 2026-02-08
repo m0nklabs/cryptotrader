@@ -47,6 +47,12 @@ const isBusinessDay = (time: Time): time is { year: number; month: number; day: 
   return typeof time === 'object' && time !== null && 'year' in time && 'month' in time && 'day' in time
 }
 
+/**
+ * Convert lightweight-charts Time to a sortable numeric timestamp.
+ *
+ * @param time - Time value (number | string | BusinessDay)
+ * @param fallbackIndex - Used when parsing fails; ensures stable ordering.
+ */
 const timeToNumber = (time: Time, fallbackIndex: number): number => {
   if (typeof time === 'number') return time
   if (typeof time === 'string') {
@@ -83,6 +89,9 @@ const toLineData = (points: EquityPoint[]): LineData[] =>
 /**
  * Attach a ResizeObserver to keep a lightweight-charts instance in sync with its container width.
  * Returns a cleanup function to disconnect the observer.
+ *
+ * @param chart - Chart instance returned by createChart.
+ * @param ref - Ref to the chart container element.
  */
 const attachResizeObserver = (chart: ReturnType<typeof createChart>, ref: React.RefObject<HTMLDivElement>) => {
   const resize = () => {
