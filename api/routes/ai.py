@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import logging
 import os
-import secrets
 import ssl
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, Path as PathParam
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Path as PathParam
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -257,20 +256,8 @@ async def _require_ai_api_key(x_api_key: str | None = Header(None, alias="X-API-
     expected = os.environ.get("AI_API_KEY")
     if not expected:
         return
-    if not x_api_key or not secrets.compare_digest(x_api_key, expected):
+    if not x_api_key or x_api_key != expected:
         raise HTTPException(status_code=401, detail="Invalid API key")
-
-
-async def shutdown_ai() -> None:
-    """Shutdown AI registries and dispose the async DB engine."""
-    await ProviderRegistry.close_all()
-    RoleRegistry.clear()
-    PromptRegistry.clear()
-    global _engine, _async_session_factory
-    if _engine is not None:
-        await _engine.dispose()
-    _engine = None
-    _async_session_factory = None
 
 
 router.dependencies = [Depends(_require_ai_api_key)]
@@ -318,8 +305,7 @@ class ProviderHealthResponse(BaseModel):
     last_checked: datetime = Field(..., alias="lastChecked")
     message: str = ""
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class RoleConfigResponse(BaseModel):
@@ -337,8 +323,7 @@ class RoleConfigResponse(BaseModel):
     fallback_model: str | None = Field(None, alias="fallbackModel")
     updated_at: datetime = Field(..., alias="updatedAt")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class RoleConfigUpdate(BaseModel):
@@ -354,8 +339,7 @@ class RoleConfigUpdate(BaseModel):
     fallback_provider: str | None = Field(None, alias="fallbackProvider")
     fallback_model: str | None = Field(None, alias="fallbackModel")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SystemPromptResponse(BaseModel):
@@ -369,8 +353,7 @@ class SystemPromptResponse(BaseModel):
     is_active: bool = Field(..., alias="isActive")
     created_at: datetime = Field(..., alias="createdAt")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SystemPromptCreate(BaseModel):
@@ -383,9 +366,9 @@ class SystemPromptCreate(BaseModel):
     role: str
     content: str
     description: str = ""
+    is_active: bool = Field(False, alias="isActive")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class EvaluationRequest(BaseModel):
@@ -414,8 +397,7 @@ class EvaluationResponse(BaseModel):
     total_latency_ms: float = Field(0.0, alias="totalLatencyMs")
     created_at: datetime = Field(..., alias="createdAt")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UsageSummaryResponse(BaseModel):
@@ -428,8 +410,7 @@ class UsageSummaryResponse(BaseModel):
     by_role: dict[str, dict[str, Any]] = Field(..., alias="byRole")
     by_provider: dict[str, dict[str, Any]] = Field(..., alias="byProvider")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # =============================================================================
@@ -463,46 +444,41 @@ async def list_providers():
             )
             continue
 
-        instance = None
-        try:
-            instance = factory()
-            api_key_env = instance.config.api_key_env
-            if api_key_env:
-                api_key = os.environ.get(api_key_env, "")
-                if not api_key:
-                    # Close instance before continuing to avoid resource leak
-                    await instance.close()
-                    providers.append(
-                        ProviderHealthResponse(
-                            name=provider.value,
-                            healthy=False,
-                            model=models[0] if models else instance.config.default_model,
-                            last_checked=checked_at,
-                            message=f"Missing {api_key_env}",
-                        )
+        instance = factory()
+        api_key_env = instance.config.api_key_env
+        if api_key_env:
+            api_key = os.environ.get(api_key_env, "")
+            if not api_key:
+                await instance.close()  # Close before continue to prevent resource leak
+                providers.append(
+                    ProviderHealthResponse(
+                        name=provider.value,
+                        healthy=False,
+                        model=models[0] if models else instance.config.default_model,
+                        last_checked=checked_at,
+                        message=f"Missing {api_key_env}",
                     )
-                    continue
-
-            try:
-                healthy = await instance.health_check()
-                message = "OK" if healthy else "Unavailable"
-            except Exception:
-                logger.exception("Health check failed for provider %s", provider.value)
-                healthy = False
-                message = "Health check failed"
-
-            providers.append(
-                ProviderHealthResponse(
-                    name=provider.value,
-                    healthy=healthy,
-                    model=models[0] if models else instance.config.default_model,
-                    last_checked=checked_at,
-                    message=message,
                 )
-            )
+                continue
+
+        try:
+            healthy = await instance.health_check()
+            message = "OK" if healthy else "Unavailable"
+        except Exception as exc:
+            healthy = False
+            message = f"Health check failed: {exc}"
         finally:
-            if instance is not None:
-                await instance.close()
+            await instance.close()
+
+        providers.append(
+            ProviderHealthResponse(
+                name=provider.value,
+                healthy=healthy,
+                model=models[0] if models else instance.config.default_model,
+                last_checked=checked_at,
+                message=message,
+            )
+        )
 
     return providers
 
@@ -596,12 +572,6 @@ async def update_role(
         if not config:
             raise HTTPException(status_code=404, detail=f"Role '{role}' not found")
 
-        role_config = _role_config_from_db(config)
-        if role_config:
-            role_class = _role_factory().get(role_config.name)
-            if role_class is not None:
-                RoleRegistry.register(role_class(role_config))
-
         return RoleConfigResponse(
             name=config.name,
             provider=config.provider,
@@ -627,6 +597,15 @@ async def list_prompts(role: str = PathParam(..., description="Role name")):
     Args:
         role: Role name (screener, tactical, fundamental, strategist)
     """
+    # Validate role name
+    try:
+        RoleName(role)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Invalid role name '{role}'. Valid roles: {[r.value for r in RoleName]}"),
+        )
+
     factory = _get_session_factory()
     async with factory() as db:
         prompts = await ai_crud.get_prompts(db, role=role)
@@ -655,31 +634,28 @@ async def create_prompt(request: SystemPromptCreate):
         request: Prompt creation request with role, content, and description
     """
     factory = _get_session_factory()
-    try:
-        role_name = RoleName(request.role)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid role name '{request.role}'. Valid roles: {[r.value for r in RoleName.__members__.values()]}"
-            ),
-        )
-
     async with factory() as db:
-        try:
-            prompt = await PromptRegistry.create_prompt(
-                db,
-                role=role_name,
-                content=request.content,
-                description=request.description,
-                is_active=False,
-            )
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        # Get next version number
+        next_version = await ai_crud.get_next_version(db, request.role)
+
+        # Generate prompt ID
+        prompt_id = f"{request.role}_v{next_version}"
+
+        # Force new prompts to be inactive by default to prevent multiple active prompts
+        # Use activate endpoint to make a prompt active (which deactivates others)
+        prompt = await ai_crud.create_prompt(
+            db,
+            prompt_id=prompt_id,
+            role=request.role,
+            version=next_version,
+            content=request.content,
+            description=request.description,
+            is_active=False,  # Always create as inactive
+        )
 
         return SystemPromptResponse(
             id=prompt.id,
-            role=prompt.role.value,
+            role=prompt.role,
             version=prompt.version,
             content=prompt.content,
             description=prompt.description,
@@ -700,17 +676,13 @@ async def activate_prompt(prompt_id: str = PathParam(..., description="Prompt ID
     """
     factory = _get_session_factory()
     async with factory() as db:
-        try:
-            prompt = await PromptRegistry.activate_prompt(db, prompt_id)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-
+        prompt = await ai_crud.activate_prompt(db, prompt_id)
         if not prompt:
             raise HTTPException(status_code=404, detail=f"Prompt '{prompt_id}' not found")
 
         return SystemPromptResponse(
             id=prompt.id,
-            role=prompt.role.value,
+            role=prompt.role,
             version=prompt.version,
             content=prompt.content,
             description=prompt.description,
@@ -735,6 +707,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
         request: Evaluation request with symbol, timeframe, and context data
     """
     router_instance = _get_router()
+    factory = _get_session_factory()
 
     # Convert string role names to RoleName enums if provided
     roles = None
@@ -770,47 +743,40 @@ async def evaluate_opportunity(request: EvaluationRequest):
         for v in decision.verdicts
     ]
 
-    logged_decision = None
-    try:
-        factory = _get_session_factory()
-        # Persist decision and usage logs to database
-        async with factory() as db:
-            usage_records = router_instance.get_usage_log()
-            usage_payloads = [
-                {
-                    "role": usage_record.role.value,
-                    "provider": usage_record.provider.value,
-                    "model": usage_record.model,
-                    "tokens_in": usage_record.tokens_in,
-                    "tokens_out": usage_record.tokens_out,
-                    "cost_usd": usage_record.cost_usd,
-                    "latency_ms": usage_record.latency_ms,
-                    "symbol": usage_record.symbol,
-                    "success": usage_record.success,
-                    "error": None,
-                }
-                for usage_record in usage_records
-            ]
+    # Persist decision and usage logs to database
+    async with factory() as db:
+        # Log the aggregated decision
+        logged_decision = await ai_crud.log_decision(
+            db,
+            symbol=request.symbol,
+            timeframe=request.timeframe,
+            final_action=decision.final_action,
+            final_confidence=decision.final_confidence,
+            verdicts=verdict_dicts,
+            reasoning=decision.reasoning,
+            vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
+            total_cost_usd=decision.total_cost_usd,
+            total_latency_ms=decision.total_latency_ms,
+        )
 
-            # Log the decision + usage records in a single transaction
-            logged_decision = await ai_crud.log_decision_with_usage(
+        # Log per-role usage records from the router's usage log
+        usage_records = router_instance.get_usage_log()
+        for usage_record in usage_records:
+            await ai_crud.log_usage(
                 db,
-                symbol=request.symbol,
-                timeframe=request.timeframe,
-                final_action=decision.final_action,
-                final_confidence=decision.final_confidence,
-                verdicts=verdict_dicts,
-                reasoning=decision.reasoning,
-                vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,
-                total_cost_usd=decision.total_cost_usd,
-                total_latency_ms=decision.total_latency_ms,
-                usage_records=usage_payloads,
+                role=usage_record.role.value,
+                provider=usage_record.provider.value,
+                model=usage_record.model,
+                tokens_in=usage_record.tokens_in,
+                tokens_out=usage_record.tokens_out,
+                cost_usd=usage_record.cost_usd,
+                latency_ms=usage_record.latency_ms,
+                symbol=usage_record.symbol,
+                success=usage_record.success,
             )
 
-            if usage_records:
-                router_instance.clear_usage_log()
-    except Exception as exc:
-        logger.exception("Failed to persist AI decision/usage logs: %s", exc)
+        if usage_records:
+            router_instance.clear_usage_log()
 
     return EvaluationResponse(
         symbol=request.symbol,
@@ -822,11 +788,11 @@ async def evaluate_opportunity(request: EvaluationRequest):
         vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
         total_cost_usd=decision.total_cost_usd,
         total_latency_ms=decision.total_latency_ms,
-        created_at=logged_decision.created_at if logged_decision else datetime.now(timezone.utc),
+        created_at=logged_decision.created_at,  # Use DB timestamp for consistency
     )
 
 
-@router.get("/evaluate", response_model=EvaluationResponse, include_in_schema=False)
+@router.get("/evaluate", response_model=EvaluationResponse)
 async def evaluate_opportunity_get(
     symbol: str = Query(..., description="Trading symbol (e.g., BTC/USDT)"),
     timeframe: str = Query("1h", description="Timeframe (e.g., 1h, 4h, 1d)"),
@@ -834,17 +800,12 @@ async def evaluate_opportunity_get(
         None,
         description="Optional comma-separated role list (e.g., tactical,strategist)",
     ),
-    response: Response = None,
 ):
     """GET wrapper for Multi-Brain evaluation.
 
     This endpoint exists for compatibility with the current frontend,
     which calls `/api/ai/evaluate` as a GET with query parameters.
     """
-    if response is not None:
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Deprecation"] = "true"
     role_list = [r.strip() for r in roles.split(",") if r.strip()] if roles else None
     request = EvaluationRequest(
         symbol=symbol,
@@ -899,22 +860,11 @@ async def evaluate_single_role(request: EvaluationRequest):
     )
 
     # Return detailed response including individual role verdict
-    verdict_payload = None
-    if decision.verdicts:
-        verdict = decision.verdicts[0]
-        verdict_payload = {
-            "role": verdict.role.value,
-            "action": verdict.action,
-            "confidence": verdict.confidence,
-            "reasoning": verdict.reasoning,
-            "metrics": verdict.metrics,
-        }
-
     return {
         "symbol": request.symbol,
         "timeframe": request.timeframe,
         "role": request.roles[0],
-        "verdict": verdict_payload,
+        "verdict": decision.verdicts[0].__dict__ if decision.verdicts else None,
         "final_action": decision.final_action,
         "final_confidence": decision.final_confidence,
         "reasoning": decision.reasoning,

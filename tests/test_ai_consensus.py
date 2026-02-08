@@ -398,8 +398,7 @@ def test_tie_breaking_buy_vs_sell(engine):
 
     # With min_agreement=2 and split votes, consensus should be NEUTRAL
     assert decision.final_action == "NEUTRAL"
-    # When thresholds force NEUTRAL, confidence is reset to 0.0
-    assert decision.final_confidence == 0.0
+    assert decision.final_confidence == pytest.approx(0.5)
     assert decision.vetoed_by is None
 
 

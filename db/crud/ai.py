@@ -470,65 +470,6 @@ async def log_decision(
     return decision
 
 
-async def log_decision_with_usage(
-    db: AsyncSession,
-    symbol: str,
-    timeframe: str,
-    final_action: str,
-    final_confidence: float,
-    verdicts: list[dict],
-    reasoning: str,
-    vetoed_by: str | None,
-    total_cost_usd: float,
-    total_latency_ms: float,
-    usage_records: list[dict],
-) -> AIDecision:
-    """Log a decision and its usage records in a single transaction."""
-    valid_actions = {"BUY", "SELL", "NEUTRAL", "VETO"}
-    if final_action not in valid_actions:
-        raise ValueError(f"final_action must be one of {valid_actions}, got {final_action!r}")
-    if not 0.0 <= final_confidence <= 1.0:
-        raise ValueError(f"final_confidence must be between 0.0 and 1.0, got {final_confidence!r}")
-
-    decision = AIDecision(
-        symbol=symbol,
-        timeframe=timeframe,
-        final_action=final_action,
-        final_confidence=final_confidence,
-        verdicts=verdicts,
-        reasoning=reasoning,
-        vetoed_by=vetoed_by,
-        total_cost_usd=total_cost_usd,
-        total_latency_ms=total_latency_ms,
-    )
-    db.add(decision)
-
-    try:
-        for record in usage_records:
-            db.add(
-                AIUsageLog(
-                    role=record["role"],
-                    provider=record["provider"],
-                    model=record["model"],
-                    tokens_in=record["tokens_in"],
-                    tokens_out=record["tokens_out"],
-                    cost_usd=record["cost_usd"],
-                    latency_ms=record["latency_ms"],
-                    symbol=record.get("symbol", ""),
-                    success=record.get("success", True),
-                    error=record.get("error"),
-                )
-            )
-
-        await db.commit()
-        await db.refresh(decision)
-    except Exception:
-        await db.rollback()
-        raise
-
-    return decision
-
-
 async def get_decisions(
     db: AsyncSession,
     symbol: str | None = None,
@@ -574,15 +515,15 @@ async def get_daily_usage(
         total_tokens_in, total_tokens_out, avg_latency_ms, success_rate.
     """
     from datetime import datetime, timedelta, timezone
+    from sqlalchemy import cast, Date
 
     # Calculate start date (use timezone-aware UTC datetime)
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
 
-    day_bucket = func.date_trunc("day", func.timezone("utc", AIUsageLog.created_at)).label("day_bucket")
     query = (
         select(
-            day_bucket,
+            cast(AIUsageLog.created_at, Date).label("date"),
             func.count(AIUsageLog.id).label("total_requests"),
             func.sum(AIUsageLog.cost_usd).label("total_cost_usd"),
             func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
@@ -591,8 +532,8 @@ async def get_daily_usage(
             func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
         )
         .where(AIUsageLog.created_at >= start_date, AIUsageLog.created_at <= end_date)
-        .group_by(day_bucket)
-        .order_by(day_bucket.desc())
+        .group_by(cast(AIUsageLog.created_at, Date))
+        .order_by(cast(AIUsageLog.created_at, Date).desc())
     )
 
     result = await db.execute(query)
@@ -600,7 +541,7 @@ async def get_daily_usage(
 
     return [
         {
-            "date": row.day_bucket.date().isoformat() if row.day_bucket else None,
+            "date": str(row.date),
             "total_requests": row.total_requests,
             "total_cost_usd": float(row.total_cost_usd or 0.0),
             "total_tokens_in": row.total_tokens_in or 0,
