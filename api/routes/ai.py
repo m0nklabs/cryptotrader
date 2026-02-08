@@ -621,7 +621,7 @@ async def list_prompts(role: str = PathParam(..., description="Role name")):
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=(f"Invalid role name '{role}'. Valid roles: " f"{[r.value for r in RoleName.__members__.values()]}"),
+            detail=(f"Invalid role name '{role}'. Valid roles: {[r.value for r in RoleName.__members__.values()]}"),
         )
 
     factory = _get_session_factory()
