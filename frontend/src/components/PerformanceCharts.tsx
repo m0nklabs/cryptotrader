@@ -100,7 +100,9 @@ const attachResizeObserver = (chart: ReturnType<typeof createChart>, ref: React.
   }
 
   resize()
-  const observer = new ResizeObserver(resize)
+  const observer = new ResizeObserver(() => {
+    resize()
+  })
   if (ref.current) observer.observe(ref.current)
 
   return () => observer.disconnect()
