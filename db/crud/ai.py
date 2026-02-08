@@ -470,6 +470,87 @@ async def log_decision(
     return decision
 
 
+async def log_decision_with_usage(
+    db: AsyncSession,
+    symbol: str,
+    timeframe: str,
+    final_action: str,
+    final_confidence: float,
+    verdicts: list[dict],
+    reasoning: str = "",
+    vetoed_by: str | None = None,
+    total_cost_usd: float = 0.0,
+    total_latency_ms: float = 0.0,
+    usage_records: list[dict] = None,
+) -> AIDecision:
+    """Log an AI consensus decision with usage records in a single transaction.
+
+    This ensures atomicity: either both decision and all usage records are written,
+    or none are (on failure, the entire transaction is rolled back).
+
+    Args:
+        usage_records: List of dicts with keys: role, provider, model, tokens_in,
+            tokens_out, cost_usd, latency_ms, symbol, success, error
+
+    Returns:
+        Newly created AIDecision with auto-generated id and created_at timestamp.
+
+    Raises:
+        ValueError: If final_action or final_confidence are invalid.
+        KeyError: If required keys are missing from usage_records.
+    """
+    # Validate final_action
+    valid_actions = {"BUY", "SELL", "NEUTRAL", "VETO"}
+    if final_action not in valid_actions:
+        raise ValueError(f"final_action must be one of {valid_actions}, got {final_action!r}")
+
+    # Validate final_confidence range
+    if not 0.0 <= final_confidence <= 1.0:
+        raise ValueError(f"final_confidence must be between 0.0 and 1.0, got {final_confidence!r}")
+
+    if usage_records is None:
+        usage_records = []
+
+    try:
+        # Create decision
+        decision = AIDecision(
+            symbol=symbol,
+            timeframe=timeframe,
+            final_action=final_action,
+            final_confidence=final_confidence,
+            verdicts=verdicts,
+            reasoning=reasoning,
+            vetoed_by=vetoed_by,
+            total_cost_usd=total_cost_usd,
+            total_latency_ms=total_latency_ms,
+        )
+        db.add(decision)
+
+        # Create usage logs
+        for record in usage_records:
+            usage_log = AIUsageLog(
+                role=record["role"],
+                provider=record["provider"],
+                model=record["model"],
+                tokens_in=record["tokens_in"],
+                tokens_out=record["tokens_out"],
+                cost_usd=record["cost_usd"],
+                latency_ms=record["latency_ms"],
+                symbol=record.get("symbol", symbol),
+                success=record.get("success", True),
+                error=record.get("error"),
+            )
+            db.add(usage_log)
+
+        # Commit both decision + usage logs in one transaction
+        await db.commit()
+        await db.refresh(decision)
+        return decision
+    except Exception:
+        await db.rollback()
+        raise
+
+
 async def get_decisions(
     db: AsyncSession,
     symbol: str | None = None,
