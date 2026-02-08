@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import ssl
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Path as PathParam
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, Path as PathParam
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -256,8 +257,20 @@ async def _require_ai_api_key(x_api_key: str | None = Header(None, alias="X-API-
     expected = os.environ.get("AI_API_KEY")
     if not expected:
         return
-    if not x_api_key or x_api_key != expected:
+    if not x_api_key or not secrets.compare_digest(x_api_key, expected):
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+async def shutdown_ai() -> None:
+    """Shutdown AI registries and dispose the async DB engine."""
+    await ProviderRegistry.close_all()
+    RoleRegistry.clear()
+    PromptRegistry.clear()
+    global _engine, _async_session_factory
+    if _engine is not None:
+        await _engine.dispose()
+    _engine = None
+    _async_session_factory = None
 
 
 router.dependencies = [Depends(_require_ai_api_key)]
@@ -451,40 +464,43 @@ async def list_providers():
             )
             continue
 
-        instance = factory()
-        api_key_env = instance.config.api_key_env
-        if api_key_env:
-            api_key = os.environ.get(api_key_env, "")
-            if not api_key:
-                providers.append(
-                    ProviderHealthResponse(
-                        name=provider.value,
-                        healthy=False,
-                        model=models[0] if models else instance.config.default_model,
-                        last_checked=checked_at,
-                        message=f"Missing {api_key_env}",
-                    )
-                )
-                continue
-
+        instance = None
         try:
-            healthy = await instance.health_check()
-            message = "OK" if healthy else "Unavailable"
-        except Exception as exc:
-            healthy = False
-            message = f"Health check failed: {exc}"
-        finally:
-            await instance.close()
+            instance = factory()
+            api_key_env = instance.config.api_key_env
+            if api_key_env:
+                api_key = os.environ.get(api_key_env, "")
+                if not api_key:
+                    providers.append(
+                        ProviderHealthResponse(
+                            name=provider.value,
+                            healthy=False,
+                            model=models[0] if models else instance.config.default_model,
+                            last_checked=checked_at,
+                            message=f"Missing {api_key_env}",
+                        )
+                    )
+                    continue
 
-        providers.append(
-            ProviderHealthResponse(
-                name=provider.value,
-                healthy=healthy,
-                model=models[0] if models else instance.config.default_model,
-                last_checked=checked_at,
-                message=message,
+            try:
+                healthy = await instance.health_check()
+                message = "OK" if healthy else "Unavailable"
+            except Exception as exc:
+                healthy = False
+                message = f"Health check failed: {exc}"
+
+            providers.append(
+                ProviderHealthResponse(
+                    name=provider.value,
+                    healthy=healthy,
+                    model=models[0] if models else instance.config.default_model,
+                    last_checked=checked_at,
+                    message=message,
+                )
             )
-        )
+        finally:
+            if instance is not None:
+                await instance.close()
 
     return providers
 
@@ -717,7 +733,6 @@ async def evaluate_opportunity(request: EvaluationRequest):
         request: Evaluation request with symbol, timeframe, and context data
     """
     router_instance = _get_router()
-    factory = _get_session_factory()
 
     # Convert string role names to RoleName enums if provided
     roles = None
@@ -753,42 +768,47 @@ async def evaluate_opportunity(request: EvaluationRequest):
         for v in decision.verdicts
     ]
 
-    # Persist decision and usage logs to database
-    async with factory() as db:
-        usage_records = router_instance.get_usage_log()
-        usage_payloads = [
-            {
-                "role": usage_record.role.value,
-                "provider": usage_record.provider.value,
-                "model": usage_record.model,
-                "tokens_in": usage_record.tokens_in,
-                "tokens_out": usage_record.tokens_out,
-                "cost_usd": usage_record.cost_usd,
-                "latency_ms": usage_record.latency_ms,
-                "symbol": usage_record.symbol,
-                "success": usage_record.success,
-                "error": None,
-            }
-            for usage_record in usage_records
-        ]
+    logged_decision = None
+    try:
+        factory = _get_session_factory()
+        # Persist decision and usage logs to database
+        async with factory() as db:
+            usage_records = router_instance.get_usage_log()
+            usage_payloads = [
+                {
+                    "role": usage_record.role.value,
+                    "provider": usage_record.provider.value,
+                    "model": usage_record.model,
+                    "tokens_in": usage_record.tokens_in,
+                    "tokens_out": usage_record.tokens_out,
+                    "cost_usd": usage_record.cost_usd,
+                    "latency_ms": usage_record.latency_ms,
+                    "symbol": usage_record.symbol,
+                    "success": usage_record.success,
+                    "error": None,
+                }
+                for usage_record in usage_records
+            ]
 
-        # Log the decision + usage records in a single transaction
-        logged_decision = await ai_crud.log_decision_with_usage(
-            db,
-            symbol=request.symbol,
-            timeframe=request.timeframe,
-            final_action=decision.final_action,
-            final_confidence=decision.final_confidence,
-            verdicts=verdict_dicts,
-            reasoning=decision.reasoning,
-            vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,
-            total_cost_usd=decision.total_cost_usd,
-            total_latency_ms=decision.total_latency_ms,
-            usage_records=usage_payloads,
-        )
+            # Log the decision + usage records in a single transaction
+            logged_decision = await ai_crud.log_decision_with_usage(
+                db,
+                symbol=request.symbol,
+                timeframe=request.timeframe,
+                final_action=decision.final_action,
+                final_confidence=decision.final_confidence,
+                verdicts=verdict_dicts,
+                reasoning=decision.reasoning,
+                vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,
+                total_cost_usd=decision.total_cost_usd,
+                total_latency_ms=decision.total_latency_ms,
+                usage_records=usage_payloads,
+            )
 
-        if usage_records:
-            router_instance.clear_usage_log()
+            if usage_records:
+                router_instance.clear_usage_log()
+    except Exception as exc:
+        logger.exception("Failed to persist AI decision/usage logs: %s", exc)
 
     return EvaluationResponse(
         symbol=request.symbol,
@@ -800,11 +820,11 @@ async def evaluate_opportunity(request: EvaluationRequest):
         vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
         total_cost_usd=decision.total_cost_usd,
         total_latency_ms=decision.total_latency_ms,
-        created_at=logged_decision.created_at,  # Use DB timestamp for consistency
+        created_at=logged_decision.created_at if logged_decision else datetime.now(timezone.utc),
     )
 
 
-@router.get("/evaluate", response_model=EvaluationResponse)
+@router.get("/evaluate", response_model=EvaluationResponse, include_in_schema=False)
 async def evaluate_opportunity_get(
     symbol: str = Query(..., description="Trading symbol (e.g., BTC/USDT)"),
     timeframe: str = Query("1h", description="Timeframe (e.g., 1h, 4h, 1d)"),
@@ -812,12 +832,17 @@ async def evaluate_opportunity_get(
         None,
         description="Optional comma-separated role list (e.g., tactical,strategist)",
     ),
+    response: Response | None = None,
 ):
     """GET wrapper for Multi-Brain evaluation.
 
     This endpoint exists for compatibility with the current frontend,
     which calls `/api/ai/evaluate` as a GET with query parameters.
     """
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Deprecation"] = "true"
     role_list = [r.strip() for r in roles.split(",") if r.strip()] if roles else None
     request = EvaluationRequest(
         symbol=symbol,

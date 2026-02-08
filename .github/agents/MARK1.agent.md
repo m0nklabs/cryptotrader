@@ -270,6 +270,13 @@ When the user says any of these, MARK1 mode is fully engaged:
 **Lessons for MARK1:**
 - Always pair immediate fixes with a small set of systemic, low-risk improvements or clearly captured follow-ups.
 
+### 2026-02-08: PR Review Cleanup
+**What happened:**
+- Addressed review feedback by making persistence best-effort for expensive calls, adding cleanup in lifespan shutdown, and extending DB tests for transactional guarantees and UTC bucketing.
+
+**Lessons for MARK1:**
+- When operations are costly, prefer best-effort persistence with clear logging and resilience tests to prevent double-spend retries.
+
 ---
 
 *MARK1 v1.5 - Updated 2026-02-05*

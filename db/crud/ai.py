@@ -503,23 +503,23 @@ async def log_decision_with_usage(
     )
     db.add(decision)
 
-    for record in usage_records:
-        db.add(
-            AIUsageLog(
-                role=record["role"],
-                provider=record["provider"],
-                model=record["model"],
-                tokens_in=record["tokens_in"],
-                tokens_out=record["tokens_out"],
-                cost_usd=record["cost_usd"],
-                latency_ms=record["latency_ms"],
-                symbol=record.get("symbol", ""),
-                success=record.get("success", True),
-                error=record.get("error"),
-            )
-        )
-
     try:
+        for record in usage_records:
+            db.add(
+                AIUsageLog(
+                    role=record["role"],
+                    provider=record["provider"],
+                    model=record["model"],
+                    tokens_in=record["tokens_in"],
+                    tokens_out=record["tokens_out"],
+                    cost_usd=record["cost_usd"],
+                    latency_ms=record["latency_ms"],
+                    symbol=record.get("symbol", ""),
+                    success=record.get("success", True),
+                    error=record.get("error"),
+                )
+            )
+
         await db.commit()
         await db.refresh(decision)
     except Exception:

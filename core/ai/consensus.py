@@ -3,7 +3,7 @@
 Aggregates individual RoleVerdicts into a single ConsensusDecision.
 Supports:
 - Weighted confidence voting
-- Hard VETO (any strategist VETO blocks the trade)
+- Hard VETO (any role VETO blocks the trade)
 - Configurable thresholds
 """
 
