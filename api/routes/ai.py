@@ -778,23 +778,30 @@ async def evaluate_opportunity(request: EvaluationRequest):
         for u in router_instance.get_usage_log()
     ]
 
-    async with factory() as db:
-        logged_decision = await ai_crud.log_decision_with_usage(
-            db,
-            symbol=request.symbol,
-            timeframe=request.timeframe,
-            final_action=decision.final_action,
-            final_confidence=decision.final_confidence,
-            verdicts=verdict_dicts,
-            reasoning=decision.reasoning,
-            vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,
-            total_cost_usd=decision.total_cost_usd,
-            total_latency_ms=decision.total_latency_ms,
-            usage_records=usage_records,
-        )
+    # Initialize fallback timestamp before DB call
+    logged_created_at = datetime.now(timezone.utc)
 
-    if usage_records:
-        router_instance.clear_usage_log()
+    try:
+        async with factory() as db:
+            logged_decision = await ai_crud.log_decision_with_usage(
+                db,
+                symbol=request.symbol,
+                timeframe=request.timeframe,
+                final_action=decision.final_action,
+                final_confidence=decision.final_confidence,
+                verdicts=verdict_dicts,
+                reasoning=decision.reasoning,
+                vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,
+                total_cost_usd=decision.total_cost_usd,
+                total_latency_ms=decision.total_latency_ms,
+                usage_records=usage_records,
+            )
+            logged_created_at = logged_decision.created_at
+    except Exception:
+        logger.exception("AI decision persistence failed; returning decision anyway")
+    finally:
+        if usage_records:
+            router_instance.clear_usage_log()
 
     return EvaluationResponse(
         symbol=request.symbol,
@@ -806,11 +813,11 @@ async def evaluate_opportunity(request: EvaluationRequest):
         vetoed_by=decision.vetoed_by.value if decision.vetoed_by else None,  # Convert RoleName to string
         total_cost_usd=decision.total_cost_usd,
         total_latency_ms=decision.total_latency_ms,
-        created_at=logged_decision.created_at,  # Use DB timestamp for consistency
+        created_at=logged_created_at,  # Use DB timestamp or fallback
     )
 
 
-@router.get("/evaluate", response_model=EvaluationResponse)
+@router.get("/evaluate", response_model=EvaluationResponse, deprecated=True)
 async def evaluate_opportunity_get(
     symbol: str = Query(..., description="Trading symbol (e.g., BTC/USDT)"),
     timeframe: str = Query("1h", description="Timeframe (e.g., 1h, 4h, 1d)"),
