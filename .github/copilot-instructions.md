@@ -158,11 +158,17 @@ When implementing features, use these technologies:
 
 ### AI / Multi-Brain (`core/ai/`)
 - **Architecture**: Role-Based Mixture of Agents (Router → Roles → Consensus)
-- **Providers**: DeepSeek R1/V3.2, OpenAI o3-mini, xAI Grok 4, Ollama (local)
+- **Providers**: DeepSeek R1/V3.2, OpenAI o3-mini, xAI Grok 4, Ollama (local), OpenRouter (multi-model gateway), Google Gemini
 - **HTTP client**: httpx (async, shared with exchange adapters)
 - **Prompt storage**: PostgreSQL (versioned per role)
 - **Tracking issue**: #205
 - **Research**: m0nklabs/market-data PR #14 (8 benchmark docs)
+- **Current status**: Skeleton committed (types, providers, roles, consensus, router, DB migration). API endpoints in PR #223. Provider `complete()` and `health_check()` methods need real implementation.
+- **Safety**: Budget caps (daily/monthly), cost tracking per evaluation (~$0.034/eval), fallback chains, VETO logic in Strategist role
+
+### Sibling Microservices
+- **market-data** (`/home/flip/market-data`): Standalone OHLCV ingestion daemon (Bitfinex REST). Port 8100. Systemd system service.
+- **wallets-data** (`/home/flip/wallets-data`): Wallet/credentials management. Port 8101. Exchange balance queries via ccxt/exchange APIs.
 
 ## Code Patterns
 
@@ -209,27 +215,68 @@ def calculate_rsi(df: pd.DataFrame, period: int = 14, column: str = "close") -> 
     return 100 - (100 / (1 + rs))
 ```
 
+### AI Provider Pattern
+```python
+from core.ai.providers.base import BaseProvider
+from core.ai.types import ProviderConfig, ProviderName
+
+class NewProvider(BaseProvider):
+    """New LLM provider adapter."""
+
+    def __init__(self, config: ProviderConfig | None = None):
+        super().__init__(config or DEFAULT_CONFIG)
+
+    async def complete(self, prompt: str, **kwargs) -> str:
+        """Send prompt and return completion text."""
+        ...
+
+    async def health_check(self) -> bool:
+        """Check provider availability."""
+        ...
+
+    async def close(self) -> None:
+        """Clean up HTTP client resources."""
+        ...
+```
+
 ## Directory Structure
 
 ```
 cryptotrader/
-├── api/              # REST API endpoints, exchange adapters
-│   ├── exchanges/    # Exchange-specific implementations
+├── api/              # REST API endpoints (FastAPI)
+│   ├── routes/       # Route modules (ai.py, dossier.py, ...)
 │   └── websocket/    # WebSocket handlers
+├── cex/              # Exchange clients (CEX-specific)
+│   └── bitfinex/     # Bitfinex REST/WS API client
 ├── core/             # Business logic
 │   ├── ai/           # Multi-Brain LLM orchestration (#205)
-│   │   ├── providers/ # LLM adapters (deepseek, openai, xai, ollama)
+│   │   ├── providers/ # LLM adapters (deepseek, openai, xai, ollama, openrouter)
 │   │   ├── roles/     # Agent roles (screener, tactical, fundamental, strategist)
 │   │   └── prompts/   # Versioned system prompt registry
-│   ├── analysis/     # Technical analysis
-│   ├── execution/    # Order execution
-│   ├── indicators/   # TA indicators
-│   └── portfolio/    # Position management
-├── db/               # Database models, migrations
-├── frontend/         # React/Vite frontend
+│   ├── analysis/     # Technical analysis utilities
+│   ├── arbitrage/    # CEX arbitrage strategies
+│   ├── automation/   # Rules, safety checks, audit logging
+│   ├── backtest/     # Backtesting framework (planned)
+│   ├── dossier/      # LLM-generated coin dossiers (Ollama)
+│   ├── execution/    # Order execution (paper + live adapters)
+│   ├── fees/         # Fee model (maker/taker, slippage)
+│   ├── health/       # System health checks
+│   ├── indicators/   # TA indicators (RSI, MACD, Bollinger, etc.)
+│   ├── market_cap/   # CoinGecko market cap rankings
+│   ├── market_data/  # OHLCV ingestion, backfill, gap repair
+│   ├── notifications/ # Alert/notification channels
+│   ├── opportunities/ # Opportunity detection & scoring
+│   ├── risk/         # Position sizing, exposure limits, drawdown
+│   └── signals/      # Signal scoring & detection
+├── db/               # Database schema, migrations, CRUD
+│   ├── crud/         # CRUD functions (ai.py, ...)
+│   └── migrations/   # SQL migrations (001_ai_tables.sql, ...)
+├── frontend/         # React/Vite frontend (port 5176)
+├── shared/           # Shared utilities (indicator config, etc.)
 ├── tests/            # pytest tests
 ├── docs/             # Documentation
-└── scripts/          # Utility scripts
+├── scripts/          # Utility scripts
+└── systemd/          # Systemd service files
 ```
 
 ## Testing Requirements
@@ -249,3 +296,12 @@ For any new feature:
 4. **Audit logging**: Log all order attempts with full details (symbol, side, size, price, timestamp)
 5. **Error recovery**: Handle network errors, API errors, and partial fills gracefully
 6. **Never expose credentials**: Use environment variables exclusively
+
+## AI-Specific Rules
+
+1. **Budget caps**: Enforce daily/monthly USD spend limits for LLM API calls
+2. **Cost tracking**: Log tokens_in, tokens_out, cost_usd, latency_ms per LLM call
+3. **Provider fallback**: If primary provider fails, try fallback_provider before giving up
+4. **VETO safety**: Strategist role can hard-VETO any trade decision — never bypass this
+5. **Prompt versioning**: Never overwrite active prompts; create new versions and activate explicitly
+6. **Model pinning**: Pin specific model versions in provider configs to prevent surprise behavior changes

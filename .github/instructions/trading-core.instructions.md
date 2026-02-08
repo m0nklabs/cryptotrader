@@ -80,8 +80,38 @@ async def get_positions(db: AsyncSession, user_id: str) -> list[Position]:
     return result.scalars().all()
 ```
 
+### AI/LLM Safety Rules (when working on `core/ai/`)
+
+1. **Budget caps** — Enforce daily/monthly USD spend limits for all LLM API calls
+2. **Cost tracking** — Log `tokens_in`, `tokens_out`, `cost_usd`, `latency_ms` per call
+3. **Provider fallback** — If primary provider fails, try `fallback_provider` before giving up
+4. **VETO safety** — Strategist role can hard-VETO any trade decision — never bypass this
+5. **Prompt versioning** — Never overwrite active prompts; create new versions and activate explicitly
+6. **Model pinning** — Pin specific model versions in provider configs
+
+```python
+from core.ai.providers.base import BaseProvider
+from core.ai.types import ProviderConfig
+
+class NewProvider(BaseProvider):
+    async def complete(self, prompt: str, **kwargs) -> str:
+        """Send prompt, track usage, return completion."""
+        ...
+
+    async def health_check(self) -> bool:
+        """Verify provider is reachable."""
+        ...
+
+    async def close(self) -> None:
+        """Clean up HTTP client resources."""
+        ...
+```
+
 ### What NOT to do:
 - NEVER default `dry_run` to `False`
 - NEVER log API keys or secrets
 - NEVER make live trades without explicit user confirmation
 - NEVER ignore rate limits
+- NEVER bypass AI VETO decisions
+- NEVER overwrite active system prompts (create new versions instead)
+- NEVER make LLM API calls without cost tracking

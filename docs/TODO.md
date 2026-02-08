@@ -51,12 +51,16 @@ Enable real trading (with human oversight):
 - ⏳ Multi-exchange support (Issue #131 — Binance/KuCoin adapters)
 - ⏳ Trade confirmation flow (human approval for large trades)
 
-### Priority 3: AI-Enhanced Scoring
+### Priority 3: AI Multi-Brain Consensus (#205)
 
-Leverage LLMs for qualitative analysis:
-- ⏳ LLM integration (Ollama for local, OpenAI/Anthropic via API)
-- ⏳ AI-based opportunity scoring with reasoning
-- ⏳ Sentiment analysis from LLM context
+Multi-Brain agent architecture for trading analysis:
+- ⏳ Provider adapters: DeepSeek R1/V3.2, OpenAI o3-mini, xAI Grok 4, Ollama, OpenRouter, Google Gemini (skeleton committed)
+- ⏳ Agent roles: Screener, Tactical, Fundamental, Strategist (skeleton committed)
+- ⏳ Consensus engine: weighted voting + VETO support (skeleton committed)
+- ⏳ AI API endpoints (PR #223)
+- ⏳ AI frontend config panel (skeleton committed)
+- ⏳ Signal pipeline integration (planned)
+- ⏳ Budget caps, cost tracking, observability (planned)
 
 ### Priority 4: Frontend Observability
 

@@ -72,6 +72,24 @@ Recognize explicit interrupts:
 - `DO NOT: ...`
 - `STYLE: ...`
 
+## Cryptotrader-Specific Audit Focus
+
+When reviewing code in this repo, pay particular attention to:
+
+### Trading Safety
+- All execution code must default to `dry_run=True`
+- Position limits must be enforced (per-symbol and portfolio-wide)
+- Audit logging for every order attempt (symbol, side, size, price, timestamp)
+- No hardcoded credentials — environment variables only
+
+### AI Module Safety (`core/ai/`)
+- Budget caps must be enforced (daily/monthly USD spend limits)
+- VETO logic in Strategist role must never be bypassed
+- Cost tracking per LLM call (tokens_in, tokens_out, cost_usd, latency_ms)
+- Prompt versioning: never overwrite active prompts, create new versions
+- Model versions must be pinned in provider configs
+- Fallback chains must be configured for critical paths
+
 ## GitHub Copilot Coding Agent
 
 To activate the Copilot Coding Agent on a GitHub issue or PR:

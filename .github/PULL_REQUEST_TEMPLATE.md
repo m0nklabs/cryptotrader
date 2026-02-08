@@ -31,6 +31,14 @@ Fixes #<!-- issue number -->
 - [ ] Position limits are enforced
 - [ ] Error handling covers network errors, API errors, partial fills
 
+### AI/Multi-Brain (if applicable)
+- [ ] Budget caps enforced (daily/monthly limits)
+- [ ] Cost tracking implemented (tokens_in, tokens_out, cost_usd, latency_ms)
+- [ ] VETO logic not bypassed (Strategist can block any trade)
+- [ ] Prompt changes create new versions (no overwriting active prompts)
+- [ ] Provider model versions are pinned
+- [ ] Fallback provider configured for critical paths
+
 ## Testing Instructions
 
 <!-- How can reviewers test this change? -->

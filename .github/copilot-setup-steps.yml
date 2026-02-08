@@ -17,6 +17,7 @@ setup:
     run: |
       pip install --upgrade pip
       pip install ruff pytest pytest-asyncio pytest-cov pre-commit
+      pip install httpx asyncpg sqlalchemy aiosqlite
       if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 

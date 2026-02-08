@@ -50,3 +50,48 @@ const useStore = create((set) => ({
 - Don't use `any` type - define proper interfaces
 - Don't mutate state directly
 - Don't use inline styles (use Tailwind)
+
+### Chart Library
+- Use **lightweight-charts** (TradingView) for candlestick/price charts
+- Import from `lightweight-charts` package
+- Dark theme by default with `#1a1a2e` backgrounds
+
+### SSE/WebSocket Streaming
+```typescript
+// Server-Sent Events pattern (candle streaming)
+const eventSource = new EventSource(`/api/candles/stream?symbol=${symbol}`);
+eventSource.onmessage = (event) => {
+  const candle = JSON.parse(event.data);
+  // Update chart...
+};
+```
+
+### AI Module Components
+
+When building AI-related frontend features:
+
+- **API module**: `frontend/src/api/ai.ts` — calls to `/api/ai/*` endpoints
+- **Store**: `frontend/src/stores/aiStore.ts` — Zustand store for AI config state
+- **Components**: `frontend/src/components/AiConfigPanel.tsx` — role/provider/prompt management
+- Always type API responses with proper interfaces matching backend Pydantic models
+
+```typescript
+// AI API response types
+interface ProviderHealth {
+  name: string;
+  healthy: boolean;
+  model: string;
+  lastChecked: string;
+  message: string;
+}
+
+interface RoleConfig {
+  name: string;
+  provider: string;
+  model: string;
+  weight: number;
+  enabled: boolean;
+  temperature: number;
+  maxTokens: number;
+}
+```

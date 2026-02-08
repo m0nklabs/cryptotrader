@@ -61,8 +61,25 @@ When implementing trading features, ensure:
 
 ## File Patterns
 
-- `core/execution/` — order execution logic
-- `core/portfolio/` — position and PnL tracking
-- `api/exchanges/` — exchange-specific adapters
+- `core/execution/` — order execution logic (paper + live adapters)
+- `core/risk/` — position sizing, exposure limits, drawdown controls
+- `core/automation/` — rules engine, safety checks, audit logging
+- `core/fees/` — fee model (maker/taker, slippage, spread)
+- `core/ai/` — Multi-Brain LLM orchestration (AI decisions feed into execution)
+- `cex/bitfinex/` — Bitfinex REST/WS API client
+- `api/routes/` — FastAPI REST endpoints
 - `tests/test_execution*.py` — execution tests
+- `tests/test_ai*.py` — AI consensus tests
+
+## AI ↔ Execution Integration
+
+The Multi-Brain AI module (#205) produces consensus trading decisions that feed into the execution pipeline:
+
+```
+AI Consensus (BUY/SELL/NEUTRAL/VETO) → Automation Safety Checks → Execution Adapter
+```
+
+- AI VETO decisions must **always** be respected — never bypass
+- AI decisions are logged in `ai_decisions` table for audit
+- Cost tracking per AI evaluation (~$0.034/eval) via `ai_usage_log` table
 ```

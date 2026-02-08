@@ -25,11 +25,12 @@ We use GitHub's native sub-issue feature for hierarchical planning:
 
 | Epic | Focus | Issues |
 |------|-------|--------|
-| [#71 Trading System](https://github.com/m0nk111/cryptotrader/issues/71) | Paper trading, order execution, portfolio | #29, #48, #46, #75 |
-| [#69 Technical Analysis](https://github.com/m0nk111/cryptotrader/issues/69) | Chart indicators, signal detection | #105, #107, #72, #73 |
-| [#70 Market Data](https://github.com/m0nk111/cryptotrader/issues/70) | Real-time feeds, multi-exchange | #101, #102, #103, #17 |
-| [#68 Infrastructure](https://github.com/m0nk111/cryptotrader/issues/68) | CI/CD, testing, health monitoring | #104, #106, #108, #21, #74 |
-| [#76 Frontend & UI](https://github.com/m0nk111/cryptotrader/issues/76) | Dashboard, order entry, mobile | #77, #78, #79, #80, #81, #107 |
+| [#71 Trading System](https://github.com/m0nklabs/cryptotrader/issues/71) | Paper trading, order execution, portfolio | #29, #48, #46, #75 |
+| [#69 Technical Analysis](https://github.com/m0nklabs/cryptotrader/issues/69) | Chart indicators, signal detection | #105, #107, #72, #73 |
+| [#70 Market Data](https://github.com/m0nklabs/cryptotrader/issues/70) | Real-time feeds, multi-exchange | #101, #102, #103, #17 |
+| [#68 Infrastructure](https://github.com/m0nklabs/cryptotrader/issues/68) | CI/CD, testing, health monitoring | #104, #106, #108, #21, #74 |
+| [#76 Frontend & UI](https://github.com/m0nklabs/cryptotrader/issues/76) | Dashboard, order entry, mobile | #77, #78, #79, #80, #81, #107 |
+| [#205 Multi-Brain AI](https://github.com/m0nklabs/cryptotrader/issues/205) | LLM orchestration, consensus, AI API | Providers, Roles, Consensus, API, Frontend |
 
 ### Epic Template
 
