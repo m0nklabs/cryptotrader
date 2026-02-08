@@ -115,6 +115,7 @@ class ConsensusEngine:
                 self.confidence_threshold,
             )
             best_action = "NEUTRAL"
+            best_score = 0.0  # Reset confidence when threshold forces NEUTRAL
 
         if action_counts.get(best_action, 0) < self.min_agreement:
             logger.info(

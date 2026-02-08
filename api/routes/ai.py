@@ -383,7 +383,6 @@ class SystemPromptCreate(BaseModel):
     role: str
     content: str
     description: str = ""
-    is_active: bool = Field(False, alias="isActive")
 
     class Config:
         allow_population_by_field_name = True
@@ -471,6 +470,8 @@ async def list_providers():
             if api_key_env:
                 api_key = os.environ.get(api_key_env, "")
                 if not api_key:
+                    # Close instance before continuing to avoid resource leak
+                    await instance.close()
                     providers.append(
                         ProviderHealthResponse(
                             name=provider.value,
@@ -485,9 +486,10 @@ async def list_providers():
             try:
                 healthy = await instance.health_check()
                 message = "OK" if healthy else "Unavailable"
-            except Exception as exc:
+            except Exception:
+                logger.exception("Health check failed for provider %s", provider.value)
                 healthy = False
-                message = f"Health check failed: {exc}"
+                message = "Health check failed"
 
             providers.append(
                 ProviderHealthResponse(
