@@ -921,8 +921,8 @@ async def test_strategist_hard_veto_enforced():
         (150, 1.0, "out-of-range high clamping"),
         (-10, 0.0, "negative value clamping"),
         ("invalid", 0.5, "invalid type default"),
-        (float('nan'), 0.5, "NaN value default"),
-        (float('inf'), 0.5, "Infinity value default"),
+        (float("nan"), 0.5, "NaN value default"),
+        (float("inf"), 0.5, "Infinity value default"),
     ],
 )
 async def test_screener_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
@@ -954,8 +954,8 @@ async def test_screener_parse_response_confidence_normalization(input_confidence
         (150, 1.0, "out-of-range high clamping"),
         (-10, 0.0, "negative value clamping"),
         ("invalid", 0.5, "invalid type default"),
-        (float('nan'), 0.5, "NaN value default"),
-        (float('inf'), 0.5, "Infinity value default"),
+        (float("nan"), 0.5, "NaN value default"),
+        (float("inf"), 0.5, "Infinity value default"),
     ],
 )
 async def test_tactical_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
@@ -988,8 +988,8 @@ async def test_tactical_parse_response_confidence_normalization(input_confidence
         (-5, 0.0, "negative value clamping"),
         (None, 0.5, "None type default"),
         ("80", 0.8, "string number conversion"),
-        (float('nan'), 0.5, "NaN value default"),
-        (float('inf'), 0.5, "Infinity value default"),
+        (float("nan"), 0.5, "NaN value default"),
+        (float("inf"), 0.5, "Infinity value default"),
     ],
 )
 async def test_fundamental_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
@@ -1021,8 +1021,8 @@ async def test_fundamental_parse_response_confidence_normalization(input_confide
         (150, 1.0, "out-of-range high clamping"),
         (-10, 0.0, "negative value clamping"),
         ("invalid", 0.5, "invalid type default"),
-        (float('nan'), 0.5, "NaN value default"),
-        (float('inf'), 0.5, "Infinity value default"),
+        (float("nan"), 0.5, "NaN value default"),
+        (float("inf"), 0.5, "Infinity value default"),
     ],
 )
 async def test_strategist_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
