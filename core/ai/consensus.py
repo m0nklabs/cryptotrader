@@ -125,8 +125,13 @@ class ConsensusEngine:
                 self.min_agreement,
             )
             if best_action != "NEUTRAL":
+                # Check if it's a 50/50 tie between BUY and SELL
+                buy_score = action_scores.get("BUY", 0.0)
+                sell_score = action_scores.get("SELL", 0.0)
+                is_tie = buy_score > 0 and sell_score > 0 and abs(buy_score - sell_score) < 1e-9
+
                 best_action = "NEUTRAL"
-                best_score = 0.0
+                best_score = 0.5 if is_tie else 0.0
 
         # Build reasoning summary
         reasoning_parts = [f"{v.role.value}: {v.action} (conf={v.confidence:.2f})" for v in verdicts]
