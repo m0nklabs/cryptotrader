@@ -396,7 +396,6 @@ class SystemPromptCreate(BaseModel):
     role: str
     content: str
     description: str = ""
-    is_active: bool = Field(False, alias="isActive")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -504,9 +503,10 @@ async def list_providers():
             try:
                 healthy = await instance.health_check()
                 message = "OK" if healthy else "Unavailable"
-            except Exception as exc:
+            except Exception:
+                logger.exception("Health check failed for provider %s", provider.value)
                 healthy = False
-                message = f"Health check failed: {exc}"
+                message = "Health check failed"
 
             providers.append(
                 ProviderHealthResponse(
