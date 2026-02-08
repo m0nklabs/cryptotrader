@@ -359,6 +359,7 @@ async def get_usage_summary(
         func.sum(AIUsageLog.tokens_in).label("tokens_in"),
         func.sum(AIUsageLog.tokens_out).label("tokens_out"),
         func.sum(AIUsageLog.cost_usd).label("cost_usd"),
+        func.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
     ).group_by(AIUsageLog.role)
     if conditions:
         by_role_query = by_role_query.where(and_(*conditions))
@@ -370,6 +371,7 @@ async def get_usage_summary(
             "tokens_in": row.tokens_in or 0,
             "tokens_out": row.tokens_out or 0,
             "cost_usd": float(row.cost_usd or 0.0),
+            "avg_latency_ms": float(row.avg_latency_ms or 0.0),
         }
         for row in by_role_result
     }

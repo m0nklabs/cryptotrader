@@ -17,6 +17,7 @@ This file is intentionally **public-safe**: it avoids environment details (hosts
 - Prefer efficient, single-pass execution where possible.
 - Keep changes minimal, correct, and aligned with repo patterns.
 - Expects macro-level thinking by default: connect immediate fixes to long-run goals, and proactively suggest/implement low-risk systemic improvements.
+- When something that "used to work" fails, prefers a root-cause check before proposing workarounds.
 
 ---
 

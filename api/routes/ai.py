@@ -9,15 +9,21 @@ from __future__ import annotations
 
 import logging
 import os
+import ssl
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, Query, Path as PathParam
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from core.ai.providers.deepseek import DEEPSEEK_R1_CONFIG, DEEPSEEK_V3_CONFIG, DeepSeekProvider
+from core.ai.providers.ollama import OLLAMA_CONFIG, OllamaProvider
+from core.ai.providers.openai import OPENAI_CONFIG, OpenAIProvider
+from core.ai.providers.openrouter import OPENROUTER_CONFIG, OpenRouterProvider
+from core.ai.providers.xai import XAI_CONFIG, XAIProvider
 from core.ai.router import LLMRouter
 from core.ai.types import ProviderName, RoleName
 from db.crud import ai as ai_crud
@@ -31,19 +37,30 @@ _engine = None
 _async_session_factory = None
 
 
-def _pg_ssl_connect_args_from_env() -> dict[str, str]:
-    """Build libpq/psycopg SSL kwargs from environment.
+def _asyncpg_ssl_connect_args_from_env() -> dict[str, ssl.SSLContext]:
+    """Build asyncpg SSL connect args from environment.
 
-    Uses standard libpq env var names so deploy systems (e.g. GH Secrets) can inject them.
-    Returns an empty dict when unset.
+    Supports PGSSLMODE/PGSSL* env vars and translates them into an SSLContext.
+    Returns an empty dict when SSL is disabled or not configured.
     """
-    mapping = {
-        "sslmode": os.environ.get("PGSSLMODE"),
-        "sslrootcert": os.environ.get("PGSSLROOTCERT"),
-        "sslcert": os.environ.get("PGSSLCERT"),
-        "sslkey": os.environ.get("PGSSLKEY"),
-    }
-    return {k: v for k, v in mapping.items() if v}
+    sslmode = (os.environ.get("PGSSLMODE") or "").lower()
+    if sslmode in {"", "disable"}:
+        return {}
+
+    sslrootcert = os.environ.get("PGSSLROOTCERT")
+    sslcert = os.environ.get("PGSSLCERT")
+    sslkey = os.environ.get("PGSSLKEY")
+
+    context = ssl.create_default_context(cafile=sslrootcert or None)
+    if sslmode == "verify-full":
+        context.check_hostname = True
+    else:
+        context.check_hostname = False
+
+    if sslcert and sslkey:
+        context.load_cert_chain(certfile=sslcert, keyfile=sslkey)
+
+    return {"ssl": context}
 
 
 def _normalize_database_url(database_url: str) -> str:
@@ -92,7 +109,7 @@ def _get_session_factory():
             database_url,
             echo=False,
             pool_pre_ping=True,
-            connect_args={"timeout": 3, **_pg_ssl_connect_args_from_env()},
+            connect_args={"timeout": 3, **_asyncpg_ssl_connect_args_from_env()},
         )
         _async_session_factory = sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
     return _async_session_factory
@@ -117,6 +134,49 @@ def _get_router() -> LLMRouter:
     return LLMRouter()
 
 
+async def _require_ai_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> None:
+    """Require a static API key when AI_API_KEY is set.
+
+    Keeps local/dev usage frictionless, but blocks unauthenticated calls in exposed deployments.
+    """
+    expected = os.environ.get("AI_API_KEY")
+    if not expected:
+        return
+    if not x_api_key or x_api_key != expected:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+router.dependencies = [Depends(_require_ai_api_key)]
+
+
+def _provider_models(provider: ProviderName) -> list[str]:
+    if provider == ProviderName.DEEPSEEK:
+        return [DEEPSEEK_V3_CONFIG.default_model, DEEPSEEK_R1_CONFIG.default_model]
+    if provider == ProviderName.OPENAI:
+        return [OPENAI_CONFIG.default_model, "gpt-4", "gpt-4-turbo"]
+    if provider == ProviderName.XAI:
+        return [XAI_CONFIG.default_model, "grok-beta", "grok-vision-beta"]
+    if provider == ProviderName.OLLAMA:
+        return [OLLAMA_CONFIG.default_model, "llama3.2:3b", "llama3.1:8b"]
+    if provider == ProviderName.OPENROUTER:
+        return [OPENROUTER_CONFIG.default_model]
+    return []
+
+
+def _provider_factory(provider: ProviderName):
+    if provider == ProviderName.DEEPSEEK:
+        return DeepSeekProvider
+    if provider == ProviderName.OPENAI:
+        return OpenAIProvider
+    if provider == ProviderName.XAI:
+        return XAIProvider
+    if provider == ProviderName.OLLAMA:
+        return OllamaProvider
+    if provider == ProviderName.OPENROUTER:
+        return OpenRouterProvider
+    return None
+
+
 # =============================================================================
 # Request/Response Models
 # =============================================================================
@@ -126,9 +186,13 @@ class ProviderHealthResponse(BaseModel):
     """Provider health status response."""
 
     name: str
-    available: bool
-    message: str
-    models: list[str] = Field(default_factory=list)
+    healthy: bool
+    model: str
+    last_checked: datetime = Field(..., alias="lastChecked")
+    message: str = ""
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class RoleConfigResponse(BaseModel):
@@ -137,14 +201,17 @@ class RoleConfigResponse(BaseModel):
     name: str
     provider: str
     model: str
-    system_prompt_id: str | None
+    system_prompt_id: str | None = Field(None, alias="systemPromptId")
     temperature: float
-    max_tokens: int
+    max_tokens: int = Field(..., alias="maxTokens")
     weight: float
     enabled: bool
-    fallback_provider: str | None
-    fallback_model: str | None
-    updated_at: datetime
+    fallback_provider: str | None = Field(None, alias="fallbackProvider")
+    fallback_model: str | None = Field(None, alias="fallbackModel")
+    updated_at: datetime = Field(..., alias="updatedAt")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class RoleConfigUpdate(BaseModel):
@@ -152,13 +219,16 @@ class RoleConfigUpdate(BaseModel):
 
     provider: str | None = None
     model: str | None = None
-    system_prompt_id: str | None = None
+    system_prompt_id: str | None = Field(None, alias="systemPromptId")
     temperature: float | None = Field(None, ge=0.0, le=2.0)
-    max_tokens: int | None = Field(None, gt=0, le=32000)
+    max_tokens: int | None = Field(None, gt=0, le=32000, alias="maxTokens")
     weight: float | None = Field(None, ge=0.0, le=10.0)
     enabled: bool | None = None
-    fallback_provider: str | None = None
-    fallback_model: str | None = None
+    fallback_provider: str | None = Field(None, alias="fallbackProvider")
+    fallback_model: str | None = Field(None, alias="fallbackModel")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class SystemPromptResponse(BaseModel):
@@ -169,8 +239,11 @@ class SystemPromptResponse(BaseModel):
     version: int
     content: str
     description: str
-    is_active: bool
-    created_at: datetime
+    is_active: bool = Field(..., alias="isActive")
+    created_at: datetime = Field(..., alias="createdAt")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class SystemPromptCreate(BaseModel):
@@ -183,7 +256,10 @@ class SystemPromptCreate(BaseModel):
     role: str
     content: str
     description: str = ""
-    is_active: bool = False
+    is_active: bool = Field(False, alias="isActive")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class EvaluationRequest(BaseModel):
@@ -203,25 +279,31 @@ class EvaluationResponse(BaseModel):
 
     symbol: str
     timeframe: str
-    final_action: str
-    final_confidence: float
+    final_action: str = Field(..., alias="finalAction")
+    final_confidence: float = Field(..., alias="finalConfidence")
     reasoning: str
     verdicts: list[dict]
-    vetoed_by: str | None = None
-    total_cost_usd: float = 0.0
-    total_latency_ms: float = 0.0
-    created_at: datetime
+    vetoed_by: str | None = Field(None, alias="vetoedBy")
+    total_cost_usd: float = Field(0.0, alias="totalCostUsd")
+    total_latency_ms: float = Field(0.0, alias="totalLatencyMs")
+    created_at: datetime = Field(..., alias="createdAt")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class UsageSummaryResponse(BaseModel):
     """Usage summary response."""
 
-    total_requests: int
-    total_cost_usd: float
-    total_tokens_in: int
-    total_tokens_out: int
-    by_role: dict[str, dict[str, Any]]
-    by_provider: dict[str, dict[str, Any]]
+    total_requests: int = Field(..., alias="totalRequests")
+    total_cost_usd: float = Field(..., alias="totalCostUsd")
+    total_tokens_in: int = Field(..., alias="totalTokensIn")
+    total_tokens_out: int = Field(..., alias="totalTokensOut")
+    by_role: dict[str, dict[str, Any]] = Field(..., alias="byRole")
+    by_provider: dict[str, dict[str, Any]] = Field(..., alias="byProvider")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 # =============================================================================
@@ -236,37 +318,57 @@ async def list_providers():
     Returns status for each configured LLM provider including availability
     and supported models.
     """
-    providers = []
+    providers: list[ProviderHealthResponse] = []
+    checked_at = datetime.now(timezone.utc)
 
     # Check each provider
     for provider in ProviderName:
-        # Basic availability check - check if API key is configured
-        api_key_env = f"{provider.value.upper()}_API_KEY"
-        if provider == ProviderName.OLLAMA:
-            api_key_env = "OLLAMA_BASE_URL"
+        factory = _provider_factory(provider)
+        models = _provider_models(provider)
+        if factory is None:
+            providers.append(
+                ProviderHealthResponse(
+                    name=provider.value,
+                    healthy=False,
+                    model=models[0] if models else "",
+                    last_checked=checked_at,
+                    message="Provider not implemented",
+                )
+            )
+            continue
 
-        api_key = os.environ.get(api_key_env)
-        available = api_key is not None and len(api_key) > 0
+        instance = factory()
+        api_key_env = instance.config.api_key_env
+        if api_key_env:
+            api_key = os.environ.get(api_key_env, "")
+            if not api_key:
+                providers.append(
+                    ProviderHealthResponse(
+                        name=provider.value,
+                        healthy=False,
+                        model=models[0] if models else instance.config.default_model,
+                        last_checked=checked_at,
+                        message=f"Missing {api_key_env}",
+                    )
+                )
+                continue
 
-        # Get default models for this provider
-        models = []
-        if provider == ProviderName.DEEPSEEK:
-            models = ["deepseek-chat", "deepseek-reasoner"]
-        elif provider == ProviderName.OPENAI:
-            models = ["o3-mini", "gpt-4", "gpt-4-turbo"]
-        elif provider == ProviderName.XAI:
-            models = ["grok-beta", "grok-vision-beta"]
-        elif provider == ProviderName.OLLAMA:
-            models = ["llama3.2:3b", "llama3.1:8b"]
-        elif provider == ProviderName.GOOGLE:
-            models = ["gemini-pro", "gemini-1.5-pro"]
+        try:
+            healthy = await instance.health_check()
+            message = "OK" if healthy else "Unavailable"
+        except Exception as exc:
+            healthy = False
+            message = f"Health check failed: {exc}"
+        finally:
+            await instance.close()
 
         providers.append(
             ProviderHealthResponse(
                 name=provider.value,
-                available=available,
-                message="Configured" if available else f"Missing {api_key_env}",
-                models=models,
+                healthy=healthy,
+                model=models[0] if models else instance.config.default_model,
+                last_checked=checked_at,
+                message=message,
             )
         )
 
@@ -541,7 +643,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
         )
 
         # Log per-role usage records from the router's usage log
-        for usage_record in router_instance._usage_log:
+        for usage_record in router_instance.get_usage_log():
             await ai_crud.log_usage(
                 db,
                 role=usage_record.role.value,
@@ -555,6 +657,8 @@ async def evaluate_opportunity(request: EvaluationRequest):
                 success=usage_record.success,
             )
 
+            router_instance.clear_usage_log()
+
     return EvaluationResponse(
         symbol=request.symbol,
         timeframe=request.timeframe,
@@ -567,6 +671,33 @@ async def evaluate_opportunity(request: EvaluationRequest):
         total_latency_ms=decision.total_latency_ms,
         created_at=logged_decision.created_at,  # Use DB timestamp for consistency
     )
+
+
+@router.get("/evaluate", response_model=EvaluationResponse)
+async def evaluate_opportunity_get(
+    symbol: str = Query(..., description="Trading symbol (e.g., BTC/USDT)"),
+    timeframe: str = Query("1h", description="Timeframe (e.g., 1h, 4h, 1d)"),
+    roles: str | None = Query(
+        None,
+        description="Optional comma-separated role list (e.g., tactical,strategist)",
+    ),
+):
+    """GET wrapper for Multi-Brain evaluation.
+
+    This endpoint exists for compatibility with the current frontend,
+    which calls `/api/ai/evaluate` as a GET with query parameters.
+    """
+    role_list = [r.strip() for r in roles.split(",") if r.strip()] if roles else None
+    request = EvaluationRequest(
+        symbol=symbol,
+        timeframe=timeframe,
+        candles=None,
+        indicators=None,
+        portfolio=None,
+        risk_limits=None,
+        roles=role_list,
+    )
+    return await evaluate_opportunity(request)
 
 
 @router.post("/evaluate/single", response_model=dict)
@@ -696,13 +827,29 @@ async def get_usage_summary(
             end_date=end_date,
         )
 
+        by_role = {
+            role: {
+                "cost": details.get("cost_usd", 0.0),
+                "requests": details.get("requests", 0),
+                "avgLatencyMs": details.get("avg_latency_ms", 0.0),
+            }
+            for role, details in summary.get("by_role", {}).items()
+        }
+        by_provider = {
+            provider: {
+                "cost": details.get("cost_usd", 0.0),
+                "requests": details.get("requests", 0),
+            }
+            for provider, details in summary.get("by_provider", {}).items()
+        }
+
         return UsageSummaryResponse(
             total_requests=summary.get("total_requests", 0),
             total_cost_usd=summary.get("total_cost_usd", 0.0),
             total_tokens_in=summary.get("total_tokens_in", 0),
             total_tokens_out=summary.get("total_tokens_out", 0),
-            by_role=summary.get("by_role", {}),
-            by_provider=summary.get("by_provider", {}),
+            by_role=by_role,
+            by_provider=by_provider,
         )
 
 

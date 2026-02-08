@@ -370,14 +370,9 @@ def test_tie_breaking_buy_vs_sell(engine):
 
     decision = engine.aggregate(verdicts)
 
-    # With equal weights, one will win arbitrarily (depends on dict iteration)
-    # But confidence should be relatively low due to disagreement
-    assert decision.final_action in ["BUY", "SELL", "NEUTRAL"]
-
-    # If min_agreement=2 but only 1 role per action, should become NEUTRAL
-    if decision.final_action != "NEUTRAL":
-        # If not NEUTRAL, check that agreement threshold was met
-        assert decision.final_confidence > 0.0
+    # With min_agreement=2 and split votes, consensus should be NEUTRAL
+    assert decision.final_action == "NEUTRAL"
+    assert decision.final_confidence == pytest.approx(0.5)
 
 
 def test_single_verdict_below_agreement_threshold(engine):
