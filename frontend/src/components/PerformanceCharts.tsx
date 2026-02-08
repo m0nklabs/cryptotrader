@@ -36,6 +36,9 @@ const ensureResizeObserver = () => {
   if (typeof window === 'undefined') return
   if (typeof (window as { ResizeObserver?: unknown }).ResizeObserver === 'undefined') {
     ;(window as { ResizeObserver: unknown }).ResizeObserver = class {
+      // Accept a callback to mirror the real ResizeObserver API; no-op in tests.
+      constructor(_callback: ResizeObserverCallback) {}
+
       observe() {}
       unobserve() {}
       disconnect() {}
