@@ -107,6 +107,11 @@ class ConsensusEngine:
                 best_score = normalized
                 best_action = action
 
+        # Detect 50/50 tie between BUY and SELL before applying thresholds
+        buy_score = action_scores.get("BUY", 0.0)
+        sell_score = action_scores.get("SELL", 0.0)
+        is_tie = buy_score > 0 and sell_score > 0 and abs(buy_score - sell_score) < 1e-9
+
         # Step 4: Check thresholds
         if best_score < self.confidence_threshold:
             logger.info(
@@ -115,7 +120,7 @@ class ConsensusEngine:
                 self.confidence_threshold,
             )
             best_action = "NEUTRAL"
-            best_score = 0.0  # Reset confidence when threshold forces NEUTRAL
+            best_score = 0.5 if is_tie else 0.0
 
         if action_counts.get(best_action, 0) < self.min_agreement:
             logger.info(
@@ -125,11 +130,6 @@ class ConsensusEngine:
                 self.min_agreement,
             )
             if best_action != "NEUTRAL":
-                # Check if it's a 50/50 tie between BUY and SELL
-                buy_score = action_scores.get("BUY", 0.0)
-                sell_score = action_scores.get("SELL", 0.0)
-                is_tie = buy_score > 0 and sell_score > 0 and abs(buy_score - sell_score) < 1e-9
-
                 best_action = "NEUTRAL"
                 best_score = 0.5 if is_tie else 0.0
 
