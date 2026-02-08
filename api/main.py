@@ -22,6 +22,7 @@ import logging
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -48,6 +49,7 @@ from api.routes import (
     ws as ws_routes,
     arbitrage as arbitrage_routes,
     dossier as dossier_routes,
+    ai as ai_routes,
 )
 
 # Import middleware for rate limit tracking
@@ -55,11 +57,33 @@ from core.ratelimit import RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        await ai_routes.bootstrap_ai()
+    except Exception:
+        logger.exception("AI bootstrap failed")
+
+    try:
+        yield
+    finally:
+        shutdown = getattr(ai_routes, "shutdown_ai", None)
+        if shutdown is None:
+            return
+        try:
+            await shutdown()
+        except Exception:
+            logger.exception("AI shutdown failed")
+
+
 app = FastAPI(
     title="CryptoTrader API",
     description="API for candles, health checks, ingestion status, and paper trading",
     version="1.0.0",
+    lifespan=lifespan,
 )
+
 
 # Add middleware for rate limit tracking
 app.add_middleware(RateLimitMiddleware)
@@ -2041,3 +2065,4 @@ app.include_router(export_routes.router)
 app.include_router(ws_routes.router)
 app.include_router(arbitrage_routes.router)
 app.include_router(dossier_routes.router)
+app.include_router(ai_routes.router)

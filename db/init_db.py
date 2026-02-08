@@ -90,6 +90,12 @@ def main() -> int:
     schema_path = Path(__file__).resolve().parent / "schema.sql"
     schema_sql = schema_path.read_text(encoding="utf-8")
 
+    # Convert asyncpg URL to psycopg2 for sync schema initialization
+    # (asyncpg only works with async SQLAlchemy)
+    if "+asyncpg://" in database_url:
+        database_url = database_url.replace("+asyncpg://", "+psycopg2://", 1)
+        database_url = database_url.replace("+asyncpg://", "+psycopg2://")
+
     engine = create_engine(database_url, echo=False)
 
     # Execute schema as individual statements to stay driver-agnostic.

@@ -17,6 +17,7 @@ This file is intentionally **public-safe**: it avoids environment details (hosts
 - Prefer efficient, single-pass execution where possible.
 - Keep changes minimal, correct, and aligned with repo patterns.
 - Expects macro-level thinking by default: connect immediate fixes to long-run goals, and proactively suggest/implement low-risk systemic improvements.
+- When something that "used to work" fails, prefers a root-cause check before proposing workarounds.
 
 ---
 
@@ -159,10 +160,23 @@ project/
 6. **DRY** - Don't repeat yourself, extract common patterns
 
 ### Git Discipline
+
 - **Atomic commits** - One logical change per commit
 - **Descriptive messages** - What changed AND why
 - **Branch naming** - `feat/`, `fix/`, `refactor/`, `docs/`
 - **Never commit** - Secrets, .env files, node_modules, __pycache__
+
+## PR Review Semantics
+
+When the user says (Dutch) "doe is een review van deze PR" / "review deze PR", they mean:
+
+1. Create a **new PR review** (a fresh review thread).
+2. Add **inline review comments** as GitHub **suggestions** (```suggestion blocks) where applicable.
+3. Submit the review as a **comment** (or request changes if warranted), keeping it concise and actionable.
+
+## PR Fix Semantics
+
+When the user points to a specific PR with a bug / possible improvement to fix, apply the fix on that PR's branch and commit + push to the PR branch. Do **not** commit such fixes directly to `master`/`main`.
 
 ### Testing Requirements
 - Test BEFORE saying something is fixed
@@ -268,6 +282,13 @@ When the user says any of these, MARK1 mode is fully engaged:
 
 **Lessons for MARK1:**
 - Always pair immediate fixes with a small set of systemic, low-risk improvements or clearly captured follow-ups.
+
+### 2026-02-08: PR Review Cleanup
+**What happened:**
+- Addressed review feedback by making persistence best-effort for expensive calls, adding cleanup in lifespan shutdown, and extending DB tests for transactional guarantees and UTC bucketing.
+
+**Lessons for MARK1:**
+- When operations are costly, prefer best-effort persistence with clear logging and resilience tests to prevent double-spend retries.
 
 ---
 

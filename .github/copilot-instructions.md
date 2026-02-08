@@ -102,9 +102,18 @@ journalctl --user -u cryptotrader-frontend -f
 - Summarize what changed, where, and how to validate.
 - Call out any assumptions or risks (especially around trading, money movement, and data integrity).
 
+## PR Review Semantics
+
+When the user says (Dutch) "doe is een review van deze PR" / "review deze PR", they mean:
+
+1. Create a **new PR review** (a fresh review thread).
+2. Add **inline review comments** as GitHub **suggestions** (```suggestion blocks) where applicable.
+3. Submit the review as a **comment** (or request changes if warranted), keeping it concise and actionable.
+
 ## Git workflow
 
 - **ALWAYS check for open PRs before pushing**: Before committing and pushing local changes, check if there are open PRs that might conflict (use `gh pr list` or GitHub API). If an open PR exists, coordinate with it to avoid merge conflicts.
+- **PR branch discipline**: If the user points to a specific PR with a bug / improvement to fix, apply the fix on that PR's branch and commit + push to the PR branch. Do **not** commit such fixes directly to `master`/`main`.
 - If the user explicitly asks to commit and push changes to GitHub, push directly to the default branch in this repository (no PR/feature branch) unless the user asks otherwise or an open PR exists.
 - When resolving merge conflicts during rebase, keep both sections when they add independent features (e.g., different cache declarations, different imports).
 

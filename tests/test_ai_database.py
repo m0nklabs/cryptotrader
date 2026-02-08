@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlsplit, urlunsplit
@@ -22,7 +23,7 @@ from urllib.parse import urlsplit, urlunsplit
 import pytest
 import pytest_asyncio
 
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -38,11 +39,14 @@ from db.crud.ai import (
     get_active_prompt,
     activate_prompt,
     get_next_version,
+    get_daily_usage,
+    log_decision_with_usage,
     log_usage,
     get_usage_summary,
     log_decision,
     get_decisions,
 )
+from db.models.ai import AIDecision, AIUsageLog
 
 
 def _iter_sql_statements(sql: str) -> Iterable[str]:
@@ -415,6 +419,140 @@ async def test_usage_logging(db_session):
     finally:
         # Rollback to avoid polluting database
         await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_log_decision_with_usage_commits_rows(db_session):
+    """Ensure decision and usage rows commit together."""
+    try:
+        decision = await log_decision_with_usage(
+            db_session,
+            symbol="BTCUSD",
+            timeframe="1h",
+            final_action="BUY",
+            final_confidence=0.75,
+            verdicts=[{"role": "tactical", "action": "BUY", "confidence": 0.8}],
+            reasoning="Test decision",
+            vetoed_by=None,
+            total_cost_usd=0.01,
+            total_latency_ms=123.0,
+            usage_records=[
+                {
+                    "role": "tactical",
+                    "provider": "deepseek",
+                    "model": "deepseek-reasoner",
+                    "tokens_in": 100,
+                    "tokens_out": 50,
+                    "cost_usd": 0.01,
+                    "latency_ms": 123.0,
+                    "symbol": "BTCUSD",
+                    "success": True,
+                    "error": None,
+                }
+            ],
+        )
+        assert decision.id is not None
+
+        decision_count = await db_session.execute(select(func.count()).select_from(AIDecision))
+        usage_count = await db_session.execute(select(func.count()).select_from(AIUsageLog))
+        assert decision_count.scalar_one() == 1
+        assert usage_count.scalar_one() == 1
+    finally:
+        try:
+            await db_session.execute(text("TRUNCATE ai_usage_log, ai_decisions RESTART IDENTITY CASCADE"))
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_log_decision_with_usage_rolls_back_on_failure(db_session):
+    """Ensure invalid usage records roll back decision + usage writes."""
+    with pytest.raises(KeyError):
+        await log_decision_with_usage(
+            db_session,
+            symbol="ETHUSD",
+            timeframe="4h",
+            final_action="SELL",
+            final_confidence=0.65,
+            verdicts=[{"role": "tactical", "action": "SELL", "confidence": 0.7}],
+            reasoning="Bad usage payload",
+            vetoed_by=None,
+            total_cost_usd=0.02,
+            total_latency_ms=321.0,
+            usage_records=[
+                {
+                    "provider": "openai",
+                    "model": "o3-mini",
+                    "tokens_in": 10,
+                    "tokens_out": 5,
+                    "cost_usd": 0.02,
+                    "latency_ms": 321.0,
+                }
+            ],
+        )
+
+    decision_count = await db_session.execute(select(func.count()).select_from(AIDecision))
+    usage_count = await db_session.execute(select(func.count()).select_from(AIUsageLog))
+    assert decision_count.scalar_one() == 0
+    assert usage_count.scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_get_daily_usage_buckets_and_order(db_session):
+    """Validate UTC bucketing, ordering, and success_rate calculations."""
+    base = datetime.now(timezone.utc)
+    day_one = base - timedelta(days=1)
+    day_two = base
+
+    db_session.add_all(
+        [
+            AIUsageLog(
+                role="tactical",
+                provider="deepseek",
+                model="deepseek-reasoner",
+                tokens_in=100,
+                tokens_out=50,
+                cost_usd=0.01,
+                latency_ms=100.0,
+                symbol="BTCUSD",
+                success=True,
+                created_at=day_one,
+            ),
+            AIUsageLog(
+                role="tactical",
+                provider="deepseek",
+                model="deepseek-reasoner",
+                tokens_in=200,
+                tokens_out=100,
+                cost_usd=0.02,
+                latency_ms=200.0,
+                symbol="BTCUSD",
+                success=True,
+                created_at=day_two,
+            ),
+            AIUsageLog(
+                role="tactical",
+                provider="deepseek",
+                model="deepseek-reasoner",
+                tokens_in=150,
+                tokens_out=75,
+                cost_usd=0.015,
+                latency_ms=150.0,
+                symbol="BTCUSD",
+                success=False,
+                created_at=day_two,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    rows = await get_daily_usage(db_session, days=3)
+    assert len(rows) == 2
+    assert rows[0]["date"] == day_two.date().isoformat()
+    assert rows[1]["date"] == day_one.date().isoformat()
+    assert rows[0]["success_rate"] == pytest.approx(0.5)
+    assert rows[1]["success_rate"] == pytest.approx(1.0)
 
 
 @pytest.mark.asyncio

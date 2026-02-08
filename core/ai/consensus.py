@@ -3,7 +3,7 @@
 Aggregates individual RoleVerdicts into a single ConsensusDecision.
 Supports:
 - Weighted confidence voting
-- Hard VETO (any strategist VETO blocks the trade)
+- Hard VETO (any role VETO blocks the trade)
 - Configurable thresholds
 """
 
@@ -107,6 +107,11 @@ class ConsensusEngine:
                 best_score = normalized
                 best_action = action
 
+        # Detect 50/50 tie between BUY and SELL before applying thresholds
+        buy_score = action_scores.get("BUY", 0.0) / total_weight
+        sell_score = action_scores.get("SELL", 0.0) / total_weight
+        is_tie = buy_score > 0 and sell_score > 0 and abs(buy_score - sell_score) < 1e-9
+
         # Step 4: Check thresholds
         if best_score < self.confidence_threshold:
             logger.info(
@@ -115,6 +120,7 @@ class ConsensusEngine:
                 self.confidence_threshold,
             )
             best_action = "NEUTRAL"
+            best_score = 0.5 if is_tie else 0.0
 
         if action_counts.get(best_action, 0) < self.min_agreement:
             logger.info(
@@ -125,7 +131,7 @@ class ConsensusEngine:
             )
             if best_action != "NEUTRAL":
                 best_action = "NEUTRAL"
-                best_score = 0.0
+                best_score = 0.5 if is_tie else 0.0
 
         # Build reasoning summary
         reasoning_parts = [f"{v.role.value}: {v.action} (conf={v.confidence:.2f})" for v in verdicts]

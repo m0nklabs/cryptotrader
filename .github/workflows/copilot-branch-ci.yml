@@ -24,6 +24,12 @@ jobs:
   ci:
     name: Run CI checks
     runs-on: [self-hosted, Linux, org]
+    env:
+      DATABASE_URL: postgresql+asyncpg://cryptotrader:cryptotrader@localhost:5432/cryptotrader_test
+      BITFINEX_API_KEY: ${{ secrets.BITFINEX_API_KEY }}
+      BITFINEX_API_SECRET: ${{ secrets.BITFINEX_API_SECRET }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      PAPER_TRADING: "true"
     outputs:
       ci_passed: ${{ steps.result.outputs.passed }}
     steps:
@@ -41,9 +47,15 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
+      - name: Create test database
+        run: |
+          psql postgresql://cryptotrader:cryptotrader@localhost:5432/postgres -c "DROP DATABASE IF EXISTS cryptotrader_test;"
+          psql postgresql://cryptotrader:cryptotrader@localhost:5432/postgres -c "CREATE DATABASE cryptotrader_test;"
+
       - name: Install dependencies
         run: |
-          pip install -q ruff pytest pytest-asyncio pytest-cov pre-commit
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
 
       - name: Pre-commit checks
         id: precommit
