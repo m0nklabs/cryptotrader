@@ -519,8 +519,8 @@ result = serialize_indicators(indicators)
 
 ## References
 
-- [Multi-Brain AI Architecture](./ARCHITECTURE.md#multi-brain-ai)
-- [AI Provider Configuration](../core/ai/providers/README.md)
+- [Multi-Brain AI Architecture](./ARCHITECTURE.md) - See "Multi-Brain Consensus" section
+- [AI Provider Base](../core/ai/providers/base.py) - Provider interface and registry
 - [System Prompts](../core/ai/prompts/defaults.py)
 - [Consensus Engine](../core/ai/consensus.py)
 - [Issue #207](https://github.com/m0nklabs/cryptotrader/issues/207) - Parent issue
