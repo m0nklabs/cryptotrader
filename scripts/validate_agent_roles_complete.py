@@ -12,7 +12,7 @@ This script verifies:
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from core.ai.roles.base import serialize_candles, serialize_indicators
@@ -81,9 +81,10 @@ def validate_screener() -> bool:
         },
     )
     prompt = screener.build_prompt(request)
+    has_prefiltered_info = 'pre-filtered' in prompt.lower() or 'rejected' in prompt.lower()
     print(f"✓ Batch prompt length: {len(prompt)} chars")
     print(f"✓ Contains JSON instruction: {'JSON' in prompt}")
-    print(f"✓ Contains pre-filtered info: {'pre-filtered' in prompt.lower() or 'rejected' in prompt.lower()}")
+    print(f"✓ Contains pre-filtered info: {has_prefiltered_info}")
 
     # Test response parsing
     response = AIResponse(
@@ -113,7 +114,6 @@ def validate_tactical() -> bool:
 
     # Create sample candles
     base_time = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-    from datetime import timedelta
 
     candles = [
         Candle(
