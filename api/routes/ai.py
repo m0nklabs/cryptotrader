@@ -815,6 +815,8 @@ async def evaluate_opportunity(request: EvaluationRequest):
         if usage_records:
             router_instance.clear_usage_log()
 
+            router_instance.clear_usage_log()
+
     return EvaluationResponse(
         symbol=request.symbol,
         timeframe=request.timeframe,
