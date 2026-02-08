@@ -15,6 +15,7 @@ This folder contains the project documentation for `cryptotrader`.
 
 ## Additional Docs
 
+- [AI Agent Roles](AI_AGENT_ROLES.md): Multi-Brain AI role implementations
 - [Extended Indicators](EXTENDED_INDICATORS_SUMMARY.md): Technical indicator details
 - [Risk Management](RISK_MANAGEMENT.md): Position sizing and limits
 - [Ports Reference](PORTS.md): Service port assignments
