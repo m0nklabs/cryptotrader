@@ -923,9 +923,7 @@ async def test_strategist_hard_veto_enforced():
         ("invalid", 0.5, "invalid type default"),
     ],
 )
-async def test_tactical_parse_response_confidence_normalization(
-    input_confidence, expected_confidence, description
-):
+async def test_tactical_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
     """Test tactical role normalizes 0-100 confidence scale to 0-1."""
     tactical = TacticalRole()
 
@@ -957,9 +955,7 @@ async def test_tactical_parse_response_confidence_normalization(
         ("80", 0.8, "string number conversion"),
     ],
 )
-async def test_fundamental_parse_response_confidence_normalization(
-    input_confidence, expected_confidence, description
-):
+async def test_fundamental_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
     """Test fundamental role normalizes 0-100 confidence scale to 0-1."""
     fundamental = FundamentalRole()
 
