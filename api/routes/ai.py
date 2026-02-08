@@ -268,10 +268,12 @@ async def _require_ai_api_key(x_api_key: str | None = Header(None, alias="X-API-
 
     Keeps local/dev usage frictionless, but blocks unauthenticated calls in exposed deployments.
     """
+    import secrets
+
     expected = os.environ.get("AI_API_KEY")
     if not expected:
         return
-    if not x_api_key or x_api_key != expected:
+    if not x_api_key or not secrets.compare_digest(x_api_key, expected):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
@@ -479,9 +481,10 @@ async def list_providers():
         try:
             healthy = await instance.health_check()
             message = "OK" if healthy else "Unavailable"
-        except Exception as exc:
+        except Exception:
             healthy = False
-            message = f"Health check failed: {exc}"
+            logger.exception("Health check failed for provider %s", provider.value)
+            message = "Health check failed"
         finally:
             await instance.close()
 
@@ -618,7 +621,7 @@ async def list_prompts(role: str = PathParam(..., description="Role name")):
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=(f"Invalid role name '{role}'. Valid roles: {[r.value for r in RoleName]}"),
+            detail=(f"Invalid role name '{role}'. Valid roles: " f"{[r.value for r in RoleName.__members__.values()]}"),
         )
 
     factory = _get_session_factory()
