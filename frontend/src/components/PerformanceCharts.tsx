@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { ColorType, LineSeries, createChart, type LineData } from 'lightweight-charts'
-
-export type EquityPoint = {
-  time: number
-  value: number
-}
+import { ColorType, LineSeries, createChart, type LineData, type Time } from 'lightweight-charts'
+import type { EquityPoint } from '../types/performance'
 
 type Props = {
   equityCurve: EquityPoint[]
@@ -47,17 +43,37 @@ const ensureResizeObserver = () => {
   }
 }
 
-const normalizeEquity = (points: EquityPoint[]): EquityPoint[] =>
-  points
+const timeToNumber = (time: Time, fallbackIndex: number): number => {
+  if (typeof time === 'number') return time
+  if (typeof time === 'string') {
+    const parsed = Date.parse(time)
+    return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : fallbackIndex
+  }
+  if (typeof time === 'object' && time !== null && 'year' in time && 'month' in time && 'day' in time) {
+    const { year, month, day } = time as { year: number; month: number; day: number }
+    const ts = Date.UTC(year, month - 1, day) / 1000
+    return Number.isFinite(ts) ? ts : fallbackIndex
+  }
+  return fallbackIndex
+}
+
+const normalizeEquity = (points: EquityPoint[]): EquityPoint[] => {
+  const withSortKey = points
     .filter((p) => Number.isFinite(p.value))
     .map((p, idx) => ({
-      time: Number.isFinite(p.time) ? p.time : idx,
+      time: p.time,
       value: p.value,
+      sortKey: timeToNumber(p.time, idx),
     }))
 
+  return withSortKey
+    .sort((a, b) => a.sortKey - b.sortKey)
+    .map(({ time, value }) => ({ time, value }))
+}
+
 const toLineData = (points: EquityPoint[]): LineData[] =>
-  normalizeEquity(points).map((p) => ({
-    time: p.time,
+  points.map((p) => ({
+    time: p.time as LineData['time'],
     value: p.value,
   }))
 
@@ -96,7 +112,19 @@ export default function PerformanceCharts({ equityCurve }: Props) {
     series.setData(toLineData(normalizedEquity))
     chart.timeScale().fitContent()
 
-    return () => chart.remove()
+    const resize = () => {
+      if (!equityRef.current) return
+      chart.applyOptions({ width: equityRef.current.clientWidth })
+    }
+
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(equityRef.current)
+
+    return () => {
+      observer.disconnect()
+      chart.remove()
+    }
   }, [normalizedEquity])
 
   useEffect(() => {
@@ -113,7 +141,19 @@ export default function PerformanceCharts({ equityCurve }: Props) {
     series.setData(toLineData(drawdownSeries))
     chart.timeScale().fitContent()
 
-    return () => chart.remove()
+    const resize = () => {
+      if (!drawdownRef.current) return
+      chart.applyOptions({ width: drawdownRef.current.clientWidth })
+    }
+
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(drawdownRef.current)
+
+    return () => {
+      observer.disconnect()
+      chart.remove()
+    }
   }, [drawdownSeries])
 
   if (normalizedEquity.length === 0) {
