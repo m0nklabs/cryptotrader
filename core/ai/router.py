@@ -248,7 +248,7 @@ class LLMRouter:
 
             response, verdict = result
             responses.append(response)
-            
+
             # Track usage in memory (including error responses for audit trail)
             self._usage_log.append(
                 UsageRecord(
@@ -263,7 +263,7 @@ class LLMRouter:
                     success=response.error is None,
                 )
             )
-            
+
             # Only include non-error verdicts in consensus
             # Error responses (timeout/exception) return NEUTRAL with conf=0.0
             # but we still want to track them in the decision log
@@ -277,7 +277,7 @@ class LLMRouter:
             else:
                 # Only successful responses contribute to consensus
                 verdicts.append(verdict)
-            
+
             total_cost += response.cost_usd
             total_latency += response.latency_ms
 
@@ -410,7 +410,7 @@ class LLMRouter:
             # Timeout is a failure for circuit breaker
             if self.enable_circuit_breaker:
                 breaker.record_failure()
-            
+
             # Return synthetic AIResponse with error for audit trail
             error_response = AIResponse(
                 role=role.name,
@@ -436,7 +436,7 @@ class LLMRouter:
             # Record failure in circuit breaker
             if self.enable_circuit_breaker:
                 breaker.record_failure()
-            
+
             # Return synthetic AIResponse with error details for audit trail
             error_response = AIResponse(
                 role=role.name,

@@ -142,10 +142,10 @@ def test_invalid_veto_mode_raises_error():
     """Test that invalid veto_mode raises ValueError."""
     with pytest.raises(ValueError, match="veto_mode must be 'hard' or 'soft'"):
         ConsensusEngine(veto_mode="invalid")
-    
+
     with pytest.raises(ValueError, match="veto_mode must be 'hard' or 'soft'"):
         ConsensusEngine(veto_mode="medium")
-    
+
     with pytest.raises(ValueError, match="veto_mode must be 'hard' or 'soft'"):
         ConsensusEngine(veto_mode="HARD")  # Case-sensitive
 
