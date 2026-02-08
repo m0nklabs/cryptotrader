@@ -43,14 +43,18 @@ const ensureResizeObserver = () => {
   }
 }
 
+const isBusinessDay = (time: Time): time is { year: number; month: number; day: number } => {
+  return typeof time === 'object' && time !== null && 'year' in time && 'month' in time && 'day' in time
+}
+
 const timeToNumber = (time: Time, fallbackIndex: number): number => {
   if (typeof time === 'number') return time
   if (typeof time === 'string') {
     const parsed = Date.parse(time)
     return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : fallbackIndex
   }
-  if (typeof time === 'object' && time !== null && 'year' in time && 'month' in time && 'day' in time) {
-    const { year, month, day } = time as { year: number; month: number; day: number }
+  if (isBusinessDay(time)) {
+    const { year, month, day } = time
     const ts = Date.UTC(year, month - 1, day) / 1000
     return Number.isFinite(ts) ? ts : fallbackIndex
   }
@@ -76,6 +80,10 @@ const toLineData = (points: EquityPoint[]): LineData[] =>
     value: p.value,
   }))
 
+/**
+ * Attach a ResizeObserver to keep a lightweight-charts instance in sync with its container width.
+ * Returns a cleanup function to disconnect the observer.
+ */
 const attachResizeObserver = (chart: ReturnType<typeof createChart>, ref: React.RefObject<HTMLDivElement>) => {
   const resize = () => {
     if (!ref.current) return
