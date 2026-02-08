@@ -60,11 +60,14 @@ const timeToNumber = (time: Time, fallbackIndex: number): number => {
 const normalizeEquity = (points: EquityPoint[]): EquityPoint[] => {
   const withSortKey = points
     .filter((p) => Number.isFinite(p.value))
-    .map((p, idx) => ({
-      time: p.time,
-      value: p.value,
-      sortKey: timeToNumber(p.time, idx),
-    }))
+    .map((p, idx) => {
+      const sortKey = timeToNumber(p.time, idx)
+      const validTime: Time =
+        typeof p.time === 'number' || typeof p.time === 'string' || (typeof p.time === 'object' && p.time !== null)
+          ? p.time
+          : (sortKey as Time)
+      return { time: validTime, value: p.value, sortKey }
+    })
 
   return withSortKey
     .sort((a, b) => a.sortKey - b.sortKey)
@@ -76,6 +79,19 @@ const toLineData = (points: EquityPoint[]): LineData[] =>
     time: p.time as LineData['time'],
     value: p.value,
   }))
+
+const attachResizeObserver = (chart: ReturnType<typeof createChart>, ref: React.RefObject<HTMLDivElement>) => {
+  const resize = () => {
+    if (!ref.current) return
+    chart.applyOptions({ width: ref.current.clientWidth })
+  }
+
+  resize()
+  const observer = new ResizeObserver(resize)
+  if (ref.current) observer.observe(ref.current)
+
+  return () => observer.disconnect()
+}
 
 const computeDrawdownSeries = (points: EquityPoint[]): EquityPoint[] => {
   if (!points.length) return []
@@ -112,17 +128,10 @@ export default function PerformanceCharts({ equityCurve }: Props) {
     series.setData(toLineData(normalizedEquity))
     chart.timeScale().fitContent()
 
-    const resize = () => {
-      if (!equityRef.current) return
-      chart.applyOptions({ width: equityRef.current.clientWidth })
-    }
-
-    resize()
-    const observer = new ResizeObserver(resize)
-    observer.observe(equityRef.current)
+    const cleanupResize = attachResizeObserver(chart, equityRef)
 
     return () => {
-      observer.disconnect()
+      cleanupResize()
       chart.remove()
     }
   }, [normalizedEquity])
@@ -141,17 +150,10 @@ export default function PerformanceCharts({ equityCurve }: Props) {
     series.setData(toLineData(drawdownSeries))
     chart.timeScale().fitContent()
 
-    const resize = () => {
-      if (!drawdownRef.current) return
-      chart.applyOptions({ width: drawdownRef.current.clientWidth })
-    }
-
-    resize()
-    const observer = new ResizeObserver(resize)
-    observer.observe(drawdownRef.current)
+    const cleanupResize = attachResizeObserver(chart, drawdownRef)
 
     return () => {
-      observer.disconnect()
+      cleanupResize()
       chart.remove()
     }
   }, [drawdownSeries])
