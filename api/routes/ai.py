@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-import secrets
 import ssl
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -274,20 +273,8 @@ async def _require_ai_api_key(x_api_key: str | None = Header(None, alias="X-API-
     expected = os.environ.get("AI_API_KEY")
     if not expected:
         return
-    if not x_api_key or not secrets.compare_digest(x_api_key, expected):
+    if not x_api_key or x_api_key != expected:
         raise HTTPException(status_code=401, detail="Invalid API key")
-
-
-async def shutdown_ai() -> None:
-    """Shutdown AI registries and dispose the async DB engine."""
-    await ProviderRegistry.close_all()
-    RoleRegistry.clear()
-    PromptRegistry.clear()
-    global _engine, _async_session_factory
-    if _engine is not None:
-        await _engine.dispose()
-    _engine = None
-    _async_session_factory = None
 
 
 router.dependencies = [Depends(_require_ai_api_key)]
@@ -396,6 +383,7 @@ class SystemPromptCreate(BaseModel):
     role: str
     content: str
     description: str = ""
+    is_active: bool = Field(False, alias="isActive")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -516,10 +504,26 @@ async def list_providers():
                     last_checked=checked_at,
                     message=message,
                 )
-            )
+                continue
+
+        try:
+            healthy = await instance.health_check()
+            message = "OK" if healthy else "Unavailable"
+        except Exception as exc:
+            healthy = False
+            message = f"Health check failed: {exc}"
         finally:
-            if instance is not None:
-                await instance.close()
+            await instance.close()
+
+        providers.append(
+            ProviderHealthResponse(
+                name=provider.value,
+                healthy=healthy,
+                model=models[0] if models else instance.config.default_model,
+                last_checked=checked_at,
+                message=message,
+            )
+        )
 
     return providers
 
@@ -613,12 +617,6 @@ async def update_role(
         if not config:
             raise HTTPException(status_code=404, detail=f"Role '{role}' not found")
 
-        role_config = _role_config_from_db(config)
-        if role_config:
-            role_class = _role_factory().get(role_config.name)
-            if role_class is not None:
-                RoleRegistry.register(role_class(role_config))
-
         return RoleConfigResponse(
             name=config.name,
             provider=config.provider,
@@ -681,31 +679,28 @@ async def create_prompt(request: SystemPromptCreate):
         request: Prompt creation request with role, content, and description
     """
     factory = _get_session_factory()
-    try:
-        role_name = RoleName(request.role)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid role name '{request.role}'. Valid roles: {[r.value for r in RoleName.__members__.values()]}"
-            ),
-        )
-
     async with factory() as db:
-        try:
-            prompt = await PromptRegistry.create_prompt(
-                db,
-                role=role_name,
-                content=request.content,
-                description=request.description,
-                is_active=False,
-            )
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        # Get next version number
+        next_version = await ai_crud.get_next_version(db, request.role)
+
+        # Generate prompt ID
+        prompt_id = f"{request.role}_v{next_version}"
+
+        # Force new prompts to be inactive by default to prevent multiple active prompts
+        # Use activate endpoint to make a prompt active (which deactivates others)
+        prompt = await ai_crud.create_prompt(
+            db,
+            prompt_id=prompt_id,
+            role=request.role,
+            version=next_version,
+            content=request.content,
+            description=request.description,
+            is_active=False,  # Always create as inactive
+        )
 
         return SystemPromptResponse(
             id=prompt.id,
-            role=prompt.role.value,
+            role=prompt.role,
             version=prompt.version,
             content=prompt.content,
             description=prompt.description,
@@ -726,17 +721,13 @@ async def activate_prompt(prompt_id: str = PathParam(..., description="Prompt ID
     """
     factory = _get_session_factory()
     async with factory() as db:
-        try:
-            prompt = await PromptRegistry.activate_prompt(db, prompt_id)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-
+        prompt = await ai_crud.activate_prompt(db, prompt_id)
         if not prompt:
             raise HTTPException(status_code=404, detail=f"Prompt '{prompt_id}' not found")
 
         return SystemPromptResponse(
             id=prompt.id,
-            role=prompt.role.value,
+            role=prompt.role,
             version=prompt.version,
             content=prompt.content,
             description=prompt.description,
@@ -761,6 +752,7 @@ async def evaluate_opportunity(request: EvaluationRequest):
         request: Evaluation request with symbol, timeframe, and context data
     """
     router_instance = _get_router()
+    factory = _get_session_factory()
 
     # Convert string role names to RoleName enums if provided
     roles = None
@@ -850,10 +842,8 @@ async def evaluate_opportunity(request: EvaluationRequest):
         if usage_records:
             router_instance.clear_usage_log()
 
-            if usage_records:
-                router_instance.clear_usage_log()
-    except Exception as exc:
-        logger.exception("Failed to persist AI decision/usage logs: %s", exc)
+        if usage_records:
+            router_instance.clear_usage_log()
 
     return EvaluationResponse(
         symbol=request.symbol,
@@ -877,17 +867,12 @@ async def evaluate_opportunity_get(
         None,
         description="Optional comma-separated role list (e.g., tactical,strategist)",
     ),
-    response: Response = None,
 ):
     """GET wrapper for Multi-Brain evaluation.
 
     This endpoint exists for compatibility with the current frontend,
     which calls `/api/ai/evaluate` as a GET with query parameters.
     """
-    if response is not None:
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Deprecation"] = "true"
     role_list = [r.strip() for r in roles.split(",") if r.strip()] if roles else None
     request = EvaluationRequest(
         symbol=symbol,
@@ -942,17 +927,6 @@ async def evaluate_single_role(request: EvaluationRequest):
     )
 
     # Return detailed response including individual role verdict
-    verdict_payload = None
-    if decision.verdicts:
-        verdict = decision.verdicts[0]
-        verdict_payload = {
-            "role": verdict.role.value,
-            "action": verdict.action,
-            "confidence": verdict.confidence,
-            "reasoning": verdict.reasoning,
-            "metrics": verdict.metrics,
-        }
-
     return {
         "symbol": request.symbol,
         "timeframe": request.timeframe,
