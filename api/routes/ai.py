@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import ssl
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -277,6 +278,18 @@ async def _require_ai_api_key(x_api_key: str | None = Header(None, alias="X-API-
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
+async def shutdown_ai() -> None:
+    """Shutdown AI registries and dispose the async DB engine."""
+    await ProviderRegistry.close_all()
+    RoleRegistry.clear()
+    PromptRegistry.clear()
+    global _engine, _async_session_factory
+    if _engine is not None:
+        await _engine.dispose()
+    _engine = None
+    _async_session_factory = None
+
+
 router.dependencies = [Depends(_require_ai_api_key)]
 
 
@@ -488,15 +501,25 @@ async def list_providers():
         finally:
             await instance.close()
 
-        providers.append(
-            ProviderHealthResponse(
-                name=provider.value,
-                healthy=healthy,
-                model=models[0] if models else instance.config.default_model,
-                last_checked=checked_at,
-                message=message,
+            try:
+                healthy = await instance.health_check()
+                message = "OK" if healthy else "Unavailable"
+            except Exception as exc:
+                healthy = False
+                message = f"Health check failed: {exc}"
+
+            providers.append(
+                ProviderHealthResponse(
+                    name=provider.value,
+                    healthy=healthy,
+                    model=models[0] if models else instance.config.default_model,
+                    last_checked=checked_at,
+                    message=message,
+                )
             )
-        )
+        finally:
+            if instance is not None:
+                await instance.close()
 
     return providers
 
@@ -738,7 +761,6 @@ async def evaluate_opportunity(request: EvaluationRequest):
         request: Evaluation request with symbol, timeframe, and context data
     """
     router_instance = _get_router()
-    factory = _get_session_factory()
 
     # Convert string role names to RoleName enums if provided
     roles = None
@@ -828,8 +850,10 @@ async def evaluate_opportunity(request: EvaluationRequest):
         if usage_records:
             router_instance.clear_usage_log()
 
-        if usage_records:
-            router_instance.clear_usage_log()
+            if usage_records:
+                router_instance.clear_usage_log()
+    except Exception as exc:
+        logger.exception("Failed to persist AI decision/usage logs: %s", exc)
 
     return EvaluationResponse(
         symbol=request.symbol,
@@ -853,12 +877,17 @@ async def evaluate_opportunity_get(
         None,
         description="Optional comma-separated role list (e.g., tactical,strategist)",
     ),
+    response: Response | None = None,
 ):
     """GET wrapper for Multi-Brain evaluation.
 
     This endpoint exists for compatibility with the current frontend,
     which calls `/api/ai/evaluate` as a GET with query parameters.
     """
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Deprecation"] = "true"
     role_list = [r.strip() for r in roles.split(",") if r.strip()] if roles else None
     request = EvaluationRequest(
         symbol=symbol,
