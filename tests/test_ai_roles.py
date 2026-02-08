@@ -921,6 +921,41 @@ async def test_strategist_hard_veto_enforced():
         (150, 1.0, "out-of-range high clamping"),
         (-10, 0.0, "negative value clamping"),
         ("invalid", 0.5, "invalid type default"),
+        (float('nan'), 0.5, "NaN value default"),
+        (float('inf'), 0.5, "Infinity value default"),
+    ],
+)
+async def test_screener_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
+    """Test screener role normalizes 0-100 confidence scale to 0-1."""
+    screener = ScreenerRole()
+
+    response = AIResponse(
+        role=RoleName.SCREENER,
+        provider=ProviderName.DEEPSEEK,
+        model="deepseek-chat",
+        raw_text="Analysis",
+        parsed={
+            "action": "BUY",
+            "confidence": input_confidence,
+            "reasoning": "Test",
+        },
+    )
+    verdict = screener.parse_response(response)
+    assert verdict.confidence == expected_confidence, f"{description}: {input_confidence} -> {expected_confidence}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("input_confidence", "expected_confidence", "description"),
+    [
+        (70, 0.7, "0-100 scale normalization"),
+        (100, 1.0, "0-100 scale at max"),
+        (0.8, 0.8, "already normalized"),
+        (150, 1.0, "out-of-range high clamping"),
+        (-10, 0.0, "negative value clamping"),
+        ("invalid", 0.5, "invalid type default"),
+        (float('nan'), 0.5, "NaN value default"),
+        (float('inf'), 0.5, "Infinity value default"),
     ],
 )
 async def test_tactical_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
@@ -953,6 +988,8 @@ async def test_tactical_parse_response_confidence_normalization(input_confidence
         (-5, 0.0, "negative value clamping"),
         (None, 0.5, "None type default"),
         ("80", 0.8, "string number conversion"),
+        (float('nan'), 0.5, "NaN value default"),
+        (float('inf'), 0.5, "Infinity value default"),
     ],
 )
 async def test_fundamental_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
@@ -971,4 +1008,37 @@ async def test_fundamental_parse_response_confidence_normalization(input_confide
         },
     )
     verdict = fundamental.parse_response(response)
+    assert verdict.confidence == expected_confidence, f"{description}: {input_confidence} -> {expected_confidence}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("input_confidence", "expected_confidence", "description"),
+    [
+        (70, 0.7, "0-100 scale normalization"),
+        (100, 1.0, "0-100 scale at max"),
+        (0.8, 0.8, "already normalized"),
+        (150, 1.0, "out-of-range high clamping"),
+        (-10, 0.0, "negative value clamping"),
+        ("invalid", 0.5, "invalid type default"),
+        (float('nan'), 0.5, "NaN value default"),
+        (float('inf'), 0.5, "Infinity value default"),
+    ],
+)
+async def test_strategist_parse_response_confidence_normalization(input_confidence, expected_confidence, description):
+    """Test strategist role normalizes 0-100 confidence scale to 0-1."""
+    strategist = StrategistRole()
+
+    response = AIResponse(
+        role=RoleName.STRATEGIST,
+        provider=ProviderName.OPENAI,
+        model="o3-mini",
+        raw_text="Analysis",
+        parsed={
+            "action": "NEUTRAL",
+            "confidence": input_confidence,
+            "reasoning": "Test",
+        },
+    )
+    verdict = strategist.parse_response(response)
     assert verdict.confidence == expected_confidence, f"{description}: {input_confidence} -> {expected_confidence}"

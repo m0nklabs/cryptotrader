@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any
 
 from core.ai.roles.base import AgentRole, serialize_indicators
@@ -189,6 +190,9 @@ class ScreenerRole(AgentRole):
             try:
                 parsed_confidence = float(raw_confidence)
             except (TypeError, ValueError):
+                parsed_confidence = 0.5
+            # Guard against non-finite values (NaN, Inf)
+            if not math.isfinite(parsed_confidence):
                 parsed_confidence = 0.5
             # Normalize 0-100 scale to 0-1 before clamping
             if 1.0 < parsed_confidence <= 100.0:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 
 from core.ai.roles.base import (
     AgentRole,
@@ -331,6 +332,9 @@ class StrategistRole(AgentRole):
         try:
             confidence = float(raw_confidence)
         except (TypeError, ValueError):
+            confidence = 0.5
+        # Guard against non-finite values (NaN, Inf)
+        if not math.isfinite(confidence):
             confidence = 0.5
         # Auto-detect 0-100 scale and convert to 0-1 before clamping
         if 1.0 < confidence <= 100.0:

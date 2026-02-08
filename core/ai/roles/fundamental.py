@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -227,6 +228,9 @@ class FundamentalRole(AgentRole):
         try:
             confidence = float(raw_confidence)
         except (TypeError, ValueError):
+            confidence = 0.5
+        # Guard against non-finite values (NaN, Inf)
+        if not math.isfinite(confidence):
             confidence = 0.5
         # Support both 0-1 and 0-100 confidence scales by normalizing percentages
         if 1.0 < confidence <= 100.0:
