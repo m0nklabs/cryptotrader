@@ -371,9 +371,13 @@ class LLMRouter:
                 timeout=timeout,
             )
 
-            # Record success in circuit breaker
+            # Record success or failure in circuit breaker based on response.error
             if self.enable_circuit_breaker:
-                breaker.record_success()
+                response, _verdict = result
+                if getattr(response, "error", None) is None:
+                    breaker.record_success()
+                else:
+                    breaker.record_failure()
 
             return result
 
