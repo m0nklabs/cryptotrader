@@ -75,8 +75,25 @@ class StrategistRole(AgentRole):
         portfolio_metrics = request.context.get("portfolio", {})
         risk_limits = request.context.get("risk_limits", {})
 
-        total_equity = float(portfolio_metrics.get("total_equity", 0))
-        available_balance = float(portfolio_metrics.get("available_balance", 0))
+        # Normalize context types to avoid runtime errors from malformed JSON payloads
+        if not isinstance(positions, list):
+            positions = []
+        if not isinstance(portfolio_metrics, dict):
+            portfolio_metrics = {}
+        if not isinstance(risk_limits, dict):
+            risk_limits = {}
+        if not isinstance(proposed_trade, dict):
+            proposed_trade = {}
+
+        def _safe_float(value: object) -> float:
+            """Safely convert a value to float, defaulting to 0.0 on error."""
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+
+        total_equity = _safe_float(portfolio_metrics.get("total_equity", 0))
+        available_balance = _safe_float(portfolio_metrics.get("available_balance", 0))
         portfolio_state = format_portfolio_state(positions, total_equity, available_balance)
 
         # Check hard risk limits BEFORE calling LLM
