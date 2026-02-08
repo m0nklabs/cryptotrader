@@ -93,6 +93,7 @@ def main() -> int:
     # Convert asyncpg URL to psycopg2 for sync schema initialization
     # (asyncpg only works with async SQLAlchemy)
     if "+asyncpg://" in database_url:
+        database_url = database_url.replace("+asyncpg://", "+psycopg2://", 1)
         database_url = database_url.replace("+asyncpg://", "+psycopg2://")
 
     engine = create_engine(database_url, echo=False)
