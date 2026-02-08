@@ -121,7 +121,18 @@ class StrategistRole(AgentRole):
             )
             return synthetic_response, veto_verdict
 
-        # No hard veto — proceed with normal evaluation
+        # No hard veto — proceed with normal evaluation.
+        # Ensure downstream code (e.g., build_prompt) sees the same sanitized context
+        # that was used for the hard risk limit check.
+        sanitized_portfolio = dict(portfolio_metrics)
+        sanitized_portfolio["total_equity"] = total_equity
+        sanitized_portfolio["available_balance"] = available_balance
+
+        request.context["proposed_trade"] = proposed_trade
+        request.context["positions"] = positions
+        request.context["portfolio"] = sanitized_portfolio
+        request.context["risk_limits"] = risk_limits
+
         return await super().evaluate(request, system_prompt)
 
     def _check_risk_limits(
