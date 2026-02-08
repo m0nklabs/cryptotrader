@@ -27,7 +27,7 @@ Each role is implemented as a subclass of `AgentRole` and follows a consistent p
 #### Quick-Reject Heuristics
 Pre-filters symbols before LLM calls to save costs:
 - **Low volume**: < $100k daily volume → reject
-- **Extreme RSI**: > 95 (overbought) or < 5 (oversold) → reject  
+- **Extreme RSI**: > 95 (overbought) or < 5 (oversold) → reject
 - **Tight Bollinger Bands**: < 1% width (low volatility) → reject
 
 #### Batch Processing
@@ -453,7 +453,7 @@ python -m pytest tests/test_ai_roles.py --cov=core.ai.roles --cov-report=html
 ### Cost Tracking
 All roles track token usage and cost:
 - `response.tokens_in` - Input tokens
-- `response.tokens_out` - Output tokens  
+- `response.tokens_out` - Output tokens
 - `response.cost_usd` - Estimated cost
 - `response.latency_ms` - Call latency
 

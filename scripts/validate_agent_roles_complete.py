@@ -15,7 +15,6 @@ import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from core.ai.roles.base import serialize_candles, serialize_indicators
 from core.ai.roles.fundamental import FundamentalRole
 from core.ai.roles.screener import ScreenerRole
 from core.ai.roles.strategist import StrategistRole
@@ -81,7 +80,7 @@ def validate_screener() -> bool:
         },
     )
     prompt = screener.build_prompt(request)
-    has_prefiltered_info = 'pre-filtered' in prompt.lower() or 'rejected' in prompt.lower()
+    has_prefiltered_info = "pre-filtered" in prompt.lower() or "rejected" in prompt.lower()
     print(f"✓ Batch prompt length: {len(prompt)} chars")
     print(f"✓ Contains JSON instruction: {'JSON' in prompt}")
     print(f"✓ Contains pre-filtered info: {has_prefiltered_info}")
@@ -140,7 +139,9 @@ def validate_tactical() -> bool:
     # Test price level extraction
     response_text = "Entry at $50,000. Stop loss: 49000. Take profit: 55000."
     levels = tactical._extract_price_levels(response_text)
-    print(f"✓ Extracted levels: entry={levels.get('entry')}, stop={levels.get('stop_loss')}, tp={levels.get('take_profit')}")
+    print(
+        f"✓ Extracted levels: entry={levels.get('entry')}, stop={levels.get('stop_loss')}, tp={levels.get('take_profit')}"
+    )
 
     # Test response parsing
     response = AIResponse(
@@ -158,7 +159,9 @@ def validate_tactical() -> bool:
         },
     )
     verdict = tactical.parse_response(response)
-    print(f"✓ Verdict with levels: entry={verdict.metrics.get('entry')}, risk_reward={verdict.metrics.get('risk_reward')}")
+    print(
+        f"✓ Verdict with levels: entry={verdict.metrics.get('entry')}, risk_reward={verdict.metrics.get('risk_reward')}"
+    )
 
     return True
 
@@ -281,7 +284,7 @@ def validate_coindossier_alignment() -> bool:
         },
     )
     verdict = tactical.parse_response(response)
-    print(f"✓ Tactical → CoinDossier:")
+    print("✓ Tactical → CoinDossier:")
     print(f"  action: {verdict.action}")
     print(f"  confidence (1-10): {int(verdict.confidence * 10)}")
     print(f"  entry_zone: [{verdict.metrics.get('entry')}]")
@@ -304,7 +307,7 @@ def validate_coindossier_alignment() -> bool:
         },
     )
     verdict = fundamental.parse_response(response)
-    print(f"✓ Fundamental → CoinDossier:")
+    print("✓ Fundamental → CoinDossier:")
     print(f"  sentiment_score: {verdict.metrics.get('sentiment_score')}")
     print(f"  risk_level (from event_risk): {'low' if verdict.metrics.get('event_risk', 0) < 0.3 else 'medium'}")
 
@@ -324,9 +327,11 @@ def validate_coindossier_alignment() -> bool:
         },
     )
     verdict = strategist.parse_response(response)
-    print(f"✓ Strategist → CoinDossier:")
+    print("✓ Strategist → CoinDossier:")
     print(f"  position_size_pct: {verdict.metrics.get('position_size_pct')}")
-    print(f"  risk_level (from portfolio_risk): {'low' if verdict.metrics.get('portfolio_risk_pct', 0) < 0.2 else 'medium'}")
+    print(
+        f"  risk_level (from portfolio_risk): {'low' if verdict.metrics.get('portfolio_risk_pct', 0) < 0.2 else 'medium'}"
+    )
 
     return True
 
