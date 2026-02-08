@@ -2,7 +2,7 @@
 
 Tests router resilience features: circuit breaker, timeouts, partial evaluation.
 
-Phase 6.1 (P6.1) of issue #205.
+Part of issue #205 P4.
 """
 
 from __future__ import annotations
