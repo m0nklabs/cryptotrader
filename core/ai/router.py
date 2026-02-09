@@ -315,10 +315,7 @@ class LLMRouter:
 
             # Surface partial evaluation when some roles failed but enough succeeded
             if failed_roles:
-                partial_note = (
-                    f"Partial evaluation: {len(failed_roles)} role(s) failed: "
-                    f"{', '.join(failed_roles)}"
-                )
+                partial_note = f"Partial evaluation: {len(failed_roles)} role(s) failed: {', '.join(failed_roles)}"
                 if decision.reasoning:
                     decision.reasoning = decision.reasoning.rstrip() + ". " + partial_note
                 else:
