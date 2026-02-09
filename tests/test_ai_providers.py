@@ -16,6 +16,7 @@ import pytest
 from core.ai.providers.base import (
     AuthError,
     ClientError,
+    ProviderTimeoutError,
     RateLimitedError,
     PermanentError,
     ServerError,
@@ -88,6 +89,25 @@ def test_classify_http_error_5xx_default_transient():
     assert isinstance(error, ServerError)
     assert error.is_transient
     assert error.error_type == ProviderErrorType.SERVER_ERROR
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected_class", "expected_type", "expected_transient"),
+    [
+        (403, AuthError, ProviderErrorType.AUTH_ERROR, False),
+        (404, ClientError, ProviderErrorType.CLIENT_ERROR, False),
+        (408, ProviderTimeoutError, ProviderErrorType.TIMEOUT, True),
+        (502, ServerError, ProviderErrorType.SERVER_ERROR, True),
+    ],
+)
+def test_classify_http_error_additional_mappings(
+    status_code, expected_class, expected_type, expected_transient
+):
+    """Test additional status mappings and error_type propagation."""
+    error = classify_http_error(status_code, "Mapped error")
+    assert isinstance(error, expected_class)
+    assert error.error_type == expected_type
+    assert error.is_transient is expected_transient
 
 
 # ---------------------------------------------------------------------------
