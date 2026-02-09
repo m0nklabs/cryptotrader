@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from '../App'
@@ -34,15 +34,21 @@ vi.mock('../api/systemStatus', () => ({
 
 describe('App Component', () => {
   beforeEach(() => {
-    // Mock localStorage
-    Object.defineProperty(window, 'localStorage', {
-      value: {
-        getItem: vi.fn(() => 'dark'),
-        setItem: vi.fn(),
-        removeItem: vi.fn(),
-      },
-      writable: true,
-    })
+    vi.spyOn(window.localStorage, 'getItem').mockReturnValue('dark')
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => undefined)
+    vi.spyOn(window.localStorage, 'removeItem').mockImplementation(() => undefined)
+
+    // Mock fetch to avoid network calls in jsdom and prevent invalid URL errors
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ candles: [] }),
+    } as Response))
+
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('renders without crashing', () => {

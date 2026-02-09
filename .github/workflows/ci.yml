@@ -22,11 +22,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
+      - name: Checkout (PAT)
         uses: actions/checkout@v4
+        if: ${{ secrets.GH_PAT != '' }}
         with:
           ref: ${{ github.head_ref }}
+
           token: ${{ secrets.GH_PAT }}
+
+      - name: Checkout (default token)
+        uses: actions/checkout@v4
+        if: ${{ secrets.GH_PAT == '' }}
+        with:
+          ref: ${{ github.head_ref }}
 
       - name: Run header
         uses: m0nklabs/cryptotrader/.github/actions/run-header@master
