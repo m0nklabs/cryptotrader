@@ -186,7 +186,7 @@ def test_provider_timeout_overrides():
     [
         ("explicit-model", "override-model", "explicit-model", ProviderErrorType.UNKNOWN),
         (None, "override-model", "override-model", ProviderErrorType.UNKNOWN),
-        (None, None, "default-model", ProviderErrorType.TIMEOUT),
+        ("timeout-model", None, "timeout-model", ProviderErrorType.TIMEOUT),
         (None, None, "default-model", ProviderErrorType.UNKNOWN),
     ],
 )
