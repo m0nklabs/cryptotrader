@@ -9,14 +9,17 @@ This document describes the production-ready features added to the consensus eng
 The consensus engine now supports two VETO modes:
 
 - **Hard VETO** (default): Any role's VETO immediately blocks the trade, returning NEUTRAL with confidence 0.0
-- **Soft VETO**: VETO reduces final confidence by 50% but allows the decision to proceed based on other roles
+- **Soft VETO**: VETO reduces final confidence by a configurable penalty (default 0.5, i.e., 50%) but allows the decision to proceed based on other roles
 
 ```python
 # Hard VETO (default)
 engine = ConsensusEngine(veto_mode="hard")
 
-# Soft VETO (reduces confidence)
-engine = ConsensusEngine(veto_mode="soft")
+# Soft VETO (reduces confidence by soft_veto_penalty, default 0.5 => 50%)
+engine = ConsensusEngine(
+    veto_mode="soft",
+    soft_veto_penalty=0.5,  # configurable penalty (0.0-1.0), 0.5 = 50% reduction
+)
 ```
 
 **Use case**: Soft VETO is useful for advisory warnings that should influence but not block decisions (e.g., minor risk concerns that don't warrant a full veto).
@@ -39,7 +42,7 @@ engine = ConsensusEngine(
 
 ### 3. Confidence Calibration
 
-Historical accuracy tracking with Bayesian weight adjustment:
+Historical accuracy tracking with weight adjustment based on performance:
 
 ```python
 engine = ConsensusEngine(
@@ -51,7 +54,7 @@ engine = ConsensusEngine(
 engine.update_role_accuracy("tactical", was_correct=True)
 ```
 
-- Roles with accuracy > 50% get increased weight
+- Roles with accuracy > 50% get increased weight (linear rescaling)
 - Roles with accuracy < 50% get decreased weight
 - Uses exponential moving average (EMA) for smooth updates
 - Requires minimum sample size before calibration activates
@@ -122,6 +125,11 @@ status = router.get_circuit_breaker_status()
 # Manual reset (admin operation)
 router.reset_circuit_breaker(ProviderName.DEEPSEEK)
 ```
+
+**State scope**: Circuit breaker state is stored per `LLMRouter` instance. To benefit from circuit breaking across multiple requests, **you must reuse the same router instance**. The API layer currently creates a fresh router per request via `_get_router()`, which means breakers don't persist across API calls. For production use, consider:
+- Using a singleton router instance in the API layer
+- Moving breaker state to a shared/class-level store
+- Or accepting per-request breaker state for isolated request handling
 
 **Use case**: When a provider goes down, circuit breaker prevents repeated failed requests, allowing other providers to serve requests.
 

@@ -191,6 +191,21 @@ def test_invalid_veto_mode_raises_error():
         ConsensusEngine(veto_mode="HARD")  # Case-sensitive
 
 
+def test_invalid_soft_veto_penalty_raises_error():
+    """Test that invalid soft_veto_penalty raises ValueError."""
+    # Negative penalty
+    with pytest.raises(ValueError, match="soft_veto_penalty must be between 0.0 and 1.0"):
+        ConsensusEngine(soft_veto_penalty=-0.1)
+    
+    # Penalty > 1.0
+    with pytest.raises(ValueError, match="soft_veto_penalty must be between 0.0 and 1.0"):
+        ConsensusEngine(soft_veto_penalty=1.5)
+    
+    # Edge cases should work
+    ConsensusEngine(soft_veto_penalty=0.0)  # No penalty
+    ConsensusEngine(soft_veto_penalty=1.0)  # Full penalty
+
+
 # ---------------------------------------------------------------------------
 # Agreement Multiplier Tests
 # ---------------------------------------------------------------------------

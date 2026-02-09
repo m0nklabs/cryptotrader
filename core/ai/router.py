@@ -16,6 +16,7 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from core.ai.consensus import ConsensusEngine
 from core.ai.prompts.registry import PromptRegistry
@@ -29,6 +30,9 @@ from core.ai.types import (
     RoleVerdict,
     UsageRecord,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +154,10 @@ class LLMRouter:
         self.enable_circuit_breaker = enable_circuit_breaker
         self._usage_log: list[UsageRecord] = []
 
-        # Circuit breakers per provider
+        # Circuit breakers per provider (instance-level state)
+        # NOTE: Breaker state is stored on this router instance. To persist
+        # circuit breaker state across multiple requests, reuse the same
+        # router instance (e.g., via singleton or dependency injection).
         self._circuit_breakers: dict[ProviderName, CircuitBreaker] = {}
 
         # Role-specific timeouts
@@ -170,7 +177,7 @@ class LLMRouter:
         portfolio: dict | None = None,
         risk_limits: dict | None = None,
         roles: list[RoleName] | None = None,
-        db_session=None,  # Optional AsyncSession for database persistence
+        db_session: AsyncSession | None = None,
     ) -> ConsensusDecision:
         """Run the full Multi-Brain evaluation pipeline.
 
@@ -261,6 +268,7 @@ class LLMRouter:
                     latency_ms=response.latency_ms,
                     symbol=symbol,
                     success=response.error is None,
+                    error=response.error,  # Include error details for audit trail
                 )
             )
 

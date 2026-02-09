@@ -174,3 +174,4 @@ class UsageRecord:
     timestamp: datetime = field(default_factory=datetime.utcnow)
     symbol: str = ""
     success: bool = True
+    error: str | None = None  # Error message for failed requests
