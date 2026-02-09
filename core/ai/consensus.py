@@ -257,7 +257,10 @@ class ConsensusEngine:
         # Get historical accuracy (default to 0.5 if unknown)
         accuracy = self._role_accuracy.get(role_name, 0.5)
 
-        # Bayesian weight adjustment:
+        # Weight adjustment around 0.5 baseline:
+        # - accuracy > 0.5 → increase weight
+        # - accuracy < 0.5 → decrease weight
+        # - accuracy = 0.5 → no change
         # - accuracy > 0.5 → increase weight
         # - accuracy < 0.5 → decrease weight
         # - accuracy = 0.5 → no change
