@@ -100,9 +100,7 @@ def test_classify_http_error_5xx_default_transient():
         (502, ServerError, ProviderErrorType.SERVER_ERROR, True),
     ],
 )
-def test_classify_http_error_additional_mappings(
-    status_code, expected_class, expected_type, expected_transient
-):
+def test_classify_http_error_additional_mappings(status_code, expected_class, expected_type, expected_transient):
     """Test additional status mappings and error_type propagation."""
     error = classify_http_error(status_code, "Mapped error")
     assert isinstance(error, expected_class)
