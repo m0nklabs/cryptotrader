@@ -239,13 +239,15 @@ class LLMRouter:
             timeout = self._role_timeouts.get(role.name, DEFAULT_ROLE_TIMEOUT)
             tasks.append(self._evaluate_role_with_timeout(role, request, system_prompt, timeout))
 
+        # Track wall-clock time for end-to-end latency (roles run in parallel)
+        start_time = time.monotonic()
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        wall_clock_ms = (time.monotonic() - start_time) * 1000
 
         # Collect verdicts and responses (partial evaluation)
         verdicts: list[RoleVerdict] = []
         responses: list[AIResponse] = []
         total_cost = 0.0
-        total_latency = 0.0
         failed_roles = []
 
         for role, result in zip(active_roles, results):
@@ -292,7 +294,6 @@ class LLMRouter:
                 verdicts.append(verdict)
 
             total_cost += response.cost_usd
-            total_latency += response.latency_ms
 
         # Partial evaluation: check if we have minimum required roles
         if len(verdicts) < self.min_roles_required:
@@ -312,8 +313,19 @@ class LLMRouter:
             # Run consensus with available verdicts
             decision = self.consensus.aggregate(verdicts)
 
+            # Surface partial evaluation when some roles failed but enough succeeded
+            if failed_roles:
+                partial_note = (
+                    f"Partial evaluation: {len(failed_roles)} role(s) failed: "
+                    f"{', '.join(failed_roles)}"
+                )
+                if decision.reasoning:
+                    decision.reasoning = decision.reasoning.rstrip() + ". " + partial_note
+                else:
+                    decision.reasoning = partial_note
+
         decision.total_cost_usd = total_cost
-        decision.total_latency_ms = total_latency
+        decision.total_latency_ms = wall_clock_ms
 
         logger.info(
             "Multi-Brain decision for %s: %s (confidence=%.2f, %d/%d roles, cost=$%.4f, latency=%.0fms)",
