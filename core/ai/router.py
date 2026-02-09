@@ -73,7 +73,7 @@ class CircuitBreaker:
 
     def should_allow_request(self) -> bool:
         """Check if request should be allowed through.
-        
+
         Note: Under concurrent load, multiple tasks may pass the HALF_OPEN
         check simultaneously before any complete. This is acceptable - the
         limit is a guideline, not a hard gate. The worst case is a few extra
