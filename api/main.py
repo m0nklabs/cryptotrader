@@ -2054,7 +2054,6 @@ async def get_llm_status() -> dict[str, Any]:
         return {
             "available": False,
             "error": "llm_unavailable",
-            "host": "http://localhost:11434",
         }
 
 
