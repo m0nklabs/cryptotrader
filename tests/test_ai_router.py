@@ -450,7 +450,6 @@ async def test_router_wall_clock_latency():
     from core.ai.roles.base import RoleRegistry
     from core.ai.types import ProviderName, RoleConfig
     from unittest.mock import patch
-    import asyncio
 
     router = LLMRouter()
 
