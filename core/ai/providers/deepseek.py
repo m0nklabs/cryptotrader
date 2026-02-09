@@ -176,8 +176,8 @@ class DeepSeekProvider(LLMProvider):
             str: Text chunks as they arrive
 
         Raises:
-            TransientError: For retry-able errors (429, 503, network issues)
-            PermanentError: For non-retry-able errors (401, 400, etc.)
+            RateLimitedError/ServerError/NetworkError/ProviderTimeoutError: Retry-able failures (429/5xx/network/timeout)
+            AuthError/ClientError: Non-retry-able failures (401/403/4xx)
         """
         from core.ai.providers.base import NetworkError, ProviderTimeoutError, classify_http_error
 
