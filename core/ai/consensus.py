@@ -145,6 +145,7 @@ class ConsensusEngine:
         # Import RoleRegistry here to get weights
         from core.ai.roles.base import RoleRegistry
 
+        total_weight = 0.0  # Track sum of role weights for normalization
         for verdict in verdicts_to_process:
             role = RoleRegistry.get(verdict.role)
             weight = role.weight if role else 1.0
@@ -153,25 +154,27 @@ class ConsensusEngine:
             if self.enable_calibration:
                 weight = self._apply_calibration(verdict.role.value, weight)
 
+            total_weight += weight
             action = verdict.action
             if action in action_scores:
                 action_scores[action] += verdict.confidence * weight
                 action_counts[action] += 1
 
         # Step 3: Find winning action
-        total_weight = sum(action_scores.values()) or 1.0
+        # Normalize by total role weights (not by sum of scores) to preserve confidence meaning
+        normalization_factor = total_weight or 1.0
         best_action: SignalAction = "NEUTRAL"
         best_score = 0.0
 
         for action, score in action_scores.items():
-            normalized = score / total_weight
+            normalized = score / normalization_factor
             if normalized > best_score:
                 best_score = normalized
                 best_action = action
 
         # Detect 50/50 tie between BUY and SELL before applying thresholds
-        buy_score = action_scores.get("BUY", 0.0) / total_weight
-        sell_score = action_scores.get("SELL", 0.0) / total_weight
+        buy_score = action_scores.get("BUY", 0.0) / normalization_factor
+        sell_score = action_scores.get("SELL", 0.0) / normalization_factor
         is_tie = buy_score > 0 and sell_score > 0 and abs(buy_score - sell_score) < 1e-9
 
         # Step 4: Check for unanimous agreement and boost confidence

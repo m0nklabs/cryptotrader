@@ -251,6 +251,9 @@ class LLMRouter:
         for role, result in zip(active_roles, results):
             # Handle BaseException (includes asyncio.CancelledError in Python 3.12+)
             if isinstance(result, BaseException):
+                # Re-raise cancellation/interrupt signals to propagate properly
+                if isinstance(result, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                    raise result
                 logger.error("Role %s evaluation failed: %s", role.name.value, result)
                 failed_roles.append(role.name.value)
                 continue
@@ -374,13 +377,12 @@ class LLMRouter:
         request: AIRequest,
         system_prompt: str,
         timeout: float,
-    ) -> tuple[AIResponse, RoleVerdict] | None:
+    ) -> tuple[AIResponse, RoleVerdict]:
         """Evaluate a role with timeout and circuit breaker.
 
         Returns:
             (response, verdict) tuple on success
-            (synthetic error response, NEUTRAL verdict) on timeout/exception
-            None only when circuit breaker is open
+            (synthetic error response, NEUTRAL verdict) on timeout/exception/circuit breaker open
         """
         # Check circuit breaker
         provider = role.config.provider
@@ -507,7 +509,7 @@ class LLMRouter:
 
     async def _persist_decision(
         self,
-        db_session,
+        db_session: "AsyncSession",
         symbol: str,
         timeframe: str,
         decision: ConsensusDecision,

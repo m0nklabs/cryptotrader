@@ -269,7 +269,7 @@ def test_agreement_multiplier_unanimous():
 def test_agreement_multiplier_mixed_no_boost():
     """Test that mixed votes don't get agreement multiplier."""
     engine = ConsensusEngine(
-        confidence_threshold=0.5,
+        confidence_threshold=0.3,  # Lower threshold to allow BUY to win
         min_agreement=1,  # Lower requirement for this test
         agreement_multiplier=1.2,
     )
@@ -309,8 +309,10 @@ def test_agreement_multiplier_mixed_no_boost():
     decision = engine.aggregate(verdicts)
 
     # No agreement boost for mixed votes
-    # BUY should win but without boost (confidence will be based on weighted average)
+    # BUY should win but without boost
+    # With new normalization: BUY = 0.8/2.0 = 0.4, NEUTRAL = 0.6/2.0 = 0.3
     assert decision.final_action == "BUY"
+    assert decision.final_confidence == 0.4  # Weighted average, no boost
 
 
 def test_agreement_multiplier_caps_at_one():
