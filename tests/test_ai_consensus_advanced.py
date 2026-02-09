@@ -82,6 +82,47 @@ def test_soft_veto_reduces_confidence():
     assert "Soft VETO" in decision.reasoning
 
 
+def test_soft_veto_custom_penalty():
+    """Test that custom soft VETO penalty can be configured."""
+    engine = ConsensusEngine(
+        confidence_threshold=0.5,
+        min_agreement=2,
+        veto_mode="soft",
+        soft_veto_penalty=0.7,  # Custom 70% (30% reduction)
+    )
+
+    verdicts = [
+        RoleVerdict(
+            role=RoleName.SCREENER,
+            action="BUY",
+            confidence=0.8,
+            reasoning="Good signal",
+        ),
+        RoleVerdict(
+            role=RoleName.TACTICAL,
+            action="BUY",
+            confidence=0.8,
+            reasoning="Good pattern",
+        ),
+        RoleVerdict(
+            role=RoleName.STRATEGIST,
+            action="VETO",
+            confidence=1.0,
+            reasoning="Minor concern",
+        ),
+    ]
+
+    decision = engine.aggregate(verdicts)
+
+    # Should still be BUY with custom penalty applied
+    assert decision.final_action == "BUY"
+    # The penalty should result in less reduction than default 0.5
+    # With weights all equal, raw confidence would be ~0.8
+    # After 0.7 penalty, should be around 0.56
+    assert 0.5 < decision.final_confidence < 0.8
+    assert decision.vetoed_by is None
+
+
 def test_soft_veto_all_vetos_treated_as_hard():
     """Test that all VETOs in soft mode are still treated as hard."""
     engine = ConsensusEngine(

@@ -314,7 +314,7 @@ class LLMRouter:
         )
 
         # Persist to database if session provided
-        if db_session:
+        if db_session is not None:
             await self._persist_decision(db_session, symbol, timeframe, decision, responses)
 
         return decision

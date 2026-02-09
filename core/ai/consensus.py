@@ -55,6 +55,7 @@ class ConsensusEngine:
         agreement_multiplier: float = DEFAULT_AGREEMENT_MULTIPLIER,
         enable_calibration: bool = False,
         min_calibration_samples: int = DEFAULT_MIN_CALIBRATION_SAMPLES,
+        soft_veto_penalty: float = 0.5,
     ) -> None:
         # Validate veto_mode to prevent misconfigured safety behavior
         if veto_mode not in ("hard", "soft"):
@@ -66,6 +67,7 @@ class ConsensusEngine:
         self.agreement_multiplier = agreement_multiplier
         self.enable_calibration = enable_calibration
         self.min_calibration_samples = min_calibration_samples
+        self.soft_veto_penalty = soft_veto_penalty
 
         # Historical accuracy tracking per role (role_name -> accuracy)
         # In production, this would be loaded from database
@@ -119,16 +121,7 @@ class ConsensusEngine:
                     )
                 # Continue with non-VETO verdicts but track the veto
                 verdicts_to_process = non_veto_verdicts
-    def __init__(
-        self,
-        confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
-        min_agreement: int = DEFAULT_MIN_AGREEMENT,
-        veto_mode: str = "hard",  # "hard" or "soft"
-        agreement_multiplier: float = DEFAULT_AGREEMENT_MULTIPLIER,
-        enable_calibration: bool = False,
-        min_calibration_samples: int = DEFAULT_MIN_CALIBRATION_SAMPLES,
-        soft_veto_penalty: float = 0.5,
-    ) -> None:
+                soft_veto_penalty = self.soft_veto_penalty
         else:
             verdicts_to_process = verdicts
             soft_veto_penalty = 1.0
@@ -258,9 +251,6 @@ class ConsensusEngine:
         accuracy = self._role_accuracy.get(role_name, 0.5)
 
         # Weight adjustment around 0.5 baseline:
-        # - accuracy > 0.5 → increase weight
-        # - accuracy < 0.5 → decrease weight
-        # - accuracy = 0.5 → no change
         # - accuracy > 0.5 → increase weight
         # - accuracy < 0.5 → decrease weight
         # - accuracy = 0.5 → no change
