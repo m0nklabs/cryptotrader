@@ -498,5 +498,5 @@ async def test_router_wall_clock_latency():
 
     # Since roles run in parallel, wall-clock should be ~100ms, not ~200ms
     # Allow generous bounds to tolerate scheduler jitter on busy CI runners
-    # Key assertion: latency is much closer to max(100, 100) than sum(200) 
+    # Key assertion: latency is much closer to max(100, 100) than sum(200)
     assert 50 <= decision.total_latency_ms < 400  # Generous for CI, but still validates parallel timing
