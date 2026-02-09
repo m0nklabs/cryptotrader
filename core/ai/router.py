@@ -413,7 +413,7 @@ class LLMRouter:
                     model=role.config.model,
                     raw_text="",
                     error="circuit breaker open",
-                    error_type=ProviderErrorType.UNKNOWN,
+                    error_type=ProviderErrorType.CIRCUIT_BREAKER_OPEN,
                     tokens_in=0,
                     tokens_out=0,
                     cost_usd=0.0,

@@ -48,6 +48,7 @@ class ProviderErrorType(str, Enum):
     NETWORK_ERROR = "network_error"
     SERVER_ERROR = "server_error"
     CLIENT_ERROR = "client_error"
+    CIRCUIT_BREAKER_OPEN = "circuit_breaker_open"
     UNKNOWN = "unknown"
 
 

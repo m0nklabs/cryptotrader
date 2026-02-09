@@ -459,10 +459,14 @@ class LLMProvider(ABC):
     def _get_timeout(self) -> httpx.Timeout:
         """Build per-request connect/read/write timeouts."""
         base_timeout = self.config.timeout_seconds
-        connect = self.config.timeout_connect_seconds or base_timeout
-        read = self.config.timeout_read_seconds or base_timeout
-        write = self.config.timeout_write_seconds or base_timeout
-        pool = self.config.timeout_pool_seconds or base_timeout
+        connect = (
+            self.config.timeout_connect_seconds
+            if self.config.timeout_connect_seconds is not None
+            else base_timeout
+        )
+        read = self.config.timeout_read_seconds if self.config.timeout_read_seconds is not None else base_timeout
+        write = self.config.timeout_write_seconds if self.config.timeout_write_seconds is not None else base_timeout
+        pool = self.config.timeout_pool_seconds if self.config.timeout_pool_seconds is not None else base_timeout
         return httpx.Timeout(
             timeout=base_timeout,
             connect=connect,
@@ -674,14 +678,17 @@ class LLMProvider(ABC):
         error: str,
         latency_ms: float = 0.0,
         error_type: ProviderErrorType | None = None,
+        model: str | None = None,
     ) -> AIResponse:
         """Build an error AIResponse without raising."""
         if error_type is None:
             error_type = ProviderErrorType.UNKNOWN
+        override_model = request.override_model if hasattr(request, "override_model") else None
+        effective_model = model or override_model or self.config.default_model
         return AIResponse(
             role=request.role,
             provider=self.config.name,
-            model=self.config.default_model,
+            model=effective_model,
             raw_text="",
             error=error,
             error_type=error_type,

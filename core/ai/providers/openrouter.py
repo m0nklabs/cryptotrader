@@ -131,6 +131,7 @@ class OpenRouterProvider(LLMProvider):
                 str(exc),
                 latency,
                 error_type=self._error_type_from_exception(exc),
+                model=model,
             )
 
         latency = self._elapsed_ms(start)
