@@ -182,16 +182,22 @@ def test_provider_timeout_overrides():
 
 
 @pytest.mark.parametrize(
-    ("model_arg", "override_model", "expected_model", "expected_error_type"),
+    ("model_arg", "override_model", "error_type_arg", "expected_model", "expected_error_type"),
     [
-        ("explicit-model", "override-model", "explicit-model", ProviderErrorType.UNKNOWN),
-        (None, "override-model", "override-model", ProviderErrorType.UNKNOWN),
-        ("timeout-model", None, "timeout-model", ProviderErrorType.TIMEOUT),
-        (None, None, "default-model", ProviderErrorType.UNKNOWN),
+        ("explicit-model", "override-model", None, "explicit-model", ProviderErrorType.UNKNOWN),
+        (None, "override-model", None, "override-model", ProviderErrorType.UNKNOWN),
+        (None, None, None, "default-model", ProviderErrorType.UNKNOWN),
+        ("timeout-model", None, ProviderErrorType.TIMEOUT, "timeout-model", ProviderErrorType.TIMEOUT),
     ],
 )
-def test_make_error_response_model_precedence(model_arg, override_model, expected_model, expected_error_type):
-    """Test model precedence and default error_type in error responses."""
+def test_make_error_response_model_precedence(
+    model_arg,
+    override_model,
+    error_type_arg,
+    expected_model,
+    expected_error_type,
+):
+    """Test model precedence and error_type handling in error responses."""
     config = ProviderConfig(
         name=ProviderName.OPENAI,
         api_key_env="OPENAI_API_KEY",
@@ -203,12 +209,32 @@ def test_make_error_response_model_precedence(model_arg, override_model, expecte
     response = provider._make_error_response(
         request,
         "boom",
-        error_type=None if expected_error_type == ProviderErrorType.UNKNOWN else expected_error_type,
+        error_type=error_type_arg,
         model=model_arg,
     )
 
     assert response.model == expected_model
     assert response.error_type == expected_error_type
+
+
+@pytest.mark.asyncio
+async def test_make_request_timeout_classification():
+    """Test that timeouts raise ProviderTimeoutError with TIMEOUT error_type."""
+    config = ProviderConfig(
+        name=ProviderName.OPENAI,
+        api_key_env="OPENAI_API_KEY",
+        base_url="https://example.com",
+        default_model="default-model",
+    )
+    provider = OpenAIProvider(config)
+    client = MagicMock(spec=httpx.AsyncClient)
+    client.request = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(ProviderTimeoutError) as exc:
+            await provider._make_request(client, "GET", "https://example.com")
+
+    assert exc.value.error_type == ProviderErrorType.TIMEOUT
 
 
 # ---------------------------------------------------------------------------
