@@ -96,7 +96,10 @@ const toLineData = (points: EquityPoint[]): LineData[] =>
  * @param chart - Chart instance returned by createChart.
  * @param ref - Ref to the chart container element.
  */
-const attachResizeObserver = (chart: ReturnType<typeof createChart>, ref: React.RefObject<HTMLDivElement>) => {
+const attachResizeObserver = (
+  chart: ReturnType<typeof createChart>,
+  ref: React.RefObject<HTMLDivElement | null>
+) => {
   const resize = () => {
     if (!ref.current) return
     chart.applyOptions({ width: ref.current.clientWidth })

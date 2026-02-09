@@ -45,10 +45,10 @@ describe('App Component', () => {
     })
 
     // Mock fetch to avoid network calls in jsdom and prevent invalid URL errors
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ candles: [] }),
-    } as Response)
+    } as Response))
   })
 
   afterEach(() => {
