@@ -34,9 +34,9 @@ vi.mock('../api/systemStatus', () => ({
 
 describe('App Component', () => {
   beforeEach(() => {
-    const getItem = vi.spyOn(window.localStorage, 'getItem').mockReturnValue('dark')
-    const setItem = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => undefined)
-    const removeItem = vi.spyOn(window.localStorage, 'removeItem').mockImplementation(() => undefined)
+    vi.spyOn(window.localStorage, 'getItem').mockReturnValue('dark')
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => undefined)
+    vi.spyOn(window.localStorage, 'removeItem').mockImplementation(() => undefined)
 
     // Mock fetch to avoid network calls in jsdom and prevent invalid URL errors
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -44,15 +44,10 @@ describe('App Component', () => {
       json: async () => ({ candles: [] }),
     } as Response))
 
-    return () => {
-      getItem.mockRestore()
-      setItem.mockRestore()
-      removeItem.mockRestore()
-      vi.unstubAllGlobals()
-    }
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
