@@ -56,24 +56,6 @@ def router():
     )
 
 
-@pytest.fixture
-def mock_role():
-    """Create a mock role for testing."""
-    from core.ai.types import ProviderName, RoleConfig
-
-    role = Mock()
-    role.name = RoleName.TACTICAL
-    role.weight = 1.0
-    role.config = RoleConfig(
-        name=RoleName.TACTICAL,
-        provider=ProviderName.DEEPSEEK,
-        model="deepseek-reasoner",
-        system_prompt_id="tactical_v1",
-        weight=1.0,
-    )
-    return role
-
-
 # ---------------------------------------------------------------------------
 # Circuit Breaker Tests
 # ---------------------------------------------------------------------------

@@ -201,12 +201,16 @@ pytest tests/test_ai_router.py -v
 
 ## Performance Characteristics
 
+Performance characteristics are environment-dependent and not formally benchmarked. The following are rough estimates:
+
 | Feature | Overhead | Benefit |
 |---------|----------|---------|
-| Circuit breaker | ~1ms per request | Prevents cascading failures |
-| Timeout | 0ms (async) | Ensures responsiveness |
-| Calibration | ~5ms per aggregation | Improves accuracy over time |
-| DB persistence | ~10-20ms (async) | Audit trail, cost tracking |
+| Circuit breaker | Low per-request overhead (state check + conditional logic) | Prevents cascading failures |
+| Timeout | Negligible async scheduling overhead | Ensures responsiveness |
+| Calibration | Additional per-aggregation processing (weight calculation) | Improves accuracy over time |
+| DB persistence | Async I/O overhead (depends on DB latency and network) | Audit trail, cost tracking |
+
+**Note**: Actual performance depends on hardware, network, database configuration, and concurrent load. Measure in your environment for production SLOs.
 
 ---
 
