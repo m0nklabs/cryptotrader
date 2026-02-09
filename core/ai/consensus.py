@@ -119,7 +119,16 @@ class ConsensusEngine:
                     )
                 # Continue with non-VETO verdicts but track the veto
                 verdicts_to_process = non_veto_verdicts
-                soft_veto_penalty = 0.5  # Reduce final confidence by 50%
+    def __init__(
+        self,
+        confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+        min_agreement: int = DEFAULT_MIN_AGREEMENT,
+        veto_mode: str = "hard",  # "hard" or "soft"
+        agreement_multiplier: float = DEFAULT_AGREEMENT_MULTIPLIER,
+        enable_calibration: bool = False,
+        min_calibration_samples: int = DEFAULT_MIN_CALIBRATION_SAMPLES,
+        soft_veto_penalty: float = 0.5,
+    ) -> None:
         else:
             verdicts_to_process = verdicts
             soft_veto_penalty = 1.0
