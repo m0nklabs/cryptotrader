@@ -507,7 +507,8 @@ class LLMRouter:
         try:
             return await role.evaluate(request, system_prompt)
         except Exception as exc:
-            logger.error("Role %s evaluation failed: %s", role.name.value, exc)
+            # Let _evaluate_role_with_timeout handle logging to avoid duplicates
+            logger.debug("Role %s evaluation failed: %s", role.name.value, exc)
             raise
 
     def _get_circuit_breaker(self, provider: ProviderName) -> CircuitBreaker:
@@ -602,4 +603,6 @@ class LLMRouter:
             breaker = self._circuit_breakers[provider]
             breaker.state = CircuitState.CLOSED
             breaker.failure_count = 0
+            breaker.last_failure_time = 0.0
+            breaker.half_open_successes = 0
             logger.info("Circuit breaker for %s manually reset", provider.value)

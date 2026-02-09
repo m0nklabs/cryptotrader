@@ -296,6 +296,10 @@ async def test_router_partial_evaluation_one_role_fails():
     # Should still get BUY decision from 2 successful roles
     assert decision.final_action == "BUY"
     assert len(decision.verdicts) == 2
+    # Verify partial evaluation is surfaced in reasoning
+    assert "Partial evaluation" in decision.reasoning
+    assert "1 role(s) failed" in decision.reasoning
+    assert "screener" in decision.reasoning.lower()
 
 
 @pytest.mark.asyncio
@@ -438,3 +442,58 @@ async def test_router_usage_tracking(router):
     assert usage_log[0].tokens_out == 50
     assert usage_log[0].cost_usd == 0.001
     assert usage_log[0].success is True
+
+
+@pytest.mark.asyncio
+async def test_router_wall_clock_latency():
+    """Test that router tracks wall-clock latency, not sum of per-role latencies."""
+    from core.ai.roles.base import RoleRegistry
+    from core.ai.types import ProviderName, RoleConfig
+    from unittest.mock import patch
+    import asyncio
+
+    router = LLMRouter()
+
+    # Register 2 mock roles that simulate 100ms each
+    for role_name in [RoleName.TACTICAL, RoleName.FUNDAMENTAL]:
+        mock_role = Mock()
+        mock_role.name = role_name
+        mock_role.weight = 1.0
+        mock_role.config = RoleConfig(
+            name=role_name,
+            provider=ProviderName.DEEPSEEK,
+            model="test",
+            system_prompt_id="test",
+            enabled=True,
+        )
+
+        async def slow_evaluate(*args, **kwargs):
+            await asyncio.sleep(0.1)  # 100ms delay
+            return (
+                AIResponse(
+                    role=role_name,
+                    provider=ProviderName.DEEPSEEK,
+                    model="test",
+                    raw_text="{}",
+                ),
+                RoleVerdict(
+                    role=role_name,
+                    action="BUY",
+                    confidence=0.8,
+                    reasoning="test",
+                ),
+            )
+
+        mock_role.evaluate = slow_evaluate
+        RoleRegistry.register(mock_role)
+
+    with patch("core.ai.prompts.registry.PromptRegistry.get_active", return_value=Mock(content="test")):
+        decision = await router.evaluate_opportunity(
+            symbol="BTC/USD",
+            timeframe="1h",
+        )
+
+    # Since roles run in parallel, wall-clock should be ~100ms, not ~200ms
+    # Allow some overhead but verify it's closer to max(100, 100) than sum(100, 100)
+    assert decision.total_latency_ms < 150  # Should be ~100ms + overhead, not 200ms+
+    assert decision.total_latency_ms >= 100  # Should be at least 100ms (slowest role)
