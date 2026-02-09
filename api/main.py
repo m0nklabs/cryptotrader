@@ -697,10 +697,11 @@ async def stream_candles(
             async for candle_data in service.subscribe(symbol, timeframe):
                 # Format as SSE event
                 yield f"data: {json.dumps(candle_data)}\n\n"
-        except Exception as e:
-            logger.error(f"Error in SSE stream for {symbol}:{timeframe}: {e}")
-            # Send error event
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        except Exception:
+            # Log full exception details server-side, including stack trace
+            logger.exception(f"Error in SSE stream for {symbol}:{timeframe}")
+            # Send generic error event to avoid exposing internal details
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Internal stream error'})}\n\n"
 
     return StreamingResponse(
         event_generator(),
