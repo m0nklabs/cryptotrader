@@ -11,6 +11,8 @@ import { VIEW_IDS, type ViewId } from './nav'
 import ShortcutHelp from './components/ShortcutHelp'
 import OpportunityScore from './components/OpportunityScore'
 import CoinDossier from './components/CoinDossier'
+import PerformanceCharts from './components/PerformanceCharts'
+import { sampleEquityCurve } from './data/performanceSample'
 import {
   placeOrder,
   listOrders,
@@ -1467,6 +1469,10 @@ export default function App() {
 
               <Panel title="Opportunities" subtitle={`${chartSymbol} opportunity score`}>
                 <OpportunityScore symbol={chartSymbol} exchange={selectedExchange} />
+              </Panel>
+
+              <Panel title="Performance" subtitle="Equity & drawdown (sample)">
+                <PerformanceCharts equityCurve={sampleEquityCurve} />
               </Panel>
 
               <Panel title="Data Quality" subtitle="Candle gaps">
