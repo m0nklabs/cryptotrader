@@ -695,8 +695,12 @@ class LLMProvider(ABC):
         """Build an error AIResponse without raising."""
         if error_type is None:
             error_type = ProviderErrorType.UNKNOWN
-        override_model = request.override_model if hasattr(request, "override_model") else None
-        effective_model = model or override_model or self.config.default_model
+        override_model = getattr(request, "override_model", None)
+        effective_model = (
+            model
+            if model is not None
+            else (override_model if override_model is not None else self.config.default_model)
+        )
         return AIResponse(
             role=request.role,
             provider=self.config.name,
