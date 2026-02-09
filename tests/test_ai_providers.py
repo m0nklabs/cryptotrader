@@ -29,7 +29,7 @@ from core.ai.providers.ollama import OllamaProvider
 from core.ai.providers.openai import OpenAIProvider
 from core.ai.providers.openrouter import OpenRouterProvider
 from core.ai.providers.xai import XAIProvider
-from core.ai.types import AIRequest, ProviderErrorType, ProviderName, RoleName
+from core.ai.types import AIRequest, ProviderConfig, ProviderErrorType, ProviderName, RoleName
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +152,62 @@ def test_validate_json_response_rejects_non_finite_values():
 
     parsed = validate_json_response('{"value": -Infinity}')
     assert parsed is None
+
+
+# ---------------------------------------------------------------------------
+# Provider Base Helper Tests
+# ---------------------------------------------------------------------------
+
+
+def test_provider_timeout_overrides():
+    """Test that per-phase timeout overrides are honored."""
+    config = ProviderConfig(
+        name=ProviderName.OPENAI,
+        api_key_env="OPENAI_API_KEY",
+        base_url="https://example.com",
+        default_model="test-model",
+        timeout_seconds=10,
+        timeout_connect_seconds=0.1,
+        timeout_read_seconds=None,
+        timeout_write_seconds=2.5,
+        timeout_pool_seconds=0.0,
+    )
+    provider = OpenAIProvider(config)
+    timeout = provider._get_timeout()
+
+    assert timeout.connect == 0.1
+    assert timeout.read == 10
+    assert timeout.write == 2.5
+    assert timeout.pool == 0.0
+
+
+@pytest.mark.parametrize(
+    ("model_arg", "override_model", "expected_model", "expected_error_type"),
+    [
+        ("explicit-model", "override-model", "explicit-model", ProviderErrorType.UNKNOWN),
+        (None, "override-model", "override-model", ProviderErrorType.UNKNOWN),
+        (None, None, "default-model", ProviderErrorType.TIMEOUT),
+    ],
+)
+def test_make_error_response_model_precedence(model_arg, override_model, expected_model, expected_error_type):
+    """Test model precedence and default error_type in error responses."""
+    config = ProviderConfig(
+        name=ProviderName.OPENAI,
+        api_key_env="OPENAI_API_KEY",
+        base_url="https://example.com",
+        default_model="default-model",
+    )
+    provider = OpenAIProvider(config)
+    request = AIRequest(role=RoleName.SCREENER, user_prompt="test", override_model=override_model)
+    response = provider._make_error_response(
+        request,
+        "boom",
+        error_type=None if expected_error_type == ProviderErrorType.UNKNOWN else expected_error_type,
+        model=model_arg,
+    )
+
+    assert response.model == expected_model
+    assert response.error_type == expected_error_type
 
 
 # ---------------------------------------------------------------------------
