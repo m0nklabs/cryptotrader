@@ -460,25 +460,11 @@ class LLMProvider(ABC):
         """Build per-request connect/read/write timeouts."""
         base_timeout = self.config.timeout_seconds
         connect = (
-            self.config.timeout_connect_seconds
-            if self.config.timeout_connect_seconds is not None
-            else base_timeout
+            self.config.timeout_connect_seconds if self.config.timeout_connect_seconds is not None else base_timeout
         )
-        read = (
-            self.config.timeout_read_seconds
-            if self.config.timeout_read_seconds is not None
-            else base_timeout
-        )
-        write = (
-            self.config.timeout_write_seconds
-            if self.config.timeout_write_seconds is not None
-            else base_timeout
-        )
-        pool = (
-            self.config.timeout_pool_seconds
-            if self.config.timeout_pool_seconds is not None
-            else base_timeout
-        )
+        read = self.config.timeout_read_seconds if self.config.timeout_read_seconds is not None else base_timeout
+        write = self.config.timeout_write_seconds if self.config.timeout_write_seconds is not None else base_timeout
+        pool = self.config.timeout_pool_seconds if self.config.timeout_pool_seconds is not None else base_timeout
         return httpx.Timeout(
             timeout=base_timeout,
             connect=connect,
