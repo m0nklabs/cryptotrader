@@ -187,6 +187,7 @@ def test_provider_timeout_overrides():
         ("explicit-model", "override-model", "explicit-model", ProviderErrorType.UNKNOWN),
         (None, "override-model", "override-model", ProviderErrorType.UNKNOWN),
         (None, None, "default-model", ProviderErrorType.TIMEOUT),
+        (None, None, "default-model", ProviderErrorType.UNKNOWN),
     ],
 )
 def test_make_error_response_model_precedence(model_arg, override_model, expected_model, expected_error_type):
