@@ -60,7 +60,7 @@ class ConsensusEngine:
         # Validate veto_mode to prevent misconfigured safety behavior
         if veto_mode not in ("hard", "soft"):
             raise ValueError(f"veto_mode must be 'hard' or 'soft', got {veto_mode!r}")
-        
+
         # Validate soft_veto_penalty to prevent invalid confidence values
         if not 0.0 <= soft_veto_penalty <= 1.0:
             raise ValueError(f"soft_veto_penalty must be between 0.0 and 1.0, got {soft_veto_penalty}")
