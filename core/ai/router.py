@@ -471,6 +471,10 @@ class LLMRouter:
             )
             return (error_response, neutral_verdict)
 
+        except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+            # Propagate cancellation/interrupt signals immediately
+            raise
+
         except Exception as exc:
             logger.error("Role %s evaluation failed: %s", role.name.value, exc)
             # Record failure in circuit breaker
