@@ -156,11 +156,12 @@ class ScreenerRole(AgentRole):
     def parse_response(self, response: AIResponse) -> RoleVerdict:
         """Parse screener response into a verdict."""
         if response.error:
+            error_label = response.error_type.value if response.error_type else "unknown"
             return RoleVerdict(
                 role=RoleName.SCREENER,
                 action="NEUTRAL",
                 confidence=0.0,
-                reasoning=f"Screener error: {response.error}",
+                reasoning=f"Screener error ({error_label}): {response.error}",
             )
 
         # Try to extract structured data

@@ -44,7 +44,7 @@ class OllamaProvider(LLMProvider):
         if self._client is None:
             self._client = httpx.AsyncClient(
                 base_url=self.config.base_url,
-                timeout=httpx.Timeout(self.config.timeout_seconds),
+                timeout=self._get_timeout(),
             )
         return self._client
 
@@ -92,7 +92,12 @@ class OllamaProvider(LLMProvider):
         except Exception as exc:
             latency = self._elapsed_ms(start)
             logger.error("Ollama request failed: %s", exc)
-            return self._make_error_response(request, str(exc), latency)
+            return self._make_error_response(
+                request,
+                str(exc),
+                latency,
+                error_type=self._error_type_from_exception(exc),
+            )
 
         latency = self._elapsed_ms(start)
         raw_text = data.get("message", {}).get("content", "")
@@ -133,7 +138,7 @@ class OllamaProvider(LLMProvider):
         max_tokens: int,
     ):
         """Single streaming attempt with error classification and rate limiting."""
-        from core.ai.providers.base import TransientError, classify_http_error
+        from core.ai.providers.base import NetworkError, ProviderTimeoutError, classify_http_error
 
         rate_limiter = await self._get_rate_limiter()
         await rate_limiter.acquire()
@@ -178,11 +183,13 @@ class OllamaProvider(LLMProvider):
             except Exception:
                 logger.debug("Failed to read Ollama error response body", exc_info=True)
             if status_code is None:
-                raise TransientError(f"HTTP error without status code: {message}") from e
+                raise NetworkError(f"HTTP error without status code: {message}") from e
             error = classify_http_error(status_code, message)
             raise error from e
-        except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
-            raise TransientError(f"Network error: {e}", status_code=None) from e
+        except httpx.TimeoutException as e:
+            raise ProviderTimeoutError(f"Network timeout: {e}", status_code=None) from e
+        except (httpx.NetworkError, httpx.ConnectError) as e:
+            raise NetworkError(f"Network error: {e}", status_code=None) from e
 
     async def complete_stream(
         self,

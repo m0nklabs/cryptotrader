@@ -213,11 +213,12 @@ class TacticalRole(AgentRole):
     def parse_response(self, response: AIResponse) -> RoleVerdict:
         """Parse tactical response into a verdict with price levels."""
         if response.error:
+            error_label = response.error_type.value if response.error_type else "unknown"
             return RoleVerdict(
                 role=RoleName.TACTICAL,
                 action="NEUTRAL",
                 confidence=0.0,
-                reasoning=f"Tactical error: {response.error}",
+                reasoning=f"Tactical error ({error_label}): {response.error}",
             )
 
         # Validate action and clamp confidence

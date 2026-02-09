@@ -350,11 +350,12 @@ class StrategistRole(AgentRole):
         """
         if response.error:
             # On error, default to VETO for safety
+            error_label = response.error_type.value if response.error_type else "unknown"
             return RoleVerdict(
                 role=RoleName.STRATEGIST,
                 action="VETO",
                 confidence=1.0,
-                reasoning=f"Strategist error (defaulting to VETO): {response.error}",
+                reasoning=f"Strategist error ({error_label}, defaulting to VETO): {response.error}",
             )
 
         # Validate action against allowed SignalAction values; default to VETO on unknown

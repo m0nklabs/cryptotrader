@@ -14,9 +14,12 @@ import httpx
 import pytest
 
 from core.ai.providers.base import (
+    AuthError,
+    ClientError,
+    RateLimitedError,
     PermanentError,
+    ServerError,
     TokenBucket,
-    TransientError,
     classify_http_error,
     validate_json_response,
 )
@@ -25,7 +28,7 @@ from core.ai.providers.ollama import OllamaProvider
 from core.ai.providers.openai import OpenAIProvider
 from core.ai.providers.openrouter import OpenRouterProvider
 from core.ai.providers.xai import XAIProvider
-from core.ai.types import AIRequest, ProviderName, RoleName
+from core.ai.types import AIRequest, ProviderErrorType, ProviderName, RoleName
 
 
 # ---------------------------------------------------------------------------
@@ -52,34 +55,39 @@ def test_classify_http_error_transient():
     """Test that transient errors are classified correctly."""
     # 429 Rate Limited
     error = classify_http_error(429, "Rate limited")
-    assert isinstance(error, TransientError)
+    assert isinstance(error, RateLimitedError)
     assert error.is_transient
     assert error.status_code == 429
+    assert error.error_type == ProviderErrorType.RATE_LIMITED
 
     # 503 Service Unavailable
     error = classify_http_error(503, "Service down")
-    assert isinstance(error, TransientError)
+    assert isinstance(error, ServerError)
     assert error.is_transient
+    assert error.error_type == ProviderErrorType.SERVER_ERROR
 
 
 def test_classify_http_error_permanent():
     """Test that permanent errors are classified correctly."""
     # 401 Unauthorized
     error = classify_http_error(401, "Bad API key")
-    assert isinstance(error, PermanentError)
+    assert isinstance(error, AuthError)
     assert not error.is_transient
     assert error.status_code == 401
+    assert error.error_type == ProviderErrorType.AUTH_ERROR
 
     # 400 Bad Request
     error = classify_http_error(400, "Invalid request")
-    assert isinstance(error, PermanentError)
+    assert isinstance(error, ClientError)
+    assert error.error_type == ProviderErrorType.CLIENT_ERROR
 
 
 def test_classify_http_error_5xx_default_transient():
     """Test that unknown 5xx errors default to transient."""
     error = classify_http_error(500, "Internal server error")
-    assert isinstance(error, TransientError)
+    assert isinstance(error, ServerError)
     assert error.is_transient
+    assert error.error_type == ProviderErrorType.SERVER_ERROR
 
 
 # ---------------------------------------------------------------------------

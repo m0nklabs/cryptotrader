@@ -89,9 +89,11 @@ class AgentRole(ABC):
 
         # Fallback on error
         if response.error and self.config.fallback_provider:
+            error_label = response.error_type.value if response.error_type else "unknown"
             logger.warning(
-                "Role %s primary failed, trying fallback %s",
+                "Role %s primary failed (%s), trying fallback %s",
                 self.name.value,
+                error_label,
                 self.config.fallback_provider.value,
             )
             fallback = ProviderRegistry.get(self.config.fallback_provider)
