@@ -129,8 +129,16 @@ export default function PerformanceCharts({ equityCurve }: Props) {
   const normalizedEquity = useMemo(() => normalizeEquity(equityCurve), [equityCurve])
 
   const drawdownSeries = useMemo(() => computeDrawdownSeries(normalizedEquity), [normalizedEquity])
+  const maxDrawdown = useMemo(() => {
+    let minDrawdown = 0
+    for (const p of drawdownSeries) {
+      if (p.value < minDrawdown) {
+        minDrawdown = p.value
+      }
+    }
+    return Math.abs(minDrawdown)
+  }, [drawdownSeries])
   const latestEquity = normalizedEquity.at(-1)?.value ?? 0
-  const maxDrawdown = Math.abs(Math.min(0, ...drawdownSeries.map((p) => p.value)))
 
   useEffect(() => {
     if (!equityRef.current || normalizedEquity.length === 0) return
