@@ -2050,10 +2050,10 @@ async def get_llm_status() -> dict[str, Any]:
 
         return await check_ollama()
     except Exception as e:
+        logger.exception("Failed to check LLM (Ollama) status")
         return {
             "available": False,
-            "error": str(e),
-            "host": "http://localhost:11434",
+            "error": "llm_unavailable",
         }
 
 
