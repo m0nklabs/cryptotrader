@@ -84,7 +84,7 @@ const normalizeEquity = (points: EquityPoint[]): EquityPoint[] => {
 }
 
 const toLineData = (points: EquityPoint[]): LineData[] =>
-  normalizeEquity(points).map((p) => ({
+  points.map((p) => ({
     time: p.time as LineData['time'],
     value: p.value,
   }))
@@ -121,7 +121,7 @@ const computeDrawdownSeries = (points: EquityPoint[]): EquityPoint[] => {
   return points.map((p) => {
     peak = Math.max(peak, p.value)
     const dd = peak > 0 ? ((p.value - peak) / peak) * 100 : 0
-    return { time: p.time, value: Number(dd.toFixed(2)) }
+    return { time: p.time, value: Math.round(dd * 100) / 100 }
   })
 }
 
@@ -132,6 +132,8 @@ export default function PerformanceCharts({ equityCurve }: Props) {
   const normalizedEquity = useMemo(() => normalizeEquity(equityCurve), [equityCurve])
 
   const drawdownSeries = useMemo(() => computeDrawdownSeries(normalizedEquity), [normalizedEquity])
+  const equityLineData = useMemo(() => toLineData(normalizedEquity), [normalizedEquity])
+  const drawdownLineData = useMemo(() => toLineData(drawdownSeries), [drawdownSeries])
   const maxDrawdown = useMemo(() => {
     let minDrawdown = 0
     for (const p of drawdownSeries) {
@@ -154,7 +156,7 @@ export default function PerformanceCharts({ equityCurve }: Props) {
     })
 
     const series = chart.addSeries(LineSeries, { color: SERIES_COLORS.equity, lineWidth: 2 })
-    series.setData(toLineData(normalizedEquity))
+    series.setData(equityLineData)
     chart.timeScale().fitContent()
 
     const cleanupResize = attachResizeObserver(chart, equityRef)
@@ -176,7 +178,7 @@ export default function PerformanceCharts({ equityCurve }: Props) {
     })
 
     const series = chart.addSeries(LineSeries, { color: SERIES_COLORS.drawdown, lineWidth: 2 })
-    series.setData(toLineData(drawdownSeries))
+    series.setData(drawdownLineData)
     chart.timeScale().fitContent()
 
     const cleanupResize = attachResizeObserver(chart, drawdownRef)

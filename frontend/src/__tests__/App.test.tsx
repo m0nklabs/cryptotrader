@@ -34,21 +34,22 @@ vi.mock('../api/systemStatus', () => ({
 
 describe('App Component', () => {
   beforeEach(() => {
-    // Mock localStorage
-    Object.defineProperty(window, 'localStorage', {
-      value: {
-        getItem: vi.fn(() => 'dark'),
-        setItem: vi.fn(),
-        removeItem: vi.fn(),
-      },
-      writable: true,
-    })
+    const getItem = vi.spyOn(window.localStorage, 'getItem').mockReturnValue('dark')
+    const setItem = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => undefined)
+    const removeItem = vi.spyOn(window.localStorage, 'removeItem').mockImplementation(() => undefined)
 
     // Mock fetch to avoid network calls in jsdom and prevent invalid URL errors
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ candles: [] }),
     } as Response))
+
+    return () => {
+      getItem.mockRestore()
+      setItem.mockRestore()
+      removeItem.mockRestore()
+      vi.unstubAllGlobals()
+    }
   })
 
   afterEach(() => {
