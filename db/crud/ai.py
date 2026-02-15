@@ -511,44 +511,49 @@ async def log_decision_with_usage(
     if usage_records is None:
         usage_records = []
 
-    try:
-        # Create decision
-        decision = AIDecision(
-            symbol=symbol,
-            timeframe=timeframe,
-            final_action=final_action,
-            final_confidence=final_confidence,
-            verdicts=verdicts,
-            reasoning=reasoning,
-            vetoed_by=vetoed_by,
-            total_cost_usd=total_cost_usd,
-            total_latency_ms=total_latency_ms,
+    # Create decision
+    decision = AIDecision(
+        symbol=symbol,
+        timeframe=timeframe,
+        final_action=final_action,
+        final_confidence=final_confidence,
+        verdicts=verdicts,
+        reasoning=reasoning,
+        vetoed_by=vetoed_by,
+        total_cost_usd=total_cost_usd,
+        total_latency_ms=total_latency_ms,
+    )
+    db.add(decision)
+
+    # Create usage logs
+    for record in usage_records:
+        usage_log = AIUsageLog(
+            role=record["role"],
+            provider=record["provider"],
+            model=record["model"],
+            tokens_in=record["tokens_in"],
+            tokens_out=record["tokens_out"],
+            cost_usd=record["cost_usd"],
+            latency_ms=record["latency_ms"],
+            symbol=record.get("symbol", symbol),
+            success=record.get("success", True),
+            error=record.get("error"),
         )
-        db.add(decision)
+        db.add(usage_log)
 
-        # Create usage logs
-        for record in usage_records:
-            usage_log = AIUsageLog(
-                role=record["role"],
-                provider=record["provider"],
-                model=record["model"],
-                tokens_in=record["tokens_in"],
-                tokens_out=record["tokens_out"],
-                cost_usd=record["cost_usd"],
-                latency_ms=record["latency_ms"],
-                symbol=record.get("symbol", symbol),
-                success=record.get("success", True),
-                error=record.get("error"),
-            )
-            db.add(usage_log)
-
-        # Commit both decision + usage logs in one transaction
+    # Commit both decision + usage logs in one transaction
+    try:
         await db.commit()
-        await db.refresh(decision)
-        return decision
     except Exception:
         await db.rollback()
         raise
+
+    try:
+        await db.refresh(decision)
+    except Exception as exc:
+        logger.warning("Failed to refresh decision after commit: %s", exc)
+
+    return decision
 
 
 async def get_decisions(

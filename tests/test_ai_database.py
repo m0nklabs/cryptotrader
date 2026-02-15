@@ -501,7 +501,7 @@ async def test_log_decision_with_usage_rolls_back_on_failure(db_session):
 @pytest.mark.asyncio
 async def test_get_daily_usage_buckets_and_order(db_session):
     """Validate UTC bucketing, ordering, and success_rate calculations."""
-    base = datetime.now(timezone.utc)
+    base = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
     day_one = base - timedelta(days=1)
     day_two = base
 
