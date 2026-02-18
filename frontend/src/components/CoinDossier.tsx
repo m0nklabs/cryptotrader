@@ -222,27 +222,27 @@ function AssessmentPanel({ entry }: { entry: DossierEntry }) {
                 </div>
               </div>
             )}
-            {entry.assessment_stop_loss > 0 && (
+            {(entry.assessment_stop_loss ?? 0) > 0 && (
               <div className="rounded bg-gray-800/50 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-wider text-gray-500">Stop Loss</div>
                 <div className="text-sm font-semibold text-red-400">
-                  ${entry.assessment_stop_loss.toLocaleString()}
+                  ${entry.assessment_stop_loss?.toLocaleString()}
                 </div>
               </div>
             )}
-            {entry.assessment_take_profit_1 > 0 && (
+            {(entry.assessment_take_profit_1 ?? 0) > 0 && (
               <div className="rounded bg-gray-800/50 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-wider text-gray-500">Target 1</div>
                 <div className="text-sm font-semibold text-green-400">
-                  ${entry.assessment_take_profit_1.toLocaleString()}
+                  ${entry.assessment_take_profit_1?.toLocaleString()}
                 </div>
               </div>
             )}
-            {entry.assessment_take_profit_2 > 0 && (
+            {(entry.assessment_take_profit_2 ?? 0) > 0 && (
               <div className="rounded bg-gray-800/50 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-wider text-gray-500">Target 2</div>
                 <div className="text-sm font-semibold text-green-400">
-                  ${entry.assessment_take_profit_2.toLocaleString()}
+                  ${entry.assessment_take_profit_2?.toLocaleString()}
                 </div>
               </div>
             )}
