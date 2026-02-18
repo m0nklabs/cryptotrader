@@ -818,20 +818,20 @@ If this is the first entry, skip the retrospective section and focus on laying a
                     assessment_action = assessment_data.get("action", "").upper()
                     assessment_confidence = int(assessment_data.get("confidence", 0))
                     assessment_risk = assessment_data.get("risk_level", "").lower()
-                    
+
                     entry_zone = assessment_data.get("entry_zone", [])
                     if isinstance(entry_zone, list) and len(entry_zone) >= 2:
                         assessment_entry_low = float(entry_zone[0])
                         assessment_entry_high = float(entry_zone[1])
-                    
+
                     assessment_stop_loss = float(assessment_data.get("stop_loss", 0))
-                    
+
                     take_profit = assessment_data.get("take_profit", [])
                     if isinstance(take_profit, list) and len(take_profit) >= 1:
                         assessment_take_profit_1 = float(take_profit[0])
                     if isinstance(take_profit, list) and len(take_profit) >= 2:
                         assessment_take_profit_2 = float(take_profit[1])
-                    
+
                     assessment_reasoning = assessment_data.get("reasoning_summary", "")
                 except (json.JSONDecodeError, ValueError, TypeError) as e:
                     logger.warning(f"Failed to parse assessment JSON for {symbol}: {e}")

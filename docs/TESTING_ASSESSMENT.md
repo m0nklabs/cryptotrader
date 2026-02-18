@@ -64,7 +64,7 @@ import asyncio
 async def test_dossier():
     svc = DossierService()
     entry = await svc.generate_entry("bitfinex", "BTCUSD")
-    
+
     print(f"Assessment Action: {entry.assessment_action}")
     print(f"Confidence: {entry.assessment_confidence}/10")
     print(f"Risk: {entry.assessment_risk}")

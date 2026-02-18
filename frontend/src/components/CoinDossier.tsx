@@ -148,7 +148,7 @@ function AssessmentBadge({ action }: { action?: string }) {
     HOLD: '🟡',
     AVOID: '⚫',
   }
-  
+
   const normalizedAction = action.toUpperCase()
   const cls = colors[normalizedAction] || colors.HOLD
   const icon = icons[normalizedAction] || '◯'

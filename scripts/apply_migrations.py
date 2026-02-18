@@ -5,7 +5,7 @@ Runs migration SQL files from db/migrations/ in order.
 
 Usage:
   python -m scripts.apply_migrations [migration_file]
-  
+
 If migration_file is specified, only that file is applied.
 Otherwise, all migrations are applied in order.
 """
@@ -20,9 +20,9 @@ from pathlib import Path
 def apply_migration(migration_path: Path, engine) -> None:
     """Apply a single migration file."""
     print(f"Applying migration: {migration_path.name}")
-    
+
     sql = migration_path.read_text(encoding="utf-8")
-    
+
     raw = engine.raw_connection()
     try:
         cur = raw.cursor()
@@ -59,7 +59,7 @@ def main() -> int:
     engine = create_engine(database_url, echo=False)
 
     migrations_dir = Path(__file__).resolve().parent.parent / "db" / "migrations"
-    
+
     if len(sys.argv) > 1:
         # Apply specific migration
         migration_file = sys.argv[1]
@@ -74,10 +74,10 @@ def main() -> int:
         if not migration_files:
             print("No migrations found")
             return 0
-        
+
         for migration_path in migration_files:
             apply_migration(migration_path, engine)
-    
+
     print("\n✅ All migrations applied successfully")
     return 0
 
