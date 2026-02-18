@@ -738,6 +738,38 @@ async def evaluate_opportunity(request: EvaluationRequest):
                 detail=(f"Invalid role name: {e}. Valid roles: {[r.value for r in RoleName.__members__.values()]}"),
             )
 
+    # Check budget before evaluation
+    async with factory() as db:
+        # Check global budget
+        budget_status = await ai_crud.check_budget_exceeded(db, "global")
+        if budget_status["exceeded"]:
+            error_detail = {"error": "Budget exceeded", "budget_status": budget_status}
+            if budget_status["daily_exceeded"]:
+                error_detail[
+                    "message"
+                ] = f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
+            elif budget_status["monthly_exceeded"]:
+                error_detail[
+                    "message"
+                ] = f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
+            raise HTTPException(status_code=429, detail=error_detail)
+
+        # Check per-role budgets if specific roles are requested
+        if roles:
+            for role in roles:
+                role_budget_status = await ai_crud.check_budget_exceeded(db, role.value)
+                if role_budget_status["exceeded"]:
+                    error_detail = {"error": "Budget exceeded", "role": role.value, "budget_status": role_budget_status}
+                    if role_budget_status["daily_exceeded"]:
+                        error_detail[
+                            "message"
+                        ] = f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
+                    elif role_budget_status["monthly_exceeded"]:
+                        error_detail[
+                            "message"
+                        ] = f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
+                    raise HTTPException(status_code=429, detail=error_detail)
+
     # Run evaluation
     decision = await router_instance.evaluate_opportunity(
         symbol=request.symbol,
@@ -861,6 +893,7 @@ async def evaluate_single_role(request: EvaluationRequest):
         )
 
     router_instance = _get_router()
+    factory = _get_session_factory()
 
     # Convert string role name to RoleName enum
     try:
@@ -872,6 +905,36 @@ async def evaluate_single_role(request: EvaluationRequest):
                 f"Invalid role name '{request.roles[0]}'. Valid roles: {[r.value for r in RoleName.__members__.values()]}"
             ),
         )
+
+    # Check budget before evaluation
+    async with factory() as db:
+        # Check global budget
+        budget_status = await ai_crud.check_budget_exceeded(db, "global")
+        if budget_status["exceeded"]:
+            error_detail = {"error": "Budget exceeded", "budget_status": budget_status}
+            if budget_status["daily_exceeded"]:
+                error_detail[
+                    "message"
+                ] = f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
+            elif budget_status["monthly_exceeded"]:
+                error_detail[
+                    "message"
+                ] = f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
+            raise HTTPException(status_code=429, detail=error_detail)
+
+        # Check role-specific budget
+        role_budget_status = await ai_crud.check_budget_exceeded(db, role.value)
+        if role_budget_status["exceeded"]:
+            error_detail = {"error": "Budget exceeded", "role": role.value, "budget_status": role_budget_status}
+            if role_budget_status["daily_exceeded"]:
+                error_detail[
+                    "message"
+                ] = f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
+            elif role_budget_status["monthly_exceeded"]:
+                error_detail[
+                    "message"
+                ] = f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
+            raise HTTPException(status_code=429, detail=error_detail)
 
     # Run evaluation with single role
     decision = await router_instance.evaluate_opportunity(
@@ -1025,3 +1088,77 @@ async def get_daily_usage(
     async with factory() as db:
         daily = await ai_crud.get_daily_usage(db, days=days)
         return daily
+
+
+# =============================================================================
+# P2.1.4 - Budget Configuration & Status Endpoints
+# =============================================================================
+
+
+@router.get("/budget/status")
+async def get_budget_status():
+    """Get budget status for all scopes (global + per-role).
+
+    Returns current spending vs limits for daily and monthly budgets.
+    Useful for monitoring budget consumption and preventing overages.
+    """
+    factory = _get_session_factory()
+    async with factory() as db:
+        status = await ai_crud.get_budget_status(db)
+        return status
+
+
+@router.get("/budget/config/{scope}")
+async def get_budget_config(scope: str = PathParam(..., description="Budget scope: 'global' or role name")):
+    """Get budget configuration for a specific scope.
+
+    Args:
+        scope: Budget scope - 'global' or role name (screener|tactical|fundamental|strategist)
+    """
+    factory = _get_session_factory()
+    async with factory() as db:
+        config = await ai_crud.get_budget_config(db, scope)
+        if not config:
+            raise HTTPException(status_code=404, detail=f"Budget config not found for scope '{scope}'")
+        return {
+            "id": config.id,
+            "daily_limit_usd": config.daily_limit_usd,
+            "monthly_limit_usd": config.monthly_limit_usd,
+            "enabled": config.enabled,
+            "updated_at": config.updated_at,
+        }
+
+
+@router.put("/budget/config/{scope}")
+async def update_budget_config(
+    scope: str = PathParam(..., description="Budget scope: 'global' or role name"),
+    daily_limit_usd: float | None = Query(None, description="Daily limit in USD (0.0 = unlimited)"),
+    monthly_limit_usd: float | None = Query(None, description="Monthly limit in USD (0.0 = unlimited)"),
+    enabled: bool | None = Query(None, description="Enable/disable budget enforcement"),
+):
+    """Update budget configuration for a scope.
+
+    Args:
+        scope: Budget scope - 'global' or role name
+        daily_limit_usd: Daily spend limit in USD (0.0 = unlimited)
+        monthly_limit_usd: Monthly spend limit in USD (0.0 = unlimited)
+        enabled: Whether budget enforcement is enabled
+    """
+    factory = _get_session_factory()
+    async with factory() as db:
+        config = await ai_crud.update_budget_config(
+            db,
+            scope=scope,
+            daily_limit_usd=daily_limit_usd,
+            monthly_limit_usd=monthly_limit_usd,
+            enabled=enabled,
+        )
+        if not config:
+            raise HTTPException(status_code=404, detail=f"Budget config not found for scope '{scope}'")
+        return {
+            "id": config.id,
+            "daily_limit_usd": config.daily_limit_usd,
+            "monthly_limit_usd": config.monthly_limit_usd,
+            "enabled": config.enabled,
+            "updated_at": config.updated_at,
+        }
