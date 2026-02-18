@@ -47,28 +47,31 @@ async def test_full_pipeline_all_roles_agree_buy():
             enabled=True,
         )
 
-        async def mock_eval(*args, **kwargs):
-            return (
-                AIResponse(
-                    role=role_name,
-                    provider=ProviderName.DEEPSEEK,
-                    model="test",
-                    raw_text='{"action": "BUY"}',
-                    parsed={"action": "BUY"},
-                    tokens_in=100,
-                    tokens_out=50,
-                    cost_usd=0.002,
-                    latency_ms=300.0,
-                ),
-                RoleVerdict(
-                    role=role_name,
-                    action="BUY",
-                    confidence=0.85,
-                    reasoning=f"{role_name.value} analysis: strong buy signal",
-                ),
-            )
+        # Use factory function to avoid closure variable capture bug
+        def make_mock_eval(rn):
+            async def mock_eval(*args, **kwargs):
+                return (
+                    AIResponse(
+                        role=rn,
+                        provider=ProviderName.DEEPSEEK,
+                        model="test",
+                        raw_text='{"action": "BUY"}',
+                        parsed={"action": "BUY"},
+                        tokens_in=100,
+                        tokens_out=50,
+                        cost_usd=0.002,
+                        latency_ms=300.0,
+                    ),
+                    RoleVerdict(
+                        role=rn,
+                        action="BUY",
+                        confidence=0.85,
+                        reasoning=f"{rn.value} analysis: strong buy signal",
+                    ),
+                )
+            return mock_eval
 
-        mock_role.evaluate = mock_eval
+        mock_role.evaluate = make_mock_eval(role_name)
         RoleRegistry.register(mock_role)
 
     with patch("core.ai.prompts.registry.PromptRegistry.get_active", return_value=Mock(content="test")):

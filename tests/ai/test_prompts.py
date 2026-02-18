@@ -465,11 +465,11 @@ def test_list_versions_sorted_by_version():
     PromptRegistry._prompts["tactical_v1"] = prompt_v1
     PromptRegistry._prompts["tactical_v2"] = prompt_v2
 
-    prompts = PromptRegistry.list_prompts(RoleName.TACTICAL)
+    prompts = PromptRegistry.list_versions(RoleName.TACTICAL)
 
-    # Should be sorted by version ascending
+    # Should be sorted by version descending (newest first)
     versions = [p.version for p in prompts]
-    assert versions == [1, 2, 3]
+    assert versions == [3, 2, 1]
 
 
 # ---------------------------------------------------------------------------

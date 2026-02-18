@@ -27,7 +27,7 @@ from core.ai.types import AIRequest, ProviderName, RoleName
 
 @pytest.mark.asyncio
 async def test_deepseek_cost_calculation():
-    """Test DeepSeek cost calculation: $0.14 input, $0.28 output per 1M tokens."""
+    """Test DeepSeek cost calculation: $0.55 input, $2.19 output per 1M tokens (deepseek-reasoner)."""
     provider = DeepSeekProvider()
 
     mock_response = {
@@ -44,10 +44,11 @@ async def test_deepseek_cost_calculation():
         request = AIRequest(role=RoleName.SCREENER, user_prompt="Test")
         response = await provider.complete(request, system_prompt="test")
 
-    # Cost = (10,000 * $0.14 + 5,000 * $0.28) / 1,000,000
-    expected_cost = (10_000 * 0.14 + 5_000 * 0.28) / 1_000_000
+    # Cost = (10,000 * $0.55 + 5,000 * $2.19) / 1,000,000
+    # deepseek-reasoner pricing from DEEPSEEK_PRICING
+    expected_cost = (10_000 * 0.55 + 5_000 * 2.19) / 1_000_000
     assert abs(response.cost_usd - expected_cost) < 0.000001
-    assert response.cost_usd == pytest.approx(0.0028, rel=1e-4)
+    assert response.cost_usd == pytest.approx(0.01645, rel=1e-4)
 
 
 @pytest.mark.asyncio

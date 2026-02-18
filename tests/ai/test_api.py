@@ -195,23 +195,22 @@ def test_update_role_config(test_client):
 
 def test_get_prompts_for_role(test_client):
     """Test GET /api/ai/prompts/{role} returns all prompts for role."""
-    with patch("api.routes.ai.PromptRegistry.list_prompts") as mock_list:
-        from core.ai.types import SystemPrompt
+    with patch("api.routes.ai.ai_crud.get_prompts", new_callable=AsyncMock) as mock_list:
         from datetime import datetime, timezone
 
-        mock_prompt = SystemPrompt(
-            id="tactical_v1",
-            role=RoleName.TACTICAL,
-            version=1,
-            content="Test prompt",
-            description="Test",
-            is_active=True,
-            created_at=datetime.now(timezone.utc),
-        )
+        # Mock DB prompt object
+        mock_prompt = Mock()
+        mock_prompt.id = "tactical_v1"
+        mock_prompt.role = "tactical"
+        mock_prompt.version = 1
+        mock_prompt.content = "Test prompt"
+        mock_prompt.description = "Test"
+        mock_prompt.is_active = True
+        mock_prompt.created_at = datetime.now(timezone.utc)
 
         mock_list.return_value = [mock_prompt]
 
-        response = test_client.get("/api/ai/prompts/TACTICAL")
+        response = test_client.get("/api/ai/prompts/tactical")  # lowercase role
 
         assert response.status_code == 200
 
@@ -219,24 +218,28 @@ def test_get_prompts_for_role(test_client):
 def test_create_new_prompt_version(test_client):
     """Test POST /api/ai/prompts creates new prompt version."""
     prompt_data = {
-        "role": "TACTICAL",
+        "role": "tactical",  # lowercase
         "content": "New prompt content",
         "description": "New version",
     }
 
-    with patch("api.routes.ai.PromptRegistry.create_version") as mock_create:
-        from core.ai.types import SystemPrompt
+    with (
+        patch("api.routes.ai.ai_crud.get_next_version", new_callable=AsyncMock) as mock_next,
+        patch("api.routes.ai.ai_crud.create_prompt", new_callable=AsyncMock) as mock_create,
+    ):
         from datetime import datetime, timezone
 
-        new_prompt = SystemPrompt(
-            id="tactical_v2",
-            role=RoleName.TACTICAL,
-            version=2,
-            content="New prompt content",
-            description="New version",
-            is_active=False,
-            created_at=datetime.now(timezone.utc),
-        )
+        mock_next.return_value = 2
+
+        # Mock DB prompt object
+        new_prompt = Mock()
+        new_prompt.id = "TACTICAL_v2"
+        new_prompt.role = "tactical"
+        new_prompt.version = 2
+        new_prompt.content = "New prompt content"
+        new_prompt.description = "New version"
+        new_prompt.is_active = False
+        new_prompt.created_at = datetime.now(timezone.utc)
 
         mock_create.return_value = new_prompt
 
@@ -248,19 +251,18 @@ def test_create_new_prompt_version(test_client):
 
 def test_activate_prompt_version(test_client):
     """Test PUT /api/ai/prompts/{prompt_id}/activate activates a version."""
-    with patch("api.routes.ai.PromptRegistry.activate_by_id") as mock_activate:
-        from core.ai.types import SystemPrompt
+    with patch("api.routes.ai.ai_crud.activate_prompt", new_callable=AsyncMock) as mock_activate:
         from datetime import datetime, timezone
 
-        activated_prompt = SystemPrompt(
-            id="tactical_v2",
-            role=RoleName.TACTICAL,
-            version=2,
-            content="Test",
-            description="Test",
-            is_active=True,
-            created_at=datetime.now(timezone.utc),
-        )
+        # Mock DB prompt object
+        activated_prompt = Mock()
+        activated_prompt.id = "tactical_v2"
+        activated_prompt.role = "tactical"
+        activated_prompt.version = 2
+        activated_prompt.content = "Test"
+        activated_prompt.description = "Test"
+        activated_prompt.is_active = True
+        activated_prompt.created_at = datetime.now(timezone.utc)
 
         mock_activate.return_value = activated_prompt
 
@@ -602,42 +604,44 @@ def test_full_evaluation_workflow(test_client):
 
 def test_prompt_version_management_workflow(test_client):
     """Test creating and activating a new prompt version."""
-    from core.ai.types import SystemPrompt
     from datetime import datetime, timezone
 
     # 1. Get current prompts
-    with patch("api.routes.ai.PromptRegistry.list_prompts") as mock_list:
-        v1 = SystemPrompt(
-            id="tactical_v1",
-            role=RoleName.TACTICAL,
-            version=1,
-            content="V1",
-            description="V1",
-            is_active=True,
-            created_at=datetime.now(timezone.utc),
-        )
+    with patch("api.routes.ai.ai_crud.get_prompts", new_callable=AsyncMock) as mock_list:
+        v1 = Mock()
+        v1.id = "tactical_v1"
+        v1.role = "tactical"
+        v1.version = 1
+        v1.content = "V1"
+        v1.description = "V1"
+        v1.is_active = True
+        v1.created_at = datetime.now(timezone.utc)
         mock_list.return_value = [v1]
 
-        get_response = test_client.get("/api/ai/prompts/TACTICAL")
+        get_response = test_client.get("/api/ai/prompts/tactical")  # lowercase
         assert get_response.status_code == 200
 
     # 2. Create new version
-    with patch("api.routes.ai.PromptRegistry.create_version") as mock_create:
-        v2 = SystemPrompt(
-            id="tactical_v2",
-            role=RoleName.TACTICAL,
-            version=2,
-            content="V2",
-            description="V2",
-            is_active=False,
-            created_at=datetime.now(timezone.utc),
-        )
+    with (
+        patch("api.routes.ai.ai_crud.get_next_version", new_callable=AsyncMock) as mock_next,
+        patch("api.routes.ai.ai_crud.create_prompt", new_callable=AsyncMock) as mock_create,
+    ):
+        mock_next.return_value = 2
+
+        v2 = Mock()
+        v2.id = "tactical_v2"  # lowercase
+        v2.role = "tactical"
+        v2.version = 2
+        v2.content = "V2"
+        v2.description = "V2"
+        v2.is_active = False
+        v2.created_at = datetime.now(timezone.utc)
         mock_create.return_value = v2
 
         create_response = test_client.post(
             "/api/ai/prompts",
             json={
-                "role": "TACTICAL",
+                "role": "tactical",  # lowercase
                 "content": "V2",
                 "description": "V2",
             },
@@ -645,17 +649,16 @@ def test_prompt_version_management_workflow(test_client):
         assert create_response.status_code in [200, 201, 422]
 
     # 3. Activate new version
-    with patch("api.routes.ai.PromptRegistry.activate_by_id") as mock_activate:
-        v2_active = SystemPrompt(
-            id="tactical_v2",
-            role=RoleName.TACTICAL,
-            version=2,
-            content="V2",
-            description="V2",
-            is_active=True,
-            created_at=datetime.now(timezone.utc),
-        )
+    with patch("api.routes.ai.ai_crud.activate_prompt", new_callable=AsyncMock) as mock_activate:
+        v2_active = Mock()
+        v2_active.id = "tactical_v2"  # lowercase
+        v2_active.role = "tactical"
+        v2_active.version = 2
+        v2_active.content = "V2"
+        v2_active.description = "V2"
+        v2_active.is_active = True
+        v2_active.created_at = datetime.now(timezone.utc)
         mock_activate.return_value = v2_active
 
-        activate_response = test_client.put("/api/ai/prompts/tactical_v2/activate")
+        activate_response = test_client.put("/api/ai/prompts/tactical_v2/activate")  # lowercase
         assert activate_response.status_code in [200, 422]
