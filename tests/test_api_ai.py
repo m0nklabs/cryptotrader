@@ -319,7 +319,7 @@ def test_evaluate_invalid_role_returns_400(client, mock_ai_router, mock_db_sessi
 
 def test_evaluate_handles_router_failure_gracefully(client, mock_db_session):
     """Test POST /api/ai/evaluate handles router failures gracefully.
-    
+
     When the router raises an exception, FastAPI's default error handler
     will catch it and return a 500 Internal Server Error.
     """
