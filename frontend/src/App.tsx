@@ -11,6 +11,7 @@ import { VIEW_IDS, type ViewId } from './nav'
 import ShortcutHelp from './components/ShortcutHelp'
 import OpportunityScore from './components/OpportunityScore'
 import CoinDossier from './components/CoinDossier'
+import AlertManager from './components/AlertManager'
 import PerformanceCharts from './components/PerformanceCharts'
 import { PortfolioDashboard } from './components/PortfolioDashboard'
 import { Watchlist } from './components/Watchlist'
@@ -2032,6 +2033,13 @@ export default function App() {
           {activeView === VIEW_IDS.AI_EVALUATE && (
             <Panel title="Multi-Brain Evaluation" subtitle="AI consensus decision engine">
               <AiEvaluationPanel />
+            </Panel>
+          )}
+
+          {/* Alerts view — price and indicator alerts */}
+          {activeView === VIEW_IDS.ALERTS && (
+            <Panel title="Price & Indicator Alerts" subtitle="Get notified when conditions are met">
+              <AlertManager />
             </Panel>
           )}
         </main>
