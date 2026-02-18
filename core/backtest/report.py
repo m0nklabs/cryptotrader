@@ -94,11 +94,11 @@ def generate_report(
     # Convert trades to dict format
     trades_list = [
         {
-            "entry_price": float(t.entry_price),
-            "exit_price": float(t.exit_price),
+            "entry_price": str(t.entry_price),
+            "exit_price": str(t.exit_price),
             "side": t.side,
-            "size": float(t.size),
-            "pnl": float(t.pnl),
+            "size": str(t.size),
+            "pnl": str(t.pnl),
         }
         for t in result.trades
     ]

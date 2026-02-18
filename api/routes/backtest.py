@@ -186,8 +186,11 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
             result=result,
         )
 
-        # Convert to response dict
-        return report_to_dict(report)
+        # Convert to response dict and rename strategy_name to strategy
+        response_dict = report_to_dict(report)
+        response_dict["strategy"] = response_dict.pop("strategy_name")
+        
+        return response_dict
 
     except HTTPException:
         raise
