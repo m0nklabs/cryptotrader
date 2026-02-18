@@ -8,11 +8,11 @@ from typing import Literal, Optional
 
 # Alert types that can be monitored
 AlertType = Literal[
-    "price_above",      # Price crosses above threshold
-    "price_below",      # Price crosses below threshold
-    "rsi_overbought",   # RSI above threshold (default 70)
-    "rsi_oversold",     # RSI below threshold (default 30)
-    "macd_cross_up",    # MACD line crosses above signal
+    "price_above",  # Price crosses above threshold
+    "price_below",  # Price crosses below threshold
+    "rsi_overbought",  # RSI above threshold (default 70)
+    "rsi_oversold",  # RSI below threshold (default 30)
+    "macd_cross_up",  # MACD line crosses above signal
     "macd_cross_down",  # MACD line crosses below signal
 ]
 

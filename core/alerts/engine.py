@@ -7,8 +7,7 @@ from typing import Optional
 
 import pandas as pd
 
-from core.alerts.models import Alert, AlertHistory, AlertType, ComparisonOperator
-from core.types import Candle
+from core.alerts.models import Alert, AlertHistory, ComparisonOperator
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +45,7 @@ class AlertEngine:
         try:
             # Price-based alerts
             if alert_type == "price_above":
-                triggered = self._check_price_condition(
-                    alert.id, current_price, threshold, "above", operator
-                )
+                triggered = self._check_price_condition(alert.id, current_price, threshold, "above", operator)
                 if triggered:
                     return True, self._create_history(
                         alert,
@@ -58,9 +55,7 @@ class AlertEngine:
                     )
 
             elif alert_type == "price_below":
-                triggered = self._check_price_condition(
-                    alert.id, current_price, threshold, "below", operator
-                )
+                triggered = self._check_price_condition(alert.id, current_price, threshold, "below", operator)
                 if triggered:
                     return True, self._create_history(
                         alert,
@@ -81,9 +76,7 @@ class AlertEngine:
                 if rsi is None:
                     return False, None
                 current_rsi = rsi
-                triggered = self._check_price_condition(
-                    alert.id, current_rsi, threshold, "above", operator
-                )
+                triggered = self._check_price_condition(alert.id, current_rsi, threshold, "above", operator)
                 if triggered:
                     return True, self._create_history(
                         alert,
@@ -98,9 +91,7 @@ class AlertEngine:
                 if rsi is None:
                     return False, None
                 current_rsi = rsi
-                triggered = self._check_price_condition(
-                    alert.id, current_rsi, threshold, "below", operator
-                )
+                triggered = self._check_price_condition(alert.id, current_rsi, threshold, "below", operator)
                 if triggered:
                     return True, self._create_history(
                         alert,
@@ -114,21 +105,21 @@ class AlertEngine:
                 macd_result = self._calculate_macd(ohlcv_data)
                 if macd_result is None:
                     return False, None
-                
+
                 # Check if MACD line crossed above signal line
                 macd_line, signal_line = macd_result
                 prev_macd = self._previous_states.get(alert.id, {}).get("prev_macd")
                 prev_signal = self._previous_states.get(alert.id, {}).get("prev_signal")
-                
+
                 # Store current for next evaluation
                 self._previous_states[alert.id] = {
                     "prev_macd": macd_line,
                     "prev_signal": signal_line,
                 }
-                
+
                 if prev_macd is None or prev_signal is None:
                     return False, None
-                
+
                 triggered = prev_macd <= prev_signal and macd_line > signal_line
                 if triggered:
                     return True, self._create_history(
@@ -142,21 +133,21 @@ class AlertEngine:
                 macd_result = self._calculate_macd(ohlcv_data)
                 if macd_result is None:
                     return False, None
-                
+
                 # Check if MACD line crossed below signal line
                 macd_line, signal_line = macd_result
                 prev_macd = self._previous_states.get(alert.id, {}).get("prev_macd")
                 prev_signal = self._previous_states.get(alert.id, {}).get("prev_signal")
-                
+
                 # Store current for next evaluation
                 self._previous_states[alert.id] = {
                     "prev_macd": macd_line,
                     "prev_signal": signal_line,
                 }
-                
+
                 if prev_macd is None or prev_signal is None:
                     return False, None
-                
+
                 triggered = prev_macd >= prev_signal and macd_line < signal_line
                 if triggered:
                     return True, self._create_history(

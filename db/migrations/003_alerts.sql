@@ -10,19 +10,19 @@ CREATE TABLE IF NOT EXISTS alerts (
     symbol          TEXT        NOT NULL,
     exchange        TEXT        NOT NULL,
     timeframe       TEXT        NOT NULL,               -- e.g., "1m", "5m", "1h"
-    
+
     -- Alert condition
     condition_type  TEXT        NOT NULL,               -- price_above, price_below, rsi_overbought, etc.
     operator        TEXT        NOT NULL,               -- above, below, crosses_above, crosses_below
     threshold_value REAL        NOT NULL,               -- Value to compare against
     indicator_params JSONB      NULL,                   -- Additional params for indicators (e.g., {"period": 14})
-    
+
     -- State
     enabled         BOOLEAN     NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     triggered_at    TIMESTAMPTZ NULL,                   -- Last time this alert triggered
     trigger_count   INTEGER     NOT NULL DEFAULT 0,
-    
+
     CONSTRAINT valid_condition_type CHECK (
         condition_type IN (
             'price_above', 'price_below',
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS alert_history (
     trigger_value   REAL        NOT NULL,               -- Value that triggered the alert
     price           REAL        NOT NULL,               -- Price at trigger time
     message         TEXT        NOT NULL,               -- Human-readable message
-    
+
     CONSTRAINT fk_alert_history_alert
         FOREIGN KEY (alert_id)
         REFERENCES alerts(id)

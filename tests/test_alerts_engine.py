@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 import pandas as pd
-from datetime import datetime, timezone
 
 from core.alerts.models import Alert, AlertCondition
 from core.alerts.engine import AlertEngine
@@ -20,14 +19,16 @@ def engine():
 def sample_ohlcv():
     """Create sample OHLCV data for testing."""
     dates = pd.date_range(start="2024-01-01", periods=100, freq="1h")
-    return pd.DataFrame({
-        "open_time": dates,
-        "open": 50000.0,
-        "high": 51000.0,
-        "low": 49000.0,
-        "close": [50000.0 + i * 100 for i in range(100)],  # Uptrend
-        "volume": 1000.0,
-    })
+    return pd.DataFrame(
+        {
+            "open_time": dates,
+            "open": 50000.0,
+            "high": 51000.0,
+            "low": 49000.0,
+            "close": [50000.0 + i * 100 for i in range(100)],  # Uptrend
+            "volume": 1000.0,
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -280,9 +281,11 @@ async def test_insufficient_data_for_indicators(engine):
     assert history is None
 
     # Insufficient data (less than 50 rows)
-    small_df = pd.DataFrame({
-        "close": [50000.0] * 10,
-    })
+    small_df = pd.DataFrame(
+        {
+            "close": [50000.0] * 10,
+        }
+    )
     triggered, history = await engine.evaluate_alert(alert, current_price=51000.0, ohlcv_data=small_df)
     assert triggered is False
 

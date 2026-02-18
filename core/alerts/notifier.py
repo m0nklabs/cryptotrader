@@ -37,7 +37,7 @@ class AlertNotifier:
             Dict mapping channel names to success status
         """
         title = f"🔔 Alert: {alert.symbol} on {alert.exchange}"
-        
+
         # Format message with alert details
         message = (
             f"{history.message}\n"

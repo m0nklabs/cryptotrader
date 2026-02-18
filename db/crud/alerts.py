@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
 from typing import Optional, Sequence
 
 import asyncpg
@@ -200,7 +199,7 @@ async def update_alert(
     row = await conn.fetchrow(
         f"""
         UPDATE alerts
-        SET {', '.join(updates)}
+        SET {", ".join(updates)}
         WHERE id = ${param_idx}
         RETURNING id, user_id, symbol, exchange, timeframe,
                   condition_type, operator, threshold_value, indicator_params,

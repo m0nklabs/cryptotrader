@@ -10,7 +10,7 @@ import asyncpg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core.alerts.models import Alert, AlertCondition, AlertHistory
+from core.alerts.models import Alert, AlertHistory
 from db.crud import alerts as alerts_crud
 
 logger = logging.getLogger(__name__)
