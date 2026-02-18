@@ -44,6 +44,16 @@ interface DossierEntry {
   predicted_target: number
   predicted_timeframe: string
   prediction_correct: boolean | null
+  // LLM Assessment (structured recommendation)
+  assessment_action?: string  // BUY/SELL/HOLD/AVOID
+  assessment_confidence?: number  // 1-10
+  assessment_risk?: string  // low/medium/high/extreme
+  assessment_entry_low?: number
+  assessment_entry_high?: number
+  assessment_stop_loss?: number
+  assessment_take_profit_1?: number
+  assessment_take_profit_2?: number
+  assessment_reasoning?: string
   // Meta
   model_used: string
   tokens_used: number
@@ -123,6 +133,133 @@ function PredictionResult({ correct }: { correct: boolean | null }) {
   )
 }
 
+function AssessmentBadge({ action }: { action?: string }) {
+  if (!action) return null
+
+  const colors: Record<string, string> = {
+    BUY: 'bg-green-600/90 text-white border-green-500/50',
+    SELL: 'bg-red-600/90 text-white border-red-500/50',
+    HOLD: 'bg-amber-600/90 text-white border-amber-500/50',
+    AVOID: 'bg-gray-600/90 text-white border-gray-500/50',
+  }
+  const icons: Record<string, string> = {
+    BUY: '🟢',
+    SELL: '🔴',
+    HOLD: '🟡',
+    AVOID: '⚫',
+  }
+  
+  const normalizedAction = action.toUpperCase()
+  const cls = colors[normalizedAction] || colors.HOLD
+  const icon = icons[normalizedAction] || '◯'
+
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-bold uppercase ${cls}`}>
+      {icon} {normalizedAction}
+    </span>
+  )
+}
+
+function AssessmentPanel({ entry }: { entry: DossierEntry }) {
+  if (!entry.assessment_action) return null
+
+  const action = entry.assessment_action.toUpperCase()
+  const confidence = entry.assessment_confidence || 0
+  const risk = entry.assessment_risk || ''
+
+  // Background color based on action
+  const bgColors: Record<string, string> = {
+    BUY: 'bg-green-500/10 border-green-500/30',
+    SELL: 'bg-red-500/10 border-red-500/30',
+    HOLD: 'bg-amber-500/10 border-amber-500/30',
+    AVOID: 'bg-gray-500/10 border-gray-500/30',
+  }
+  const bgClass = bgColors[action] || bgColors.HOLD
+
+  // Risk color
+  const riskColors: Record<string, string> = {
+    low: 'text-green-400',
+    medium: 'text-yellow-400',
+    high: 'text-orange-400',
+    extreme: 'text-red-400',
+  }
+  const riskColor = riskColors[risk.toLowerCase()] || 'text-gray-400'
+
+  return (
+    <div className={`rounded-lg border ${bgClass} p-4`}>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-lg">🤖</span>
+        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">LLM Assessment</h3>
+      </div>
+
+      <div className="space-y-3">
+        {/* Action and Metrics */}
+        <div className="flex items-center gap-4">
+          <AssessmentBadge action={action} />
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-gray-400">
+              Confidence: <span className="font-semibold text-gray-200">{confidence}/10</span>
+            </span>
+            {risk && (
+              <>
+                <span className="text-gray-600">•</span>
+                <span className="text-gray-400">
+                  Risk: <span className={`font-semibold capitalize ${riskColor}`}>{risk}</span>
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Entry/Exit Levels */}
+        {(entry.assessment_entry_low || entry.assessment_entry_high || entry.assessment_stop_loss) && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {entry.assessment_entry_low && entry.assessment_entry_high && (
+              <div className="rounded bg-gray-800/50 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500">Entry Zone</div>
+                <div className="text-sm font-semibold text-gray-200">
+                  ${entry.assessment_entry_low.toLocaleString()} – ${entry.assessment_entry_high.toLocaleString()}
+                </div>
+              </div>
+            )}
+            {entry.assessment_stop_loss > 0 && (
+              <div className="rounded bg-gray-800/50 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500">Stop Loss</div>
+                <div className="text-sm font-semibold text-red-400">
+                  ${entry.assessment_stop_loss.toLocaleString()}
+                </div>
+              </div>
+            )}
+            {entry.assessment_take_profit_1 > 0 && (
+              <div className="rounded bg-gray-800/50 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500">Target 1</div>
+                <div className="text-sm font-semibold text-green-400">
+                  ${entry.assessment_take_profit_1.toLocaleString()}
+                </div>
+              </div>
+            )}
+            {entry.assessment_take_profit_2 > 0 && (
+              <div className="rounded bg-gray-800/50 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500">Target 2</div>
+                <div className="text-sm font-semibold text-green-400">
+                  ${entry.assessment_take_profit_2.toLocaleString()}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Reasoning */}
+        {entry.assessment_reasoning && (
+          <div className="rounded bg-gray-800/30 px-3 py-2.5 text-sm leading-relaxed text-gray-400 italic">
+            "{entry.assessment_reasoning}"
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function StatPill({ label, value, suffix }: { label: string; value: string | number; suffix?: string }) {
   return (
     <div className="rounded-lg bg-gray-800/50 px-3 py-2 text-center">
@@ -189,9 +326,10 @@ function CoinCard({
       }`}
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-bold text-gray-200">{entry.symbol}</span>
           <DirectionBadge direction={entry.predicted_direction} />
+          {entry.assessment_action && <AssessmentBadge action={entry.assessment_action} />}
         </div>
         <PredictionResult correct={entry.prediction_correct} />
       </div>
@@ -593,6 +731,9 @@ export default function CoinDossier({ exchange }: CoinDossierProps) {
                 )}
               </div>
             )}
+
+            {/* LLM Assessment Panel */}
+            <AssessmentPanel entry={selectedEntry} />
 
             {/* Narrative sections */}
             <div className="space-y-2">
