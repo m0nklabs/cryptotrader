@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
@@ -48,7 +47,7 @@ def test_list_trades(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.trade_history._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
+    with patch("api.routes.trade_history._get_db_pool", return_value=pool):
         client = TestClient(app)
         response = client.get("/trades/?limit=10")
 
@@ -83,7 +82,7 @@ def test_list_trades_with_filters(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.trade_history._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
+    with patch("api.routes.trade_history._get_db_pool", return_value=pool):
         client = TestClient(app)
         response = client.get("/trades/?symbol=BTCUSD&is_paper=true")
 
@@ -113,7 +112,7 @@ def test_get_trade_by_id(mock_db_pool):
         "is_paper": True,
     }
 
-    with patch("api.routes.trade_history._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
+    with patch("api.routes.trade_history._get_db_pool", return_value=pool):
         client = TestClient(app)
         response = client.get("/trades/TRADE-001")
 
@@ -127,7 +126,7 @@ def test_get_trade_not_found(mock_db_pool):
     pool, conn = mock_db_pool
     conn.fetchrow.return_value = None
 
-    with patch("api.routes.trade_history._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
+    with patch("api.routes.trade_history._get_db_pool", return_value=pool):
         client = TestClient(app)
         response = client.get("/trades/NONEXISTENT")
 
@@ -158,7 +157,7 @@ def test_get_order_audit_log(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.trade_history._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
+    with patch("api.routes.trade_history._get_db_pool", return_value=pool):
         client = TestClient(app)
         response = client.get("/trades/audit?order_id=ORDER-001")
 

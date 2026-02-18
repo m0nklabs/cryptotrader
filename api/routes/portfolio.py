@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -131,7 +131,7 @@ async def create_snapshot(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid decimal value: {e}")
 
-    timestamp = datetime.utcnow()
+    timestamp = datetime.now(timezone.utc)
 
     async with pool.acquire() as conn:
         snapshot_id = await portfolio_crud.create_portfolio_snapshot(

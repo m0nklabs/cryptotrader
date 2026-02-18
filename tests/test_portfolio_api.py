@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
@@ -45,7 +44,7 @@ def test_portfolio_snapshots_returns_results(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.portfolio._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
+    with patch("api.routes.portfolio._get_db_pool", return_value=pool):
         client = TestClient(app)
         response = client.get("/portfolio/snapshots?limit=10")
 
@@ -64,7 +63,7 @@ def test_portfolio_latest_snapshot_not_found():
     pool.acquire.return_value.__aenter__.return_value = conn
     pool.acquire.return_value.__aexit__.return_value = None
 
-    with patch("api.routes.portfolio._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
+    with patch("api.routes.portfolio._get_db_pool", return_value=pool):
         client = TestClient(app)
         response = client.get("/portfolio/snapshots/latest")
 
@@ -90,7 +89,7 @@ def test_portfolio_position_history_with_symbol_filter(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.portfolio._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
+    with patch("api.routes.portfolio._get_db_pool", return_value=pool):
         client = TestClient(app)
         response = client.get("/portfolio/positions/history?symbol=BTCUSD&limit=10")
 
@@ -117,7 +116,7 @@ def test_portfolio_balance_history(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.portfolio._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
+    with patch("api.routes.portfolio._get_db_pool", return_value=pool):
         client = TestClient(app)
         response = client.get("/portfolio/balances/history?exchange=bitfinex&currency=USD")
 
