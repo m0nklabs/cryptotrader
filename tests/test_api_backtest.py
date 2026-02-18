@@ -119,7 +119,7 @@ def test_run_backtest_success(mock_get_stores):
 
     if response.status_code != 200:
         print(f"Error response: {response.json()}")
-    
+
     assert response.status_code == 200
     data = response.json()
 
