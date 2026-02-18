@@ -69,6 +69,7 @@ async def test_full_pipeline_all_roles_agree_buy():
                         reasoning=f"{rn.value} analysis: strong buy signal",
                     ),
                 )
+
             return mock_eval
 
         mock_role.evaluate = make_mock_eval(role_name)
