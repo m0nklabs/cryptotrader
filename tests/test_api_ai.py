@@ -94,7 +94,7 @@ def mock_ai_router():
 @pytest.fixture
 def ai_crud_mocks():
     """Mock database session factory and AI CRUD functions.
-    
+
     Returns:
         tuple: (mock_session_factory, mock_log_decision, mock_usage_summary)
     """
