@@ -202,7 +202,7 @@ class AlertEngine:
 
             state = self._previous_states.get(alert_id, {})
             previous_value = state.get("price_value")
-            
+
             # Update state with namespaced key to avoid collision with MACD state
             self._previous_states[alert_id] = {**state, "price_value": current_value}
 
