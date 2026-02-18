@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
@@ -108,11 +109,13 @@ class AlertEngine:
 
                 # Check if MACD line crossed above signal line
                 macd_line, signal_line = macd_result
-                prev_macd = self._previous_states.get(alert.id, {}).get("prev_macd")
-                prev_signal = self._previous_states.get(alert.id, {}).get("prev_signal")
+                state = self._previous_states.get(alert.id, {})
+                prev_macd = state.get("prev_macd")
+                prev_signal = state.get("prev_signal")
 
-                # Store current for next evaluation
+                # Store current for next evaluation, preserving other keys
                 self._previous_states[alert.id] = {
+                    **state,
                     "prev_macd": macd_line,
                     "prev_signal": signal_line,
                 }
@@ -136,11 +139,13 @@ class AlertEngine:
 
                 # Check if MACD line crossed below signal line
                 macd_line, signal_line = macd_result
-                prev_macd = self._previous_states.get(alert.id, {}).get("prev_macd")
-                prev_signal = self._previous_states.get(alert.id, {}).get("prev_signal")
+                state = self._previous_states.get(alert.id, {})
+                prev_macd = state.get("prev_macd")
+                prev_signal = state.get("prev_signal")
 
-                # Store current for next evaluation
+                # Store current for next evaluation, preserving other keys
                 self._previous_states[alert.id] = {
+                    **state,
                     "prev_macd": macd_line,
                     "prev_signal": signal_line,
                 }
@@ -190,13 +195,16 @@ class AlertEngine:
             else:
                 return current_value < threshold
 
-        # For crossover detection, track previous state
+        # For crossover detection, track previous state with namespaced keys
         if operator in ("crosses_above", "crosses_below"):
             if alert_id is None:
                 return False
 
-            previous_value = self._previous_states.get(alert_id, {}).get("value")
-            self._previous_states[alert_id] = {"value": current_value}
+            state = self._previous_states.get(alert_id, {})
+            previous_value = state.get("price_value")
+            
+            # Update state with namespaced key to avoid collision with MACD state
+            self._previous_states[alert_id] = {**state, "price_value": current_value}
 
             if previous_value is None:
                 return False
@@ -226,11 +234,9 @@ class AlertEngine:
         Returns:
             AlertHistory entry
         """
-        from datetime import datetime
-
         return AlertHistory(
             alert_id=alert.id or 0,
-            triggered_at=datetime.utcnow(),
+            triggered_at=datetime.now(timezone.utc),
             trigger_value=trigger_value,
             price=price,
             message=message,

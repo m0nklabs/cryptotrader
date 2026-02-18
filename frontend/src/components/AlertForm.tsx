@@ -65,7 +65,12 @@ export default function AlertForm({
       timeframe,
       condition: {
         type: alertType,
-        operator: isMacdAlert ? 'crosses_above' : operator, // MACD always uses crossover
+        operator:
+          alertType === 'macd_cross_up'
+            ? 'crosses_above'
+            : alertType === 'macd_cross_down'
+              ? 'crosses_below'
+              : operator,
         value: parseFloat(value),
         indicator_params: isRsiAlert ? { period: rsiPeriod } : undefined,
       },
