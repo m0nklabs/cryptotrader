@@ -19,12 +19,12 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_CONFIG = ProviderConfig(
     name=ProviderName.OLLAMA,
-    api_key_env="",  # no auth for local Ollama
-    base_url="http://localhost:11434",
-    default_model="llama3.2",
+    api_key_env="GUARDIAN_API_KEY",  # Bearer token for llama_cpp_guardian proxy
+    base_url="http://localhost:11434",  # Guardian proxy port (not raw llama-server 11440)
+    default_model="GLM-4.7-Flash",
     max_tokens=4096,
     temperature=0.0,
-    timeout_seconds=120,
+    timeout_seconds=180,
     rate_limit_rpm=999,  # local = no rate limit
 )
 
@@ -42,6 +42,12 @@ class OllamaProvider(LLMProvider):
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
+            headers: dict[str, str] = {}
+            import os
+
+            api_key = os.environ.get(self.config.api_key_env, "") if self.config.api_key_env else ""
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
             self._client = httpx.AsyncClient(
                 base_url=self.config.base_url,
                 timeout=self._get_timeout(),
