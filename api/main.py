@@ -2053,7 +2053,7 @@ async def get_llm_status() -> dict[str, Any]:
         from core.signals.llm import check_ollama
 
         return await check_ollama()
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to check LLM (Ollama) status")
         return {
             "available": False,

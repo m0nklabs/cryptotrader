@@ -38,7 +38,7 @@ async def create_trade(
     is_paper: bool = True,
 ) -> int:
     """Create a trade execution record.
-    
+
     Args:
         conn: Database connection
         trade_id: Unique trade ID
@@ -53,12 +53,12 @@ async def create_trade(
         fee_currency: Fee currency
         trade_type: Trade type (market, limit, stop)
         is_paper: Whether this is a paper trade
-        
+
     Returns:
         Trade record ID
     """
     quote_qty = quantity * price
-    
+
     query = """
         INSERT INTO trades (
             trade_id, order_id, exchange, symbol, side, quantity,
@@ -97,7 +97,7 @@ async def get_trades(
     limit: int = 100,
 ) -> list[asyncpg.Record]:
     """Get trade execution records.
-    
+
     Args:
         conn: Database connection
         symbol: Filter by symbol (optional)
@@ -105,56 +105,54 @@ async def get_trades(
         end_time: End timestamp (optional)
         is_paper: Filter by paper/live trades (optional)
         limit: Maximum number of records
-        
+
     Returns:
         List of trade records
     """
     conditions = []
     params = []
     param_idx = 1
-    
+
     if symbol:
         conditions.append(f"symbol = ${param_idx}")
         params.append(symbol)
         param_idx += 1
-    
+
     if start_time:
         conditions.append(f"execution_time >= ${param_idx}")
         params.append(start_time)
         param_idx += 1
-    
+
     if end_time:
         conditions.append(f"execution_time <= ${param_idx}")
         params.append(end_time)
         param_idx += 1
-    
+
     if is_paper is not None:
         conditions.append(f"is_paper = ${param_idx}")
         params.append(is_paper)
         param_idx += 1
-    
+
     where_clause = " AND ".join(conditions) if conditions else "TRUE"
     params.append(limit)
-    
+
     query = f"""
         SELECT * FROM trades
         WHERE {where_clause}
         ORDER BY execution_time DESC
         LIMIT ${param_idx}
     """
-    
+
     return await conn.fetch(query, *params)
 
 
-async def get_trade_by_id(
-    conn: asyncpg.Connection, trade_id: str
-) -> asyncpg.Record | None:
+async def get_trade_by_id(conn: asyncpg.Connection, trade_id: str) -> asyncpg.Record | None:
     """Get a specific trade by trade_id.
-    
+
     Args:
         conn: Database connection
         trade_id: Trade ID
-        
+
     Returns:
         Trade record or None
     """
@@ -185,7 +183,7 @@ async def log_order_event(
     metadata: dict[str, Any] | None = None,
 ) -> int:
     """Log an order state change event.
-    
+
     Args:
         conn: Database connection
         order_id: Order ID
@@ -202,7 +200,7 @@ async def log_order_event(
         stop_price: Stop price
         avg_fill_price: Average fill price
         metadata: Additional context (JSON)
-        
+
     Returns:
         Log record ID
     """
@@ -244,7 +242,7 @@ async def get_order_audit_log(
     limit: int = 100,
 ) -> list[asyncpg.Record]:
     """Get order audit log records.
-    
+
     Args:
         conn: Database connection
         order_id: Filter by order ID (optional)
@@ -252,42 +250,42 @@ async def get_order_audit_log(
         start_time: Start timestamp (optional)
         end_time: End timestamp (optional)
         limit: Maximum number of records
-        
+
     Returns:
         List of audit log records
     """
     conditions = []
     params = []
     param_idx = 1
-    
+
     if order_id:
         conditions.append(f"order_id = ${param_idx}")
         params.append(order_id)
         param_idx += 1
-    
+
     if symbol:
         conditions.append(f"symbol = ${param_idx}")
         params.append(symbol)
         param_idx += 1
-    
+
     if start_time:
         conditions.append(f"event_time >= ${param_idx}")
         params.append(start_time)
         param_idx += 1
-    
+
     if end_time:
         conditions.append(f"event_time <= ${param_idx}")
         params.append(end_time)
         param_idx += 1
-    
+
     where_clause = " AND ".join(conditions) if conditions else "TRUE"
     params.append(limit)
-    
+
     query = f"""
         SELECT * FROM order_audit_log
         WHERE {where_clause}
         ORDER BY event_time DESC
         LIMIT ${param_idx}
     """
-    
+
     return await conn.fetch(query, *params)

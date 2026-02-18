@@ -18,18 +18,18 @@ def mock_db_pool():
     """Mock asyncpg connection pool."""
     pool = AsyncMock()
     conn = AsyncMock()
-    
+
     # Mock context manager for pool.acquire()
     pool.acquire.return_value.__aenter__.return_value = conn
     pool.acquire.return_value.__aexit__.return_value = None
-    
+
     return pool, conn
 
 
 def test_portfolio_snapshots_returns_results(mock_db_pool):
     """Test fetching portfolio snapshots."""
     pool, conn = mock_db_pool
-    
+
     # Mock database response
     conn.fetch.return_value = [
         {
@@ -44,11 +44,11 @@ def test_portfolio_snapshots_returns_results(mock_db_pool):
             "quote_currency": "USDT",
         }
     ]
-    
+
     with patch("api.routes.portfolio._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
         client = TestClient(app)
         response = client.get("/portfolio/snapshots?limit=10")
-    
+
     assert response.status_code == 200
     payload = response.json()
     assert "snapshots" in payload
@@ -63,18 +63,18 @@ def test_portfolio_latest_snapshot_not_found():
     conn.fetchrow.return_value = None
     pool.acquire.return_value.__aenter__.return_value = conn
     pool.acquire.return_value.__aexit__.return_value = None
-    
+
     with patch("api.routes.portfolio._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
         client = TestClient(app)
         response = client.get("/portfolio/snapshots/latest")
-    
+
     assert response.status_code == 404
 
 
 def test_portfolio_position_history_with_symbol_filter(mock_db_pool):
     """Test fetching position history with symbol filter."""
     pool, conn = mock_db_pool
-    
+
     conn.fetch.return_value = [
         {
             "id": 1,
@@ -89,11 +89,11 @@ def test_portfolio_position_history_with_symbol_filter(mock_db_pool):
             "cost_basis": "FIFO",
         }
     ]
-    
+
     with patch("api.routes.portfolio._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
         client = TestClient(app)
         response = client.get("/portfolio/positions/history?symbol=BTCUSD&limit=10")
-    
+
     assert response.status_code == 200
     payload = response.json()
     assert "history" in payload
@@ -104,7 +104,7 @@ def test_portfolio_position_history_with_symbol_filter(mock_db_pool):
 def test_portfolio_balance_history(mock_db_pool):
     """Test fetching balance history."""
     pool, conn = mock_db_pool
-    
+
     conn.fetch.return_value = [
         {
             "id": 1,
@@ -116,11 +116,11 @@ def test_portfolio_balance_history(mock_db_pool):
             "total": Decimal("6000"),
         }
     ]
-    
+
     with patch("api.routes.portfolio._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
         client = TestClient(app)
         response = client.get("/portfolio/balances/history?exchange=bitfinex&currency=USD")
-    
+
     assert response.status_code == 200
     payload = response.json()
     assert "history" in payload

@@ -1,6 +1,6 @@
 /**
  * Risk Calculator - Position sizing and risk management calculator
- * 
+ *
  * Features:
  * - Position size calculation based on risk %
  * - Stop-loss and take-profit calculator

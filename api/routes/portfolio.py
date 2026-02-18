@@ -43,7 +43,7 @@ async def get_snapshots(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of snapshots"),
 ) -> dict[str, Any]:
     """Get portfolio snapshots for equity curve.
-    
+
     Returns snapshots of portfolio state over time including:
     - Total equity
     - Cash balance
@@ -51,15 +51,15 @@ async def get_snapshots(
     - Unrealized/realized P&L
     """
     pool = await _get_db_pool()
-    
+
     start_dt = datetime.fromisoformat(start_time) if start_time else None
     end_dt = datetime.fromisoformat(end_time) if end_time else None
-    
+
     async with pool.acquire() as conn:
         snapshots = await portfolio_crud.get_portfolio_snapshots(
             conn, start_time=start_dt, end_time=end_dt, limit=limit
         )
-    
+
     return {
         "snapshots": [
             {
@@ -82,13 +82,13 @@ async def get_snapshots(
 async def get_latest_snapshot() -> dict[str, Any]:
     """Get the most recent portfolio snapshot."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         snapshot = await portfolio_crud.get_latest_portfolio_snapshot(conn)
-    
+
     if not snapshot:
         raise HTTPException(status_code=404, detail="No portfolio snapshots found")
-    
+
     return {
         "snapshot": {
             "id": snapshot["id"],
@@ -115,12 +115,12 @@ async def create_snapshot(
     quote_currency: str = "USDT",
 ) -> dict[str, Any]:
     """Create a new portfolio snapshot.
-    
+
     This endpoint allows manual creation of snapshots for testing
     or integration with external systems.
     """
     pool = await _get_db_pool()
-    
+
     try:
         total_equity_dec = Decimal(total_equity)
         cash_balance_dec = Decimal(cash_balance)
@@ -130,9 +130,9 @@ async def create_snapshot(
         total_pnl_dec = Decimal(total_pnl)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid decimal value: {e}")
-    
+
     timestamp = datetime.utcnow()
-    
+
     async with pool.acquire() as conn:
         snapshot_id = await portfolio_crud.create_portfolio_snapshot(
             conn,
@@ -145,7 +145,7 @@ async def create_snapshot(
             total_pnl=total_pnl_dec,
             quote_currency=quote_currency,
         )
-    
+
     return {
         "success": True,
         "snapshot_id": snapshot_id,
@@ -166,19 +166,19 @@ async def get_position_history(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of records"),
 ) -> dict[str, Any]:
     """Get position history for audit trail.
-    
+
     Returns historical snapshots of positions over time.
     """
     pool = await _get_db_pool()
-    
+
     start_dt = datetime.fromisoformat(start_time) if start_time else None
     end_dt = datetime.fromisoformat(end_time) if end_time else None
-    
+
     async with pool.acquire() as conn:
         history = await portfolio_crud.get_position_history(
             conn, symbol=symbol, start_time=start_dt, end_time=end_dt, limit=limit
         )
-    
+
     return {
         "history": [
             {
@@ -212,14 +212,14 @@ async def get_balance_history(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of records"),
 ) -> dict[str, Any]:
     """Get balance history over time.
-    
+
     Returns historical snapshots of exchange balances.
     """
     pool = await _get_db_pool()
-    
+
     start_dt = datetime.fromisoformat(start_time) if start_time else None
     end_dt = datetime.fromisoformat(end_time) if end_time else None
-    
+
     async with pool.acquire() as conn:
         history = await portfolio_crud.get_balance_snapshots(
             conn,
@@ -229,7 +229,7 @@ async def get_balance_history(
             end_time=end_dt,
             limit=limit,
         )
-    
+
     return {
         "history": [
             {

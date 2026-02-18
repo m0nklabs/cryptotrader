@@ -141,7 +141,7 @@ def test_calculate_max_drawdown():
         Decimal("1200"),
     ]
     max_dd_pct, max_dd_amt = calculate_max_drawdown(equity_curve)
-    
+
     # Max drawdown should be from 1100 to 900 = 200 USD or ~18.18%
     assert max_dd_amt == Decimal("200")
     assert abs(max_dd_pct - Decimal("18.181818181818181818181818182")) < Decimal("0.01")

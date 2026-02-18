@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 import asyncpg
 
 from db.crud import watchlist as watchlist_crud
@@ -38,10 +38,10 @@ async def _get_db_pool() -> asyncpg.Pool:
 async def list_watchlists() -> dict[str, Any]:
     """List all watchlists."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         watchlists = await watchlist_crud.get_watchlists(conn)
-    
+
     return {
         "watchlists": [
             {
@@ -66,12 +66,12 @@ async def create_watchlist(
 ) -> dict[str, Any]:
     """Create a new watchlist."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         watchlist_id = await watchlist_crud.create_watchlist(
             conn, name=name, description=description, is_default=is_default
         )
-    
+
     return {
         "success": True,
         "watchlist_id": watchlist_id,
@@ -82,15 +82,15 @@ async def create_watchlist(
 async def get_watchlist(watchlist_id: int) -> dict[str, Any]:
     """Get a specific watchlist with its items."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         watchlist = await watchlist_crud.get_watchlist(conn, watchlist_id)
         if not watchlist:
             raise HTTPException(status_code=404, detail="Watchlist not found")
-        
+
         items = await watchlist_crud.get_watchlist_items(conn, watchlist_id)
         columns = await watchlist_crud.get_column_preferences(conn, watchlist_id)
-    
+
     return {
         "watchlist": {
             "id": watchlist["id"],
@@ -132,7 +132,7 @@ async def update_watchlist(
 ) -> dict[str, Any]:
     """Update a watchlist."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         success = await watchlist_crud.update_watchlist(
             conn,
@@ -141,10 +141,10 @@ async def update_watchlist(
             description=description,
             is_default=is_default,
         )
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Watchlist not found or no changes")
-    
+
     return {"success": True}
 
 
@@ -152,13 +152,13 @@ async def update_watchlist(
 async def delete_watchlist(watchlist_id: int) -> dict[str, Any]:
     """Delete a watchlist."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         success = await watchlist_crud.delete_watchlist(conn, watchlist_id)
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Watchlist not found")
-    
+
     return {"success": True}
 
 
@@ -176,15 +176,15 @@ async def add_item(
 ) -> dict[str, Any]:
     """Add a symbol to a watchlist."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         item_id = await watchlist_crud.add_watchlist_item(
             conn, watchlist_id=watchlist_id, exchange=exchange, symbol=symbol, notes=notes
         )
-    
+
     if not item_id:
         raise HTTPException(status_code=409, detail="Item already exists in watchlist")
-    
+
     return {
         "success": True,
         "item_id": item_id,
@@ -195,13 +195,13 @@ async def add_item(
 async def remove_item(item_id: int) -> dict[str, Any]:
     """Remove an item from a watchlist."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         success = await watchlist_crud.remove_watchlist_item(conn, item_id)
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Item not found")
-    
+
     return {"success": True}
 
 
@@ -209,15 +209,13 @@ async def remove_item(item_id: int) -> dict[str, Any]:
 async def update_item_order(item_id: int, sort_order: int) -> dict[str, Any]:
     """Update the sort order of a watchlist item."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
-        success = await watchlist_crud.update_watchlist_item_order(
-            conn, item_id=item_id, sort_order=sort_order
-        )
-    
+        success = await watchlist_crud.update_watchlist_item_order(conn, item_id=item_id, sort_order=sort_order)
+
     if not success:
         raise HTTPException(status_code=404, detail="Item not found")
-    
+
     return {"success": True}
 
 
@@ -236,7 +234,7 @@ async def set_column_preference(
 ) -> dict[str, Any]:
     """Set column preference for a watchlist."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         pref_id = await watchlist_crud.set_column_preference(
             conn,
@@ -246,7 +244,7 @@ async def set_column_preference(
             sort_order=sort_order,
             width=width,
         )
-    
+
     return {
         "success": True,
         "preference_id": pref_id,
@@ -257,11 +255,11 @@ async def set_column_preference(
 async def delete_column_preference(pref_id: int) -> dict[str, Any]:
     """Delete a column preference."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         success = await watchlist_crud.delete_column_preference(conn, pref_id)
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Preference not found")
-    
+
     return {"success": True}

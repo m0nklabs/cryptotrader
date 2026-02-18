@@ -17,17 +17,17 @@ def mock_db_pool():
     """Mock asyncpg connection pool."""
     pool = AsyncMock()
     conn = AsyncMock()
-    
+
     pool.acquire.return_value.__aenter__.return_value = conn
     pool.acquire.return_value.__aexit__.return_value = None
-    
+
     return pool, conn
 
 
 def test_list_watchlists(mock_db_pool):
     """Test listing all watchlists."""
     pool, conn = mock_db_pool
-    
+
     conn.fetch.return_value = [
         {
             "id": 1,
@@ -39,11 +39,11 @@ def test_list_watchlists(mock_db_pool):
             "updated_at": datetime(2024, 1, 1, 12, 0, 0),
         }
     ]
-    
+
     with patch("api.routes.watchlist._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
         client = TestClient(app)
         response = client.get("/watchlist/")
-    
+
     assert response.status_code == 200
     payload = response.json()
     assert "watchlists" in payload
@@ -54,7 +54,7 @@ def test_list_watchlists(mock_db_pool):
 def test_get_watchlist_with_items(mock_db_pool):
     """Test getting a specific watchlist with items."""
     pool, conn = mock_db_pool
-    
+
     conn.fetchrow.return_value = {
         "id": 1,
         "name": "My Favorites",
@@ -63,7 +63,7 @@ def test_get_watchlist_with_items(mock_db_pool):
         "created_at": datetime(2024, 1, 1, 12, 0, 0),
         "updated_at": datetime(2024, 1, 1, 12, 0, 0),
     }
-    
+
     conn.fetch.side_effect = [
         [  # watchlist items
             {
@@ -76,11 +76,11 @@ def test_get_watchlist_with_items(mock_db_pool):
         ],
         [],  # column preferences
     ]
-    
+
     with patch("api.routes.watchlist._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
         client = TestClient(app)
         response = client.get("/watchlist/1")
-    
+
     assert response.status_code == 200
     payload = response.json()
     assert payload["watchlist"]["id"] == 1
@@ -92,11 +92,11 @@ def test_get_watchlist_not_found(mock_db_pool):
     """Test getting a non-existent watchlist."""
     pool, conn = mock_db_pool
     conn.fetchrow.return_value = None
-    
+
     with patch("api.routes.watchlist._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
         client = TestClient(app)
         response = client.get("/watchlist/999")
-    
+
     assert response.status_code == 404
 
 
@@ -104,14 +104,11 @@ def test_create_watchlist(mock_db_pool):
     """Test creating a new watchlist."""
     pool, conn = mock_db_pool
     conn.fetchval.return_value = 1
-    
+
     with patch("api.routes.watchlist._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
         client = TestClient(app)
-        response = client.post(
-            "/watchlist/",
-            params={"name": "New Watchlist", "description": "Test list"}
-        )
-    
+        response = client.post("/watchlist/", params={"name": "New Watchlist", "description": "Test list"})
+
     assert response.status_code == 200
     payload = response.json()
     assert payload["success"] is True
@@ -122,11 +119,11 @@ def test_delete_watchlist(mock_db_pool):
     """Test deleting a watchlist."""
     pool, conn = mock_db_pool
     conn.execute.return_value = "DELETE 1"
-    
+
     with patch("api.routes.watchlist._get_db_pool", return_value=asyncio.coroutine(lambda: pool)()):
         client = TestClient(app)
         response = client.delete("/watchlist/1")
-    
+
     assert response.status_code == 200
     payload = response.json()
     assert payload["success"] is True

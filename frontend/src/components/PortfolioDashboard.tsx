@@ -1,6 +1,6 @@
 /**
  * Portfolio Dashboard - Main portfolio tracking view
- * 
+ *
  * Displays:
  * - Total equity and P&L
  * - Current positions with unrealized P&L

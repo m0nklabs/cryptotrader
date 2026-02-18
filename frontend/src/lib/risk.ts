@@ -17,9 +17,9 @@ export interface TakeProfitResult {
 
 /**
  * Calculate position size based on account risk percentage.
- * 
+ *
  * Formula: position_size = (account * risk%) / (entry - stop_loss)
- * 
+ *
  * @param accountSize - Total account size
  * @param riskPercentage - Risk percentage (0-100)
  * @param entryPrice - Entry price
@@ -34,7 +34,7 @@ export function calculatePositionSize(
 ): PositionSizeResult {
   const riskAmount = accountSize * (riskPercentage / 100);
   const stopLossDistance = Math.abs(entryPrice - stopLossPrice);
-  
+
   if (stopLossDistance === 0) {
     return {
       positionSize: 0,
@@ -43,10 +43,10 @@ export function calculatePositionSize(
       potentialLoss: 0,
     };
   }
-  
+
   const positionSize = riskAmount / stopLossDistance;
   const potentialLoss = positionSize * stopLossDistance;
-  
+
   return {
     positionSize,
     riskAmount,
@@ -57,7 +57,7 @@ export function calculatePositionSize(
 
 /**
  * Calculate take profit price for a given risk/reward ratio.
- * 
+ *
  * @param entryPrice - Entry price
  * @param stopLossPrice - Stop loss price
  * @param riskRewardRatio - Desired risk/reward ratio (e.g., 2 means 2:1)
@@ -72,11 +72,11 @@ export function calculateTakeProfit(
 ): TakeProfitResult {
   const risk = Math.abs(entryPrice - stopLossPrice);
   const reward = risk * riskRewardRatio;
-  
+
   const takeProfitPrice = isLong
     ? entryPrice + reward
     : entryPrice - reward;
-  
+
   return {
     takeProfitPrice,
     potentialProfit: reward,
@@ -86,7 +86,7 @@ export function calculateTakeProfit(
 
 /**
  * Calculate risk/reward ratio for a trade.
- * 
+ *
  * @param entryPrice - Entry price
  * @param stopLossPrice - Stop loss price
  * @param takeProfitPrice - Take profit price
@@ -100,19 +100,19 @@ export function calculateRiskRewardRatio(
   isLong: boolean
 ): number {
   const risk = Math.abs(entryPrice - stopLossPrice);
-  
+
   if (risk === 0) return 0;
-  
+
   const reward = isLong
     ? takeProfitPrice - entryPrice
     : entryPrice - takeProfitPrice;
-  
+
   return reward / risk;
 }
 
 /**
  * Calculate position size with leverage.
- * 
+ *
  * @param accountSize - Total account size
  * @param riskPercentage - Risk percentage (0-100)
  * @param entryPrice - Entry price
@@ -133,10 +133,10 @@ export function calculateLeveragedPosition(
     entryPrice,
     stopLossPrice
   );
-  
+
   const effectiveSize = baseResult.positionSize * leverage;
   const marginRequired = (effectiveSize * entryPrice) / leverage;
-  
+
   return {
     ...baseResult,
     effectiveSize,
@@ -146,7 +146,7 @@ export function calculateLeveragedPosition(
 
 /**
  * Calculate potential profit/loss for a position.
- * 
+ *
  * @param positionSize - Position size (quantity)
  * @param entryPrice - Entry price
  * @param exitPrice - Exit price (current or target)
@@ -162,7 +162,7 @@ export function calculateProfitLoss(
   const priceDiff = isLong ? exitPrice - entryPrice : entryPrice - exitPrice;
   const amount = positionSize * priceDiff;
   const percentage = (priceDiff / entryPrice) * 100;
-  
+
   return { amount, percentage };
 }
 

@@ -45,14 +45,14 @@ async def list_trades(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of trades"),
 ) -> dict[str, Any]:
     """List trade executions with optional filters.
-    
+
     Returns completed trade fills with P&L details.
     """
     pool = await _get_db_pool()
-    
+
     start_dt = datetime.fromisoformat(start_time) if start_time else None
     end_dt = datetime.fromisoformat(end_time) if end_time else None
-    
+
     async with pool.acquire() as conn:
         trades = await trade_crud.get_trades(
             conn,
@@ -62,7 +62,7 @@ async def list_trades(
             is_paper=is_paper,
             limit=limit,
         )
-    
+
     return {
         "trades": [
             {
@@ -90,13 +90,13 @@ async def list_trades(
 async def get_trade(trade_id: str) -> dict[str, Any]:
     """Get a specific trade by trade_id."""
     pool = await _get_db_pool()
-    
+
     async with pool.acquire() as conn:
         trade = await trade_crud.get_trade_by_id(conn, trade_id)
-    
+
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
-    
+
     return {
         "trade": {
             "id": trade["id"],
@@ -133,12 +133,12 @@ async def create_trade(
     is_paper: bool = True,
 ) -> dict[str, Any]:
     """Create a trade execution record.
-    
+
     This endpoint allows manual creation of trade records for testing
     or integration with external systems.
     """
     pool = await _get_db_pool()
-    
+
     try:
         quantity_dec = Decimal(quantity)
         price_dec = Decimal(price)
@@ -146,7 +146,7 @@ async def create_trade(
         execution_dt = datetime.fromisoformat(execution_time)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid input: {e}")
-    
+
     async with pool.acquire() as conn:
         record_id = await trade_crud.create_trade(
             conn,
@@ -163,10 +163,10 @@ async def create_trade(
             trade_type=trade_type,
             is_paper=is_paper,
         )
-    
+
     if not record_id:
         raise HTTPException(status_code=409, detail="Trade ID already exists")
-    
+
     return {
         "success": True,
         "trade_record_id": record_id,
@@ -187,14 +187,14 @@ async def get_audit_log(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of records"),
 ) -> dict[str, Any]:
     """Get order audit log with optional filters.
-    
+
     Returns all order state change events for compliance and debugging.
     """
     pool = await _get_db_pool()
-    
+
     start_dt = datetime.fromisoformat(start_time) if start_time else None
     end_dt = datetime.fromisoformat(end_time) if end_time else None
-    
+
     async with pool.acquire() as conn:
         logs = await trade_crud.get_order_audit_log(
             conn,
@@ -204,7 +204,7 @@ async def get_audit_log(
             end_time=end_dt,
             limit=limit,
         )
-    
+
     return {
         "audit_log": [
             {
@@ -248,7 +248,7 @@ async def log_order_event(
 ) -> dict[str, Any]:
     """Log an order state change event."""
     pool = await _get_db_pool()
-    
+
     try:
         event_dt = datetime.fromisoformat(event_time)
         quantity_dec = Decimal(quantity) if quantity else None
@@ -258,7 +258,7 @@ async def log_order_event(
         avg_fill_price_dec = Decimal(avg_fill_price) if avg_fill_price else None
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid input: {e}")
-    
+
     async with pool.acquire() as conn:
         log_id = await trade_crud.log_order_event(
             conn,
@@ -277,7 +277,7 @@ async def log_order_event(
             avg_fill_price=avg_fill_price_dec,
             metadata=metadata,
         )
-    
+
     return {
         "success": True,
         "log_id": log_id,
