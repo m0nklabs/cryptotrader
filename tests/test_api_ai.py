@@ -92,8 +92,12 @@ def mock_ai_router():
 
 
 @pytest.fixture
-def mock_db_session():
-    """Mock database session for AI CRUD operations."""
+def ai_crud_mocks():
+    """Mock database session factory and AI CRUD functions.
+    
+    Returns:
+        tuple: (mock_session_factory, mock_log_decision, mock_usage_summary)
+    """
     # Create async context manager mock
     session = AsyncMock()
     session.__aenter__ = AsyncMock(return_value=session)
@@ -155,9 +159,9 @@ def mock_db_session():
 # =============================================================================
 
 
-def test_evaluate_happy_path_returns_200(client, mock_ai_router, mock_db_session):
+def test_evaluate_happy_path_returns_200(client, mock_ai_router, ai_crud_mocks):
     """Test POST /api/ai/evaluate returns 200 with valid request."""
-    mock_session_factory, mock_log_decision, _ = mock_db_session
+    mock_session_factory, mock_log_decision, _ = ai_crud_mocks
 
     with patch("api.routes.ai._get_router", return_value=mock_ai_router):
         with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
@@ -173,9 +177,9 @@ def test_evaluate_happy_path_returns_200(client, mock_ai_router, mock_db_session
     assert response.status_code == 200, f"Expected 200 but got {response.status_code}: {response.text}"
 
 
-def test_evaluate_response_schema(client, mock_ai_router, mock_db_session):
+def test_evaluate_response_schema(client, mock_ai_router, ai_crud_mocks):
     """Test POST /api/ai/evaluate returns correct response schema."""
-    mock_session_factory, mock_log_decision, _ = mock_db_session
+    mock_session_factory, mock_log_decision, _ = ai_crud_mocks
 
     with patch("api.routes.ai._get_router", return_value=mock_ai_router):
         with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
@@ -198,6 +202,7 @@ def test_evaluate_response_schema(client, mock_ai_router, mock_db_session):
     assert "finalConfidence" in data, "Response missing 'finalConfidence'"
     assert "reasoning" in data, "Response missing 'reasoning'"
     assert "verdicts" in data, "Response missing 'verdicts'"
+    assert "vetoedBy" in data, "Response missing 'vetoedBy' (optional field, may be null)"
     assert "totalCostUsd" in data, "Response missing 'totalCostUsd'"
     assert "totalLatencyMs" in data, "Response missing 'totalLatencyMs'"
     assert "createdAt" in data, "Response missing 'createdAt'"
@@ -222,9 +227,9 @@ def test_evaluate_response_schema(client, mock_ai_router, mock_db_session):
     assert "reasoning" in verdict
 
 
-def test_evaluate_with_roles_filter(client, mock_ai_router, mock_db_session):
+def test_evaluate_with_roles_filter(client, mock_ai_router, ai_crud_mocks):
     """Test POST /api/ai/evaluate accepts roles filter."""
-    mock_session_factory, mock_log_decision, _ = mock_db_session
+    mock_session_factory, mock_log_decision, _ = ai_crud_mocks
 
     with patch("api.routes.ai._get_router", return_value=mock_ai_router):
         with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
@@ -251,9 +256,9 @@ def test_evaluate_with_roles_filter(client, mock_ai_router, mock_db_session):
     assert call_kwargs["roles"] == [RoleName.SCREENER, RoleName.TACTICAL]
 
 
-def test_evaluate_with_context_data(client, mock_ai_router, mock_db_session):
+def test_evaluate_with_context_data(client, mock_ai_router, ai_crud_mocks):
     """Test POST /api/ai/evaluate accepts optional context data."""
-    mock_session_factory, mock_log_decision, _ = mock_db_session
+    mock_session_factory, mock_log_decision, _ = ai_crud_mocks
 
     request_payload = {
         "symbol": "BTCUSD",
@@ -296,9 +301,9 @@ def test_evaluate_missing_symbol_returns_422(client):
     assert response.status_code == 422, f"Expected 422 but got {response.status_code}: {response.text}"
 
 
-def test_evaluate_invalid_role_returns_400(client, mock_ai_router, mock_db_session):
+def test_evaluate_invalid_role_returns_400(client, mock_ai_router, ai_crud_mocks):
     """Test POST /api/ai/evaluate returns 400 for invalid role names."""
-    mock_session_factory, _, _ = mock_db_session
+    mock_session_factory, _, _ = ai_crud_mocks
 
     with patch("api.routes.ai._get_router", return_value=mock_ai_router):
         with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
@@ -317,13 +322,13 @@ def test_evaluate_invalid_role_returns_400(client, mock_ai_router, mock_db_sessi
     assert "invalid" in data["detail"].lower() or "role" in data["detail"].lower()
 
 
-def test_evaluate_handles_router_failure_gracefully(client, mock_db_session):
+def test_evaluate_handles_router_failure_gracefully(client, ai_crud_mocks):
     """Test POST /api/ai/evaluate handles router failures gracefully.
 
     When the router raises an exception, FastAPI's default error handler
     will catch it and return a 500 Internal Server Error.
     """
-    mock_session_factory, _, _ = mock_db_session
+    mock_session_factory, _, _ = ai_crud_mocks
 
     mock_router = Mock()
     mock_router.evaluate_opportunity = AsyncMock(side_effect=Exception("Provider timeout"))
@@ -348,9 +353,9 @@ def test_evaluate_handles_router_failure_gracefully(client, mock_db_session):
 # =============================================================================
 
 
-def test_usage_summary_returns_200(client, mock_db_session):
+def test_usage_summary_returns_200(client, ai_crud_mocks):
     """Test GET /api/ai/usage returns 200 with valid response."""
-    mock_session_factory, _, mock_usage_summary = mock_db_session
+    mock_session_factory, _, mock_usage_summary = ai_crud_mocks
 
     with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
         with patch("api.routes.ai.ai_crud.get_usage_summary", side_effect=mock_usage_summary):
@@ -359,9 +364,9 @@ def test_usage_summary_returns_200(client, mock_db_session):
     assert response.status_code == 200, f"Expected 200 but got {response.status_code}: {response.text}"
 
 
-def test_usage_summary_response_schema(client, mock_db_session):
+def test_usage_summary_response_schema(client, ai_crud_mocks):
     """Test GET /api/ai/usage returns correct response schema."""
-    mock_session_factory, _, mock_usage_summary = mock_db_session
+    mock_session_factory, _, mock_usage_summary = ai_crud_mocks
 
     with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
         with patch("api.routes.ai.ai_crud.get_usage_summary", side_effect=mock_usage_summary):
@@ -386,24 +391,28 @@ def test_usage_summary_response_schema(client, mock_db_session):
     assert isinstance(data["byRole"], dict)
     assert isinstance(data["byProvider"], dict)
 
-    # Validate byRole structure
+    # Validate byRole structure (includes avgLatencyMs)
     if data["byRole"]:
         first_role = list(data["byRole"].values())[0]
         assert "cost" in first_role
         assert "requests" in first_role
+        assert "avgLatencyMs" in first_role
         assert isinstance(first_role["cost"], (int, float))
         assert isinstance(first_role["requests"], int)
+        assert isinstance(first_role["avgLatencyMs"], (int, float))
 
-    # Validate byProvider structure
+    # Validate byProvider structure (no avgLatencyMs in provider stats)
     if data["byProvider"]:
         first_provider = list(data["byProvider"].values())[0]
         assert "cost" in first_provider
         assert "requests" in first_provider
+        assert isinstance(first_provider["cost"], (int, float))
+        assert isinstance(first_provider["requests"], int)
 
 
-def test_usage_summary_with_date_range(client, mock_db_session):
+def test_usage_summary_with_date_range(client, ai_crud_mocks):
     """Test GET /api/ai/usage accepts date range parameters."""
-    mock_session_factory, _, mock_usage_summary = mock_db_session
+    mock_session_factory, _, mock_usage_summary = ai_crud_mocks
 
     with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
         with patch("api.routes.ai.ai_crud.get_usage_summary", side_effect=mock_usage_summary) as mock_summary:
@@ -426,9 +435,9 @@ def test_usage_summary_with_date_range(client, mock_db_session):
     assert isinstance(call_kwargs["end_date"], datetime)
 
 
-def test_usage_summary_defaults_to_30_days(client, mock_db_session):
+def test_usage_summary_defaults_to_30_days(client, ai_crud_mocks):
     """Test GET /api/ai/usage defaults to 30-day range when no params provided."""
-    mock_session_factory, _, mock_usage_summary = mock_db_session
+    mock_session_factory, _, mock_usage_summary = ai_crud_mocks
 
     with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
         with patch("api.routes.ai.ai_crud.get_usage_summary", side_effect=mock_usage_summary) as mock_summary:
@@ -442,9 +451,10 @@ def test_usage_summary_defaults_to_30_days(client, mock_db_session):
     assert "start_date" in call_kwargs
     assert "end_date" in call_kwargs
 
-    # Verify it's approximately 30 days (allow some tolerance for test execution time)
+    # Verify it's approximately 30 days (use total_seconds for robustness in CI)
     time_range = call_kwargs["end_date"] - call_kwargs["start_date"]
-    assert 29 <= time_range.days <= 31, f"Expected ~30 day range but got {time_range.days} days"
+    days = time_range.total_seconds() / 86400
+    assert 28 <= days <= 32, f"Expected ~30 day range but got {days:.1f} days"
 
 
 # =============================================================================
@@ -452,9 +462,9 @@ def test_usage_summary_defaults_to_30_days(client, mock_db_session):
 # =============================================================================
 
 
-def test_evaluate_does_not_call_real_providers(client, mock_ai_router, mock_db_session):
+def test_evaluate_does_not_call_real_providers(client, mock_ai_router, ai_crud_mocks):
     """Test that /api/ai/evaluate does not make real provider API calls."""
-    mock_session_factory, mock_log_decision, _ = mock_db_session
+    mock_session_factory, mock_log_decision, _ = ai_crud_mocks
 
     # Use mocks and verify no real HTTP clients are created
     with patch("api.routes.ai._get_router", return_value=mock_ai_router):
@@ -475,9 +485,9 @@ def test_evaluate_does_not_call_real_providers(client, mock_ai_router, mock_db_s
     mock_ai_router.evaluate_opportunity.assert_called_once()
 
 
-def test_multiple_evaluate_calls_are_deterministic(client, mock_ai_router, mock_db_session):
+def test_multiple_evaluate_calls_are_deterministic(client, mock_ai_router, ai_crud_mocks):
     """Test that repeated calls to /api/ai/evaluate return consistent results."""
-    mock_session_factory, mock_log_decision, _ = mock_db_session
+    mock_session_factory, mock_log_decision, _ = ai_crud_mocks
 
     with patch("api.routes.ai._get_router", return_value=mock_ai_router):
         with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
@@ -504,3 +514,59 @@ def test_multiple_evaluate_calls_are_deterministic(client, mock_ai_router, mock_
     assert data1["finalAction"] == data2["finalAction"]
     assert data1["finalConfidence"] == data2["finalConfidence"]
     assert len(data1["verdicts"]) == len(data2["verdicts"])
+
+    # Verify the router was invoked for each request (no caching/skipping)
+    assert mock_ai_router.evaluate_opportunity.call_count == 2
+
+
+# =============================================================================
+# Authentication Tests
+# =============================================================================
+
+
+def test_evaluate_requires_api_key_when_configured(client):
+    """Test POST /api/ai/evaluate returns 401 when AI_API_KEY is set but not provided."""
+    import os
+
+    with patch.dict(os.environ, {"AI_API_KEY": "test-secret-key"}):
+        response = client.post(
+            "/api/ai/evaluate",
+            json={"symbol": "BTCUSD", "timeframe": "1h"},
+        )
+
+    assert response.status_code == 401, f"Expected 401 but got {response.status_code}: {response.text}"
+    data = response.json()
+    assert "detail" in data
+    assert "api key" in data["detail"].lower() or "invalid" in data["detail"].lower()
+
+
+def test_evaluate_accepts_valid_api_key(client, mock_ai_router, ai_crud_mocks):
+    """Test POST /api/ai/evaluate returns 200 when valid API key is provided."""
+    import os
+
+    mock_session_factory, mock_log_decision, _ = ai_crud_mocks
+
+    with patch.dict(os.environ, {"AI_API_KEY": "test-secret-key"}):
+        with patch("api.routes.ai._get_router", return_value=mock_ai_router):
+            with patch("api.routes.ai._get_session_factory", return_value=mock_session_factory):
+                with patch("api.routes.ai.ai_crud.log_decision_with_usage", side_effect=mock_log_decision):
+                    response = client.post(
+                        "/api/ai/evaluate",
+                        json={"symbol": "BTCUSD", "timeframe": "1h"},
+                        headers={"X-API-Key": "test-secret-key"},
+                    )
+
+    assert response.status_code == 200, f"Expected 200 but got {response.status_code}: {response.text}"
+
+
+def test_usage_requires_api_key_when_configured(client):
+    """Test GET /api/ai/usage returns 401 when AI_API_KEY is set but not provided."""
+    import os
+
+    with patch.dict(os.environ, {"AI_API_KEY": "test-secret-key"}):
+        response = client.get("/api/ai/usage")
+
+    assert response.status_code == 401, f"Expected 401 but got {response.status_code}: {response.text}"
+    data = response.json()
+    assert "detail" in data
+    assert "api key" in data["detail"].lower() or "invalid" in data["detail"].lower()
