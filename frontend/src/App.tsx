@@ -16,7 +16,7 @@ import { PortfolioDashboard } from './components/PortfolioDashboard'
 import { Watchlist } from './components/Watchlist'
 import { TradeHistory } from './components/TradeHistory'
 import { RiskCalculator } from './components/RiskCalculator'
-import { AiEvaluationPanel } from './components/AiEvaluationPanel'
+import AiEvaluationPanel from './components/AiEvaluationPanel'
 import { sampleEquityCurve } from './data/performanceSample'
 import {
   placeOrder,

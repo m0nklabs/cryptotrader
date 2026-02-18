@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { evaluateSymbol } from '../api/ai'
 import { useAiStore } from '../stores/aiStore'
-import type { SignalAction, RoleName, ConsensusDecision } from '../api/ai'
+import type { SignalAction, RoleName, ConsensusDecision, RoleVerdict } from '../api/ai'
 
 /**
  * AI Evaluation Panel — Manual Multi-Brain evaluation trigger.
@@ -15,7 +15,7 @@ import type { SignalAction, RoleName, ConsensusDecision } from '../api/ai'
  *
  * Minimal MVP: no filters, no complex settings.
  */
-export function AiEvaluationPanel() {
+export default function AiEvaluationPanel() {
   const { setLastDecision, setEvaluating } = useAiStore()
 
   const [symbol, setSymbol] = useState('BTC/USDT')
@@ -179,7 +179,11 @@ function ConsensusCard({ decision }: { decision: ConsensusDecision }) {
   )
 }
 
-function VerdictCard({ verdict }: { verdict: { role: RoleName; action: SignalAction; confidence: number; reasoning: string } }) {
+/**
+ * VerdictCard displays an individual role's verdict.
+ * Note: metrics field from RoleVerdict is intentionally omitted in this MVP display.
+ */
+function VerdictCard({ verdict }: { verdict: RoleVerdict }) {
   const roleColors: Record<RoleName, string> = {
     screener: 'border-blue-600',
     tactical: 'border-amber-500',
