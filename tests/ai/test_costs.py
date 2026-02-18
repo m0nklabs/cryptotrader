@@ -8,7 +8,6 @@ Part of issue #209 (P6) for #205 Multi-Brain AI.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -30,7 +29,7 @@ from core.ai.types import AIRequest, ProviderName, RoleName
 async def test_deepseek_cost_calculation():
     """Test DeepSeek cost calculation: $0.14 input, $0.28 output per 1M tokens."""
     provider = DeepSeekProvider()
-    
+
     mock_response = {
         "choices": [{"message": {"content": "test"}}],
         "usage": {
@@ -38,13 +37,13 @@ async def test_deepseek_cost_calculation():
             "completion_tokens": 5_000,  # 5k tokens
         },
     }
-    
+
     with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = mock_response
-        
+
         request = AIRequest(role=RoleName.SCREENER, user_prompt="Test")
         response = await provider.complete(request, system_prompt="test")
-    
+
     # Cost = (10,000 * $0.14 + 5,000 * $0.28) / 1,000,000
     expected_cost = (10_000 * 0.14 + 5_000 * 0.28) / 1_000_000
     assert abs(response.cost_usd - expected_cost) < 0.000001
@@ -55,7 +54,7 @@ async def test_deepseek_cost_calculation():
 async def test_openai_cost_calculation():
     """Test OpenAI o3-mini cost: $1.10 input, $4.40 output per 1M tokens."""
     provider = OpenAIProvider()
-    
+
     mock_response = {
         "choices": [{"message": {"content": "test"}}],
         "usage": {
@@ -63,13 +62,13 @@ async def test_openai_cost_calculation():
             "completion_tokens": 5_000,
         },
     }
-    
+
     with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = mock_response
-        
+
         request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Test")
         response = await provider.complete(request, system_prompt="test")
-    
+
     # Cost = (10,000 * $1.10 + 5,000 * $4.40) / 1,000,000
     expected_cost = (10_000 * 1.10 + 5_000 * 4.40) / 1_000_000
     assert abs(response.cost_usd - expected_cost) < 0.000001
@@ -80,7 +79,7 @@ async def test_openai_cost_calculation():
 async def test_openrouter_cost_calculation():
     """Test OpenRouter cost (uses OpenAI pricing for openai/ models)."""
     provider = OpenRouterProvider()
-    
+
     mock_response = {
         "choices": [{"message": {"content": "test"}}],
         "usage": {
@@ -88,13 +87,13 @@ async def test_openrouter_cost_calculation():
             "completion_tokens": 5_000,
         },
     }
-    
+
     with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = mock_response
-        
+
         request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Test")
         response = await provider.complete(request, system_prompt="test")
-    
+
     # OpenRouter uses OpenAI pricing for openai/o3-mini
     expected_cost = (10_000 * 1.10 + 5_000 * 4.40) / 1_000_000
     assert abs(response.cost_usd - expected_cost) < 0.000001
@@ -104,7 +103,7 @@ async def test_openrouter_cost_calculation():
 async def test_xai_cost_calculation():
     """Test xAI Grok cost: $2.00 input, $10.00 output per 1M tokens."""
     provider = XAIProvider()
-    
+
     mock_response = {
         "choices": [{"message": {"content": "test"}}],
         "usage": {
@@ -112,13 +111,13 @@ async def test_xai_cost_calculation():
             "completion_tokens": 5_000,
         },
     }
-    
+
     with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = mock_response
-        
+
         request = AIRequest(role=RoleName.FUNDAMENTAL, user_prompt="Test")
         response = await provider.complete(request, system_prompt="test")
-    
+
     # Cost = (10,000 * $2.00 + 5,000 * $10.00) / 1,000,000
     expected_cost = (10_000 * 2.00 + 5_000 * 10.00) / 1_000_000
     assert abs(response.cost_usd - expected_cost) < 0.000001
@@ -129,19 +128,19 @@ async def test_xai_cost_calculation():
 async def test_ollama_cost_is_zero():
     """Test that Ollama (local) has zero cost."""
     provider = OllamaProvider()
-    
+
     mock_response = {
         "message": {"content": "test"},
         "prompt_eval_count": 10_000,
         "eval_count": 5_000,
     }
-    
+
     with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = mock_response
-        
+
         request = AIRequest(role=RoleName.TACTICAL, user_prompt="Test")
         response = await provider.complete(request, system_prompt="test")
-    
+
     # Local model = $0
     assert response.cost_usd == 0.0
 
@@ -158,9 +157,9 @@ async def test_pipeline_cost_aggregation():
     from core.ai.roles.base import RoleRegistry
     from core.ai.router import LLMRouter
     from core.ai.types import AIResponse, RoleConfig, RoleVerdict
-    
+
     router = LLMRouter(consensus_engine=ConsensusEngine())
-    
+
     # Register mock roles with different costs
     costs = {
         RoleName.SCREENER: 0.001,
@@ -168,7 +167,7 @@ async def test_pipeline_cost_aggregation():
         RoleName.FUNDAMENTAL: 0.003,
         RoleName.STRATEGIST: 0.004,
     }
-    
+
     for role_name, cost in costs.items():
         mock_role = Mock()
         mock_role.name = role_name
@@ -180,7 +179,7 @@ async def test_pipeline_cost_aggregation():
             system_prompt_id="test",
             enabled=True,
         )
-        
+
         # Mock evaluate to return specific cost
         def make_eval(rn, c):
             async def mock_eval(*args, **kwargs):
@@ -201,17 +200,18 @@ async def test_pipeline_cost_aggregation():
                         reasoning="test",
                     ),
                 )
+
             return mock_eval
-        
+
         mock_role.evaluate = make_eval(role_name, cost)
         RoleRegistry.register(mock_role)
-    
+
     with patch("core.ai.prompts.registry.PromptRegistry.get_active", return_value=Mock(content="test")):
         decision = await router.evaluate_opportunity(
             symbol="BTC/USD",
             timeframe="1h",
         )
-    
+
     # Total cost should be sum of all roles
     expected_total = sum(costs.values())
     assert abs(decision.total_cost_usd - expected_total) < 0.000001
@@ -225,9 +225,9 @@ async def test_pipeline_cost_with_failures():
     from core.ai.roles.base import RoleRegistry
     from core.ai.router import LLMRouter
     from core.ai.types import AIResponse, RoleConfig, RoleVerdict
-    
+
     router = LLMRouter(consensus_engine=ConsensusEngine(), min_roles_required=2)
-    
+
     # Role 1: succeeds with cost
     mock_role1 = Mock()
     mock_role1.name = RoleName.TACTICAL
@@ -239,7 +239,7 @@ async def test_pipeline_cost_with_failures():
         system_prompt_id="test",
         enabled=True,
     )
-    
+
     async def success_eval(*args, **kwargs):
         return (
             AIResponse(
@@ -256,9 +256,9 @@ async def test_pipeline_cost_with_failures():
                 reasoning="test",
             ),
         )
-    
+
     mock_role1.evaluate = success_eval
-    
+
     # Role 2: succeeds with cost
     mock_role2 = Mock()
     mock_role2.name = RoleName.FUNDAMENTAL
@@ -270,7 +270,7 @@ async def test_pipeline_cost_with_failures():
         system_prompt_id="test",
         enabled=True,
     )
-    
+
     async def success_eval2(*args, **kwargs):
         return (
             AIResponse(
@@ -287,9 +287,9 @@ async def test_pipeline_cost_with_failures():
                 reasoning="test",
             ),
         )
-    
+
     mock_role2.evaluate = success_eval2
-    
+
     # Role 3: fails (should not contribute to cost)
     mock_role3 = Mock()
     mock_role3.name = RoleName.SCREENER
@@ -301,22 +301,22 @@ async def test_pipeline_cost_with_failures():
         system_prompt_id="test",
         enabled=True,
     )
-    
+
     async def failing_eval(*args, **kwargs):
         raise Exception("Provider error")
-    
+
     mock_role3.evaluate = failing_eval
-    
+
     RoleRegistry.register(mock_role1)
     RoleRegistry.register(mock_role2)
     RoleRegistry.register(mock_role3)
-    
+
     with patch("core.ai.prompts.registry.PromptRegistry.get_active", return_value=Mock(content="test")):
         decision = await router.evaluate_opportunity(
             symbol="BTC/USD",
             timeframe="1h",
         )
-    
+
     # Cost should only include successful roles (0.002 + 0.003)
     assert abs(decision.total_cost_usd - 0.005) < 0.000001
 
@@ -330,12 +330,12 @@ def test_daily_projection():
     """Test daily cost projection from per-eval cost."""
     # Assume typical evaluation: ~$0.034
     cost_per_eval = 0.034
-    
+
     # 100 evaluations per day
     evals_per_day = 100
-    
+
     daily_cost = cost_per_eval * evals_per_day
-    
+
     assert daily_cost == pytest.approx(3.40, rel=1e-2)
 
 
@@ -344,9 +344,9 @@ def test_monthly_projection():
     cost_per_eval = 0.034
     evals_per_day = 100
     days_per_month = 30
-    
+
     monthly_cost = cost_per_eval * evals_per_day * days_per_month
-    
+
     assert monthly_cost == pytest.approx(102.00, rel=1e-2)
 
 
@@ -356,9 +356,9 @@ def test_conservative_projection_with_buffer():
     evals_per_day = 100
     days_per_month = 30
     safety_buffer = 1.2  # 20% buffer
-    
+
     monthly_cost = cost_per_eval * evals_per_day * days_per_month * safety_buffer
-    
+
     assert monthly_cost == pytest.approx(122.40, rel=1e-2)
 
 
@@ -371,13 +371,13 @@ def test_conservative_projection_with_buffer():
 async def test_budget_check_daily_limit(mock_db_session):
     """Test that daily budget limit is checked before evaluation."""
     from db.crud.ai import check_budget_exceeded
-    
+
     # Mock budget exceeded
     with patch("db.crud.ai.check_budget_exceeded", new_callable=AsyncMock) as mock_check:
         mock_check.return_value = True  # Budget exceeded
-        
+
         result = await check_budget_exceeded(mock_db_session)
-        
+
         assert result is True
 
 
@@ -385,35 +385,35 @@ async def test_budget_check_daily_limit(mock_db_session):
 async def test_budget_check_monthly_limit(mock_db_session):
     """Test that monthly budget limit is checked."""
     from db.crud.ai import check_budget_exceeded
-    
+
     with patch("db.crud.ai.check_budget_exceeded", new_callable=AsyncMock) as mock_check:
         # Simulate checking monthly budget
         mock_check.return_value = False  # Under budget
-        
+
         result = await check_budget_exceeded(mock_db_session, period="monthly")
-        
+
         assert result is False
 
 
 @pytest.mark.asyncio
 async def test_budget_unlimited_when_zero(mock_db_session):
     """Test that 0.0 budget means unlimited (no limit)."""
-    from db.crud.ai import get_budget_config, check_budget_exceeded
-    
+    from db.crud.ai import check_budget_exceeded
+
     # Mock budget config with 0.0 (unlimited)
     budget_config = Mock()
     budget_config.daily_limit_usd = 0.0
     budget_config.monthly_limit_usd = 0.0
-    
+
     with (
         patch("db.crud.ai.get_budget_config", new_callable=AsyncMock) as mock_get,
         patch("db.crud.ai.get_usage_for_period", new_callable=AsyncMock) as mock_usage,
     ):
         mock_get.return_value = budget_config
         mock_usage.return_value = 100.0  # High usage
-        
+
         result = await check_budget_exceeded(mock_db_session)
-        
+
         # Should not be exceeded because 0.0 = unlimited
         assert result is False
 
@@ -422,18 +422,18 @@ async def test_budget_unlimited_when_zero(mock_db_session):
 async def test_budget_enforcement_in_api():
     """Test that API endpoint enforces budget limits."""
     from fastapi import HTTPException
-    
+
     # Mock evaluate endpoint checking budget
     with patch("db.crud.ai.check_budget_exceeded", new_callable=AsyncMock) as mock_check:
         mock_check.return_value = True  # Budget exceeded
-        
+
         # Simulate API call
         with pytest.raises(HTTPException) as exc_info:
             # This would be the actual API endpoint logic
             budget_exceeded = await mock_check(Mock())
             if budget_exceeded:
                 raise HTTPException(status_code=429, detail="Daily budget exceeded")
-        
+
         assert exc_info.value.status_code == 429
 
 
@@ -446,7 +446,7 @@ async def test_budget_enforcement_in_api():
 async def test_usage_tracking_records_cost(mock_db_session):
     """Test that each evaluation records cost to database."""
     from db.crud.ai import create_usage_log
-    
+
     with patch("db.crud.ai.create_usage_log", new_callable=AsyncMock) as mock_create:
         # Simulate logging usage
         await create_usage_log(
@@ -460,7 +460,7 @@ async def test_usage_tracking_records_cost(mock_db_session):
             latency_ms=500.0,
             success=True,
         )
-        
+
         mock_create.assert_called_once()
         # Verify cost was passed
         call_args = mock_create.call_args
@@ -471,13 +471,13 @@ async def test_usage_tracking_records_cost(mock_db_session):
 async def test_usage_aggregation(mock_db_session):
     """Test aggregating usage costs for a time period."""
     from db.crud.ai import get_usage_for_period
-    
+
     with patch("db.crud.ai.get_usage_for_period", new_callable=AsyncMock) as mock_get:
         # Mock total cost for today
         mock_get.return_value = 5.75
-        
+
         total = await get_usage_for_period(mock_db_session, period="daily")
-        
+
         assert total == 5.75
 
 
@@ -490,7 +490,7 @@ async def test_usage_aggregation(mock_db_session):
 async def test_zero_token_cost():
     """Test cost calculation when tokens are 0."""
     provider = DeepSeekProvider()
-    
+
     mock_response = {
         "choices": [{"message": {"content": ""}}],
         "usage": {
@@ -498,13 +498,13 @@ async def test_zero_token_cost():
             "completion_tokens": 0,
         },
     }
-    
+
     with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = mock_response
-        
+
         request = AIRequest(role=RoleName.SCREENER, user_prompt="Test")
         response = await provider.complete(request, system_prompt="test")
-    
+
     assert response.cost_usd == 0.0
 
 
@@ -512,7 +512,7 @@ async def test_zero_token_cost():
 async def test_very_large_token_count_cost():
     """Test cost calculation with very large token counts."""
     provider = OpenAIProvider()
-    
+
     # 1M input, 500k output tokens
     mock_response = {
         "choices": [{"message": {"content": "test"}}],
@@ -521,13 +521,13 @@ async def test_very_large_token_count_cost():
             "completion_tokens": 500_000,
         },
     }
-    
+
     with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = mock_response
-        
+
         request = AIRequest(role=RoleName.STRATEGIST, user_prompt="Test")
         response = await provider.complete(request, system_prompt="test")
-    
+
     # Cost = (1M * $1.10 + 500k * $4.40) / 1M = $1.10 + $2.20 = $3.30
     expected_cost = (1_000_000 * 1.10 + 500_000 * 4.40) / 1_000_000
     assert abs(response.cost_usd - expected_cost) < 0.001
@@ -538,7 +538,7 @@ def test_cost_precision():
     """Test that costs maintain sufficient precision."""
     # Very small cost
     cost = 0.0000123
-    
+
     # Should maintain at least 6 decimal places
     assert f"{cost:.6f}" == "0.000012"
 
@@ -547,7 +547,7 @@ def test_cost_precision():
 async def test_negative_token_count_handling():
     """Test that negative token counts are handled safely."""
     provider = DeepSeekProvider()
-    
+
     # Invalid negative tokens (shouldn't happen but test resilience)
     mock_response = {
         "choices": [{"message": {"content": "test"}}],
@@ -556,12 +556,12 @@ async def test_negative_token_count_handling():
             "completion_tokens": 50,
         },
     }
-    
+
     with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = mock_response
-        
+
         request = AIRequest(role=RoleName.SCREENER, user_prompt="Test")
         response = await provider.complete(request, system_prompt="test")
-    
+
     # Should not crash, cost should be non-negative
     assert response.cost_usd >= 0.0

@@ -43,14 +43,14 @@ def reset_registry():
 def test_load_defaults():
     """Test loading default prompts from defaults.py module."""
     PromptRegistry.load_defaults()
-    
+
     # Should have loaded all default prompts
     assert len(PromptRegistry._prompts) > 0
-    
+
     # Check for specific defaults
     tactical_prompts = [p for p in PromptRegistry._prompts.values() if p.role == RoleName.TACTICAL]
     assert len(tactical_prompts) > 0
-    
+
     # First default should be active
     tactical_v1 = [p for p in tactical_prompts if p.version == 1]
     assert len(tactical_v1) == 1
@@ -60,9 +60,9 @@ def test_load_defaults():
 def test_load_defaults_all_roles():
     """Test that defaults include all role types."""
     PromptRegistry.load_defaults()
-    
+
     roles_found = {p.role for p in PromptRegistry._prompts.values()}
-    
+
     # Should have at least the main roles
     assert RoleName.SCREENER in roles_found
     assert RoleName.TACTICAL in roles_found
@@ -74,10 +74,10 @@ def test_load_defaults_idempotent():
     """Test that loading defaults multiple times is safe."""
     PromptRegistry.load_defaults()
     count1 = len(PromptRegistry._prompts)
-    
+
     PromptRegistry.load_defaults()
     count2 = len(PromptRegistry._prompts)
-    
+
     # Should have same count (defaults don't duplicate)
     assert count1 == count2
 
@@ -99,7 +99,7 @@ async def test_load_from_db_success(mock_db_session):
     db_prompt1.description = "Test prompt"
     db_prompt1.is_active = True
     db_prompt1.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    
+
     db_prompt2 = Mock()
     db_prompt2.id = "SCREENER_v1"
     db_prompt2.role = "SCREENER"
@@ -108,12 +108,12 @@ async def test_load_from_db_success(mock_db_session):
     db_prompt2.description = "Screener v1"
     db_prompt2.is_active = True
     db_prompt2.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    
+
     with patch("db.crud.ai.get_prompts", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = [db_prompt1, db_prompt2]
-        
+
         await PromptRegistry.load_from_db(mock_db_session)
-    
+
     # Check prompts were loaded
     assert len(PromptRegistry._prompts) == 2
     assert "TACTICAL_v1" in PromptRegistry._prompts
@@ -127,9 +127,9 @@ async def test_load_from_db_empty_falls_back_to_defaults(mock_db_session):
     """Test that empty DB falls back to loading defaults."""
     with patch("db.crud.ai.get_prompts", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = []  # Empty DB
-        
+
         await PromptRegistry.load_from_db(mock_db_session)
-    
+
     # Should have loaded defaults
     assert len(PromptRegistry._prompts) > 0
     assert PromptRegistry._db_enabled is True
@@ -141,9 +141,9 @@ async def test_load_from_db_error_falls_back_to_defaults(mock_db_session):
     """Test that DB error falls back to loading defaults."""
     with patch("db.crud.ai.get_prompts", new_callable=AsyncMock) as mock_get:
         mock_get.side_effect = Exception("Database connection failed")
-        
+
         await PromptRegistry.load_from_db(mock_db_session)
-    
+
     # Should have loaded defaults despite error
     assert len(PromptRegistry._prompts) > 0
     assert PromptRegistry._db_enabled is False
@@ -161,7 +161,7 @@ async def test_load_from_db_skips_invalid_roles(mock_db_session):
     db_prompt_valid.description = "Valid"
     db_prompt_valid.is_active = True
     db_prompt_valid.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    
+
     db_prompt_invalid = Mock()
     db_prompt_invalid.id = "invalid_v1"
     db_prompt_invalid.role = "INVALID_ROLE"  # Not in RoleName enum
@@ -170,12 +170,12 @@ async def test_load_from_db_skips_invalid_roles(mock_db_session):
     db_prompt_invalid.description = "Invalid"
     db_prompt_invalid.is_active = True
     db_prompt_invalid.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    
+
     with patch("db.crud.ai.get_prompts", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = [db_prompt_valid, db_prompt_invalid]
-        
+
         await PromptRegistry.load_from_db(mock_db_session)
-    
+
     # Should only have the valid prompt
     assert len(PromptRegistry._prompts) == 1
     assert "TACTICAL_v1" in PromptRegistry._prompts
@@ -190,9 +190,9 @@ async def test_load_from_db_skips_invalid_roles(mock_db_session):
 def test_get_active_prompt():
     """Test retrieving active prompt for a role."""
     PromptRegistry.load_defaults()
-    
+
     prompt = PromptRegistry.get_active(RoleName.TACTICAL)
-    
+
     assert prompt is not None
     assert prompt.role == RoleName.TACTICAL
     assert prompt.is_active
@@ -214,7 +214,7 @@ def test_get_active_no_active_prompt():
                 is_active=False,
                 created_at=prompt.created_at,
             )
-    
+
     # get_active returns None when no active prompt exists
     result = PromptRegistry.get_active(RoleName.TACTICAL)
     assert result is None
@@ -232,7 +232,7 @@ def test_get_active_multiple_versions_returns_active():
         is_active=False,  # Inactive
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
-    
+
     prompt_v2 = SystemPrompt(
         id="tactical_v2",
         role=RoleName.TACTICAL,
@@ -242,12 +242,12 @@ def test_get_active_multiple_versions_returns_active():
         is_active=True,  # Active
         created_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
     )
-    
+
     PromptRegistry._prompts["tactical_v1"] = prompt_v1
     PromptRegistry._prompts["tactical_v2"] = prompt_v2
-    
+
     active = PromptRegistry.get_active(RoleName.TACTICAL)
-    
+
     assert active.version == 2
     assert active.id == "tactical_v2"
 
@@ -261,12 +261,12 @@ def test_get_active_multiple_versions_returns_active():
 async def test_create_prompt_version(mock_db_session):
     """Test creating a new prompt version using create_prompt."""
     PromptRegistry._db_enabled = True
-    
+
     with patch("db.crud.ai.create_prompt", new_callable=AsyncMock) as mock_create:
         with patch("db.crud.ai.get_next_version", new_callable=AsyncMock) as mock_next_version:
             # Mock getting next version
             mock_next_version.return_value = 2
-            
+
             # Mock DB create
             db_prompt = Mock()
             db_prompt.id = "TACTICAL_v2"
@@ -277,14 +277,14 @@ async def test_create_prompt_version(mock_db_session):
             db_prompt.is_active = True
             db_prompt.created_at = datetime(2026, 2, 1, tzinfo=timezone.utc)
             mock_create.return_value = db_prompt
-            
+
             new_prompt = await PromptRegistry.create_prompt(
                 db=mock_db_session,
                 role=RoleName.TACTICAL,
                 content="New version",
                 description="V2 test",
             )
-    
+
     # Check it was added to cache
     assert "TACTICAL_v2" in PromptRegistry._prompts
     assert new_prompt.version == 2
@@ -294,7 +294,7 @@ async def test_create_prompt_version(mock_db_session):
 async def test_create_prompt_db_disabled_raises(mock_db_session):
     """Test that creating prompt fails when DB is disabled."""
     PromptRegistry._db_enabled = False
-    
+
     with pytest.raises(RuntimeError, match="DB backend is not enabled"):
         await PromptRegistry.create_prompt(
             db=mock_db_session,
@@ -308,7 +308,7 @@ async def test_create_prompt_db_disabled_raises(mock_db_session):
 async def test_activate_prompt_by_id(mock_db_session):
     """Test activating a specific prompt using activate_prompt."""
     PromptRegistry._db_enabled = True
-    
+
     # Add two versions
     prompt_v1 = SystemPrompt(
         id="TACTICAL_v1",
@@ -330,7 +330,7 @@ async def test_activate_prompt_by_id(mock_db_session):
     )
     PromptRegistry._prompts["TACTICAL_v1"] = prompt_v1
     PromptRegistry._prompts["TACTICAL_v2"] = prompt_v2
-    
+
     with patch("db.crud.ai.activate_prompt", new_callable=AsyncMock) as mock_activate:
         # Mock DB response
         db_prompt = Mock()
@@ -342,12 +342,12 @@ async def test_activate_prompt_by_id(mock_db_session):
         db_prompt.is_active = True
         db_prompt.created_at = datetime(2026, 2, 1, tzinfo=timezone.utc)
         mock_activate.return_value = db_prompt
-        
+
         await PromptRegistry.activate_prompt(
             db=mock_db_session,
             prompt_id="TACTICAL_v2",
         )
-    
+
     # Check v2 is now active and v1 is inactive
     assert PromptRegistry._prompts["TACTICAL_v2"].is_active is True
     assert PromptRegistry._prompts["TACTICAL_v1"].is_active is False
@@ -357,15 +357,15 @@ async def test_activate_prompt_by_id(mock_db_session):
 async def test_activate_nonexistent_prompt_returns_none(mock_db_session):
     """Test activating a non-existent prompt returns None."""
     PromptRegistry._db_enabled = True
-    
+
     with patch("db.crud.ai.activate_prompt", new_callable=AsyncMock) as mock_activate:
         mock_activate.return_value = None  # Not found
-        
+
         result = await PromptRegistry.activate_prompt(
             db=mock_db_session,
             prompt_id="nonexistent_v999",
         )
-        
+
         assert result is None
 
 
@@ -413,13 +413,13 @@ def test_list_versions_for_role():
         is_active=True,
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
-    
+
     PromptRegistry._prompts["TACTICAL_v1"] = prompt_v1
     PromptRegistry._prompts["TACTICAL_v2"] = prompt_v2
     PromptRegistry._prompts["SCREENER_v1"] = prompt_other
-    
+
     tactical_prompts = PromptRegistry.list_versions(RoleName.TACTICAL)
-    
+
     assert len(tactical_prompts) == 2
     assert all(p.role == RoleName.TACTICAL for p in tactical_prompts)
 
@@ -460,13 +460,13 @@ def test_list_versions_sorted_by_version():
         is_active=False,
         created_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
     )
-    
+
     PromptRegistry._prompts["tactical_v3"] = prompt_v3
     PromptRegistry._prompts["tactical_v1"] = prompt_v1
     PromptRegistry._prompts["tactical_v2"] = prompt_v2
-    
+
     prompts = PromptRegistry.list_prompts(RoleName.TACTICAL)
-    
+
     # Should be sorted by version ascending
     versions = [p.version for p in prompts]
     assert versions == [1, 2, 3]
@@ -481,9 +481,9 @@ def test_clear_registry():
     """Test clearing the prompt registry using clear()."""
     PromptRegistry.load_defaults()
     assert len(PromptRegistry._prompts) > 0
-    
+
     PromptRegistry.clear()
-    
+
     assert len(PromptRegistry._prompts) == 0
 
 
@@ -519,10 +519,10 @@ def test_duplicate_prompt_id_last_write_wins():
         is_active=True,
         created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
     )
-    
+
     PromptRegistry._prompts["TACTICAL_v1"] = prompt_v1a
     PromptRegistry._prompts["TACTICAL_v1"] = prompt_v1b  # Overwrite
-    
+
     # Last write wins
     assert PromptRegistry._prompts["TACTICAL_v1"].content == "Second"
 
@@ -539,9 +539,9 @@ def test_get_by_id():
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
     PromptRegistry._prompts["TACTICAL_v1"] = prompt
-    
+
     retrieved = PromptRegistry.get("TACTICAL_v1")
-    
+
     assert retrieved is not None
     assert retrieved.id == "TACTICAL_v1"
 
@@ -549,5 +549,5 @@ def test_get_by_id():
 def test_get_by_id_not_found():
     """Test get() returns None for missing prompt."""
     retrieved = PromptRegistry.get("nonexistent")
-    
+
     assert retrieved is None

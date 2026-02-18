@@ -29,7 +29,7 @@ from core.ai.types import (
 @pytest.fixture(autouse=True)
 def reset_role_registry():
     """Reset RoleRegistry before each test to avoid test interference.
-    
+
     This fixture automatically runs before every test to ensure clean state.
     """
     from core.ai.roles.base import RoleRegistry
@@ -51,7 +51,7 @@ def reset_role_registry():
 @pytest.fixture(autouse=True)
 def clear_token_bucket_instances():
     """Clear TokenBucket singleton instances before each test.
-    
+
     Prevents rate limiter state leakage between tests.
     """
     from core.ai.providers.base import TokenBucket
@@ -71,17 +71,11 @@ def clear_token_bucket_instances():
 @pytest.fixture
 def mock_deepseek_response():
     """Canned DeepSeek API response for testing.
-    
+
     Returns a typical successful response with valid JSON content.
     """
     return {
-        "choices": [
-            {
-                "message": {
-                    "content": '{"action": "BUY", "confidence": 0.85, "reasoning": "Strong momentum"}'
-                }
-            }
-        ],
+        "choices": [{"message": {"content": '{"action": "BUY", "confidence": 0.85, "reasoning": "Strong momentum"}'}}],
         "usage": {
             "prompt_tokens": 150,
             "completion_tokens": 75,
@@ -93,13 +87,7 @@ def mock_deepseek_response():
 def mock_openai_response():
     """Canned OpenAI API response for testing."""
     return {
-        "choices": [
-            {
-                "message": {
-                    "content": '{"action": "NEUTRAL", "confidence": 0.6, "reasoning": "Mixed signals"}'
-                }
-            }
-        ],
+        "choices": [{"message": {"content": '{"action": "NEUTRAL", "confidence": 0.6, "reasoning": "Mixed signals"}'}}],
         "usage": {
             "prompt_tokens": 200,
             "completion_tokens": 100,
@@ -112,11 +100,7 @@ def mock_xai_response():
     """Canned xAI (Grok) API response for testing."""
     return {
         "choices": [
-            {
-                "message": {
-                    "content": '{"action": "SELL", "confidence": 0.75, "reasoning": "Negative sentiment"}'
-                }
-            }
+            {"message": {"content": '{"action": "SELL", "confidence": 0.75, "reasoning": "Negative sentiment"}'}}
         ],
         "usage": {
             "prompt_tokens": 180,
@@ -143,7 +127,7 @@ def mock_ollama_response():
 @pytest.fixture
 def mock_consensus_verdicts():
     """Set of RoleVerdicts for consensus testing.
-    
+
     Provides a typical scenario with mixed signals but BUY majority.
     """
     return [
@@ -193,7 +177,7 @@ def mock_veto_verdict():
 @pytest.fixture
 def mock_ai_response():
     """Mock AIResponse for testing.
-    
+
     Represents a successful provider response with typical metrics.
     """
     return AIResponse(
@@ -218,7 +202,7 @@ def mock_ai_response():
 @pytest.fixture
 def mock_system_prompt():
     """Mock SystemPrompt for testing.
-    
+
     Provides a typical active prompt for the TACTICAL role.
     """
     return SystemPrompt(
@@ -254,7 +238,7 @@ def mock_inactive_prompt():
 @pytest.fixture
 def mock_db_session():
     """Mock async database session.
-    
+
     Use this for tests that need to mock database operations.
     """
     session = AsyncMock()
@@ -271,20 +255,20 @@ def mock_db_session():
 @pytest.fixture
 def mock_http_client():
     """Mock httpx.AsyncClient for provider testing.
-    
+
     Returns a mock client that can be configured per test.
     """
     client = AsyncMock()
-    
+
     # Mock response
     mock_response = Mock()
     mock_response.json = Mock()
     mock_response.raise_for_status = Mock()
-    
+
     client.request = AsyncMock(return_value=mock_response)
     client.get = AsyncMock(return_value=mock_response)
     client.post = AsyncMock(return_value=mock_response)
-    
+
     return client
 
 
@@ -295,11 +279,11 @@ def mock_http_client():
 
 def make_mock_role(role_name: RoleName, weight: float = 1.0):
     """Factory function to create a mock role.
-    
+
     Args:
         role_name: The role name
         weight: Role weight for consensus (default 1.0)
-        
+
     Returns:
         Mock role object with standard configuration
     """
@@ -321,15 +305,16 @@ def make_mock_role(role_name: RoleName, weight: float = 1.0):
 
 def make_mock_evaluate(role_name: RoleName, action: str = "BUY", confidence: float = 0.8):
     """Factory function to create a mock evaluate function.
-    
+
     Args:
         role_name: The role name
         action: The action to return (BUY/SELL/NEUTRAL/VETO)
         confidence: The confidence score (0.0-1.0)
-        
+
     Returns:
         Async function that returns (AIResponse, RoleVerdict)
     """
+
     async def mock_eval(*args, **kwargs):
         return (
             AIResponse(
@@ -345,5 +330,5 @@ def make_mock_evaluate(role_name: RoleName, action: str = "BUY", confidence: flo
                 reasoning=f"Test {action} from {role_name.value}",
             ),
         )
-    
+
     return mock_eval
