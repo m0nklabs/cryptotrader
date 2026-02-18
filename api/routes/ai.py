@@ -142,19 +142,19 @@ def _role_config_from_db(db_config) -> RoleConfig | None:
 
 async def _seed_defaults(session: AsyncSession) -> None:
     """Seed default prompts and role configs (idempotent).
-    
+
     This function ensures the database has baseline data for the AI system.
     It's safe to call multiple times - existing records are not modified.
     """
     from core.ai.prompts.defaults import ALL_DEFAULT_PROMPTS
     from core.ai.types import ProviderName
-    
+
     # Seed system prompts first (role configs reference them)
     for prompt in ALL_DEFAULT_PROMPTS:
         existing_prompts = await ai_crud.get_prompts(session, role=prompt.role.value)
         if any(p.id == prompt.id for p in existing_prompts):
             continue
-        
+
         await ai_crud.create_prompt(
             session,
             prompt_id=prompt.id,
@@ -164,7 +164,7 @@ async def _seed_defaults(session: AsyncSession) -> None:
             description=prompt.description,
             is_active=prompt.is_active,
         )
-    
+
     # Seed role configs (if they don't exist)
     default_role_configs = [
         {
@@ -208,18 +208,18 @@ async def _seed_defaults(session: AsyncSession) -> None:
             "enabled": True,
         },
     ]
-    
+
     for config_data in default_role_configs:
         existing = await ai_crud.get_role_config(session, config_data["name"])
         if existing:
             continue
-        
+
         await ai_crud.create_role_config(session, **config_data)
 
 
 async def bootstrap_ai() -> None:
     """Register providers, roles, and prompts for AI evaluation.
-    
+
     On startup, this function:
     1. Seeds default prompts and role configs (idempotent)
     2. Loads prompts and role configs from database
@@ -244,7 +244,7 @@ async def bootstrap_ai() -> None:
             await _seed_defaults(db)
         except Exception as exc:
             logger.warning("AI bootstrap failed to seed defaults: %s", exc)
-        
+
         await PromptRegistry.load_from_db(db)
         configs = await ai_crud.get_role_configs(db)
 
