@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { runBacktest, listStrategies, type BacktestRequest, type BacktestResult, type StrategyInfo } from '../api/backtest'
+import { runBacktest, listStrategies, type BacktestRequest, type BacktestResult, type StrategyInfo, type BacktestStrategy } from '../api/backtest'
 
 type Props = {
   onResultsReady?: (results: BacktestResult) => void
@@ -16,13 +16,17 @@ export default function BacktestRunner({ onResultsReady }: Props) {
   const [exchange, setExchange] = useState('bitfinex')
   const [symbol, setSymbol] = useState('BTCUSD')
   const [timeframe, setTimeframe] = useState('1h')
-  const [strategy, setStrategy] = useState<'rsi'>('rsi')
+  const [strategy, setStrategy] = useState<BacktestStrategy>('rsi')
   const [initialCapital, setInitialCapital] = useState(10000)
   const [daysBack, setDaysBack] = useState(30)
 
   // RSI parameters
   const [rsiOversold, setRsiOversold] = useState(30)
   const [rsiOverbought, setRsiOverbought] = useState(70)
+
+  // SMA parameters
+  const [smaFastPeriod, setSmaFastPeriod] = useState(10)
+  const [smaSlowPeriod, setSmaSlowPeriod] = useState(30)
 
   // UI state
   const [running, setRunning] = useState(false)
@@ -56,6 +60,8 @@ export default function BacktestRunner({ onResultsReady }: Props) {
         initial_capital: initialCapital,
         rsi_oversold: rsiOversold,
         rsi_overbought: rsiOverbought,
+        sma_fast_period: smaFastPeriod,
+        sma_slow_period: smaSlowPeriod,
       }
 
       const result = await runBacktest(request)
@@ -117,7 +123,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
           <label className="block text-xs text-zinc-400 mb-1">Strategy</label>
           <select
             value={strategy}
-            onChange={(e) => setStrategy(e.target.value as 'rsi')}
+            onChange={(e) => setStrategy(e.target.value as BacktestStrategy)}
             className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
           >
             {strategies.map((s) => (
@@ -173,6 +179,32 @@ export default function BacktestRunner({ onResultsReady }: Props) {
               onChange={(e) => setRsiOverbought(Number(e.target.value))}
               min={0}
               max={100}
+              className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* SMA Parameters (conditionally shown) */}
+      {strategy === 'sma' && (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Fast Period</label>
+            <input
+              type="number"
+              value={smaFastPeriod}
+              onChange={(e) => setSmaFastPeriod(Number(e.target.value))}
+              min={1}
+              className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Slow Period</label>
+            <input
+              type="number"
+              value={smaSlowPeriod}
+              onChange={(e) => setSmaSlowPeriod(Number(e.target.value))}
+              min={1}
               className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
             />
           </div>

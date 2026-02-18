@@ -4,7 +4,7 @@ import { DEFAULT_API_TIMEOUT_MS } from '../lib/apiConfig'
 // Types
 // ---------------------------------------------------------------------------
 
-export type BacktestStrategy = 'rsi'
+export type BacktestStrategy = 'rsi' | 'sma'
 
 export type StrategyInfo = {
   name: BacktestStrategy
@@ -36,6 +36,8 @@ export type BacktestRequest = {
   initial_capital?: number
   rsi_oversold?: number
   rsi_overbought?: number
+  sma_fast_period?: number
+  sma_slow_period?: number
 }
 
 export type BacktestResult = {

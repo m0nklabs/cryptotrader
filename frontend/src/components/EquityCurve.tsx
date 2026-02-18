@@ -63,17 +63,33 @@ export default function EquityCurve({ equityCurve, initialCapital }: Props) {
     ctx.lineWidth = 2
     ctx.beginPath()
 
-    equityCurve.forEach((equity, idx) => {
-      const x = padding + (idx / (equityCurve.length - 1)) * (width - 2 * padding)
-      const y = height - padding - ((equity - minEquity) / equityRange) * (height - 2 * padding)
+    // Handle single-point equity curve without dividing by zero
+    if (equityCurve.length === 1) {
+      const singleEquity = equityCurve[0]
+      const x = padding + (width - 2 * padding) / 2
+      const y =
+        height -
+        padding -
+        ((singleEquity - minEquity) / equityRange) * (height - 2 * padding)
+      ctx.moveTo(x, y)
+      ctx.lineTo(x, y)
+      ctx.stroke()
+    } else {
+      equityCurve.forEach((equity, idx) => {
+        const x = padding + (idx / (equityCurve.length - 1)) * (width - 2 * padding)
+        const y =
+          height -
+          padding -
+          ((equity - minEquity) / equityRange) * (height - 2 * padding)
 
-      if (idx === 0) {
-        ctx.moveTo(x, y)
-      } else {
-        ctx.lineTo(x, y)
-      }
-    })
-    ctx.stroke()
+        if (idx === 0) {
+          ctx.moveTo(x, y)
+        } else {
+          ctx.lineTo(x, y)
+        }
+      })
+      ctx.stroke()
+    }
 
     // Draw initial capital line
     ctx.strokeStyle = '#71717a'

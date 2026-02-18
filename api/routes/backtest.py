@@ -26,7 +26,7 @@ def _get_stores() -> PostgresStores:
 
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
-            raise RuntimeError("DATABASE_URL environment variable not set")
+            raise HTTPException(status_code=500, detail="DATABASE_URL is not set")
         config = PostgresConfig(database_url=database_url)
         _stores = PostgresStores(config=config)
     return _stores
@@ -41,7 +41,7 @@ class BacktestRequest(BaseModel):
     exchange: str = Field("bitfinex", description="Exchange name")
     symbol: str = Field(..., description="Trading symbol (e.g., BTCUSD)")
     timeframe: str = Field("1h", description="Candle timeframe (e.g., 1m, 1h, 1d)")
-    strategy: Literal["rsi"] = Field("rsi", description="Strategy to backtest")
+    strategy: Literal["rsi", "sma"] = Field("rsi", description="Strategy to backtest")
     start_date: Optional[str] = Field(None, description="Start date (ISO format, defaults to 30 days ago)")
     end_date: Optional[str] = Field(None, description="End date (ISO format, defaults to now)")
     initial_capital: float = Field(10000.0, gt=0, description="Initial capital for backtest")
@@ -49,6 +49,8 @@ class BacktestRequest(BaseModel):
     # Strategy-specific parameters
     rsi_oversold: Optional[float] = Field(30.0, ge=0, le=100, description="RSI oversold threshold")
     rsi_overbought: Optional[float] = Field(70.0, ge=0, le=100, description="RSI overbought threshold")
+    sma_fast_period: Optional[int] = Field(10, ge=1, description="SMA fast period")
+    sma_slow_period: Optional[int] = Field(30, ge=1, description="SMA slow period")
 
 
 class TradeResponse(BaseModel):
@@ -148,11 +150,18 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
 
         # Select and configure strategy
         if request.strategy == "rsi":
-            from core.backtest.engine import RSIStrategy
+            from strategies.rsi_mean_reversion import RSIMeanReversionStrategy
 
-            strategy = RSIStrategy(
+            strategy = RSIMeanReversionStrategy(
                 oversold=request.rsi_oversold or 30.0,
                 overbought=request.rsi_overbought or 70.0,
+            )
+        elif request.strategy == "sma":
+            from strategies.sma_crossover import SMACrossoverStrategy
+
+            strategy = SMACrossoverStrategy(
+                fast_period=request.sma_fast_period or 10,
+                slow_period=request.sma_slow_period or 30,
             )
         else:
             raise HTTPException(
@@ -163,34 +172,22 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
         # Run backtest
         result = engine.run(strategy=strategy, candles=candles)
 
-        # Convert to response
-        return {
-            "exchange": request.exchange,
-            "symbol": request.symbol,
-            "timeframe": request.timeframe,
-            "strategy": request.strategy,
-            "start_date": start_time.isoformat(),
-            "end_date": end_time.isoformat(),
-            "initial_capital": request.initial_capital,
-            "total_pnl": result.total_pnl,
-            "total_return": result.total_return,
-            "sharpe_ratio": result.sharpe_ratio,
-            "max_drawdown": result.max_drawdown,
-            "win_rate": result.win_rate,
-            "profit_factor": result.profit_factor,
-            "num_trades": len(result.trades),
-            "trades": [
-                {
-                    "entry_price": str(t.entry_price),
-                    "exit_price": str(t.exit_price),
-                    "side": t.side,
-                    "size": str(t.size),
-                    "pnl": str(t.pnl),
-                }
-                for t in result.trades
-            ],
-            "equity_curve": result.equity_curve,
-        }
+        # Generate comprehensive report
+        from core.backtest.report import generate_report, report_to_dict
+
+        report = generate_report(
+            strategy_name=request.strategy,
+            exchange=request.exchange,
+            symbol=request.symbol,
+            timeframe=request.timeframe,
+            start_date=start_time,
+            end_date=end_time,
+            initial_capital=request.initial_capital,
+            result=result,
+        )
+
+        # Convert to response dict
+        return report_to_dict(report)
 
     except HTTPException:
         raise
@@ -226,6 +223,24 @@ async def list_strategies() -> list[dict[str, Any]]:
                     "min": 0.0,
                     "max": 100.0,
                     "description": "RSI overbought threshold (sell signal)",
+                },
+            },
+        },
+        {
+            "name": "sma",
+            "description": "SMA crossover strategy - buys on golden cross (fast SMA > slow SMA), sells on death cross",
+            "parameters": {
+                "sma_fast_period": {
+                    "type": "int",
+                    "default": 10,
+                    "min": 1,
+                    "description": "Fast SMA period",
+                },
+                "sma_slow_period": {
+                    "type": "int",
+                    "default": 30,
+                    "min": 1,
+                    "description": "Slow SMA period (must be > fast period)",
                 },
             },
         },
