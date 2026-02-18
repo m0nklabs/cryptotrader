@@ -14,6 +14,11 @@ export const VIEW_IDS = {
   // Market Data
   MARKET_WATCH: 'market-watch',
   INGESTION_STATUS: 'ingestion-status',
+  // Portfolio & Risk
+  PORTFOLIO: 'portfolio',
+  WATCHLIST: 'watchlist',
+  TRADE_HISTORY: 'trade-history',
+  RISK_CALCULATOR: 'risk-calculator',
   // Account
   WALLET: 'wallet',
   SETTINGS: 'settings',
@@ -51,6 +56,16 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: VIEW_IDS.PAPER_ORDERS, label: 'Orders', icon: '📝', status: 'ready' },
       { id: VIEW_IDS.PAPER_POSITIONS, label: 'Positions', icon: '💼', status: 'ready' },
+    ],
+  },
+  {
+    id: 'portfolio',
+    title: 'Portfolio & Risk',
+    items: [
+      { id: VIEW_IDS.PORTFOLIO, label: 'Portfolio', icon: '💼', status: 'new' },
+      { id: VIEW_IDS.WATCHLIST, label: 'Watchlist', icon: '⭐', status: 'new' },
+      { id: VIEW_IDS.TRADE_HISTORY, label: 'Trade History', icon: '📜', status: 'new' },
+      { id: VIEW_IDS.RISK_CALCULATOR, label: 'Risk Calculator', icon: '🎲', status: 'new' },
     ],
   },
   {
