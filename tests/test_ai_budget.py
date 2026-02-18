@@ -15,7 +15,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 import pytest
 import pytest_asyncio
@@ -30,7 +30,6 @@ from db.crud.ai import (
     log_usage,
     update_budget_config,
 )
-from db.models.ai import AIBudgetConfig
 
 
 def _iter_sql_statements(sql: str) -> Iterable[str]:
