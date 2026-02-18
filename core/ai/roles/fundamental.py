@@ -206,11 +206,12 @@ class FundamentalRole(AgentRole):
     def parse_response(self, response: AIResponse) -> RoleVerdict:
         """Parse fundamental response into a verdict."""
         if response.error:
+            error_label = response.error_type.value if response.error_type else "unknown"
             return RoleVerdict(
                 role=RoleName.FUNDAMENTAL,
                 action="NEUTRAL",
                 confidence=0.0,
-                reasoning=f"Fundamental error: {response.error}",
+                reasoning=f"Fundamental error ({error_label}): {response.error}",
             )
 
         # Normalize action to known values; default to NEUTRAL for unknowns

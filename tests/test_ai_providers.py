@@ -14,9 +14,13 @@ import httpx
 import pytest
 
 from core.ai.providers.base import (
+    AuthError,
+    ClientError,
+    ProviderTimeoutError,
+    RateLimitedError,
     PermanentError,
+    ServerError,
     TokenBucket,
-    TransientError,
     classify_http_error,
     validate_json_response,
 )
@@ -25,7 +29,7 @@ from core.ai.providers.ollama import OllamaProvider
 from core.ai.providers.openai import OpenAIProvider
 from core.ai.providers.openrouter import OpenRouterProvider
 from core.ai.providers.xai import XAIProvider
-from core.ai.types import AIRequest, ProviderName, RoleName
+from core.ai.types import AIRequest, ProviderConfig, ProviderErrorType, ProviderName, RoleName
 
 
 # ---------------------------------------------------------------------------
@@ -52,34 +56,56 @@ def test_classify_http_error_transient():
     """Test that transient errors are classified correctly."""
     # 429 Rate Limited
     error = classify_http_error(429, "Rate limited")
-    assert isinstance(error, TransientError)
+    assert isinstance(error, RateLimitedError)
     assert error.is_transient
     assert error.status_code == 429
+    assert error.error_type == ProviderErrorType.RATE_LIMITED
 
     # 503 Service Unavailable
     error = classify_http_error(503, "Service down")
-    assert isinstance(error, TransientError)
+    assert isinstance(error, ServerError)
     assert error.is_transient
+    assert error.error_type == ProviderErrorType.SERVER_ERROR
 
 
 def test_classify_http_error_permanent():
     """Test that permanent errors are classified correctly."""
     # 401 Unauthorized
     error = classify_http_error(401, "Bad API key")
-    assert isinstance(error, PermanentError)
+    assert isinstance(error, AuthError)
     assert not error.is_transient
     assert error.status_code == 401
+    assert error.error_type == ProviderErrorType.AUTH_ERROR
 
     # 400 Bad Request
     error = classify_http_error(400, "Invalid request")
-    assert isinstance(error, PermanentError)
+    assert isinstance(error, ClientError)
+    assert error.error_type == ProviderErrorType.CLIENT_ERROR
 
 
 def test_classify_http_error_5xx_default_transient():
     """Test that unknown 5xx errors default to transient."""
     error = classify_http_error(500, "Internal server error")
-    assert isinstance(error, TransientError)
+    assert isinstance(error, ServerError)
     assert error.is_transient
+    assert error.error_type == ProviderErrorType.SERVER_ERROR
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected_class", "expected_type", "expected_transient"),
+    [
+        (403, AuthError, ProviderErrorType.AUTH_ERROR, False),
+        (404, ClientError, ProviderErrorType.CLIENT_ERROR, False),
+        (408, ProviderTimeoutError, ProviderErrorType.TIMEOUT, True),
+        (502, ServerError, ProviderErrorType.SERVER_ERROR, True),
+    ],
+)
+def test_classify_http_error_additional_mappings(status_code, expected_class, expected_type, expected_transient):
+    """Test additional status mappings and error_type propagation."""
+    error = classify_http_error(status_code, "Mapped error")
+    assert isinstance(error, expected_class)
+    assert error.error_type == expected_type
+    assert error.is_transient is expected_transient
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +152,89 @@ def test_validate_json_response_rejects_non_finite_values():
 
     parsed = validate_json_response('{"value": -Infinity}')
     assert parsed is None
+
+
+# ---------------------------------------------------------------------------
+# Provider Base Helper Tests
+# ---------------------------------------------------------------------------
+
+
+def test_provider_timeout_overrides():
+    """Test that per-phase timeout overrides are honored."""
+    config = ProviderConfig(
+        name=ProviderName.OPENAI,
+        api_key_env="OPENAI_API_KEY",
+        base_url="https://example.com",
+        default_model="test-model",
+        timeout_seconds=10,
+        timeout_connect_seconds=0.1,
+        timeout_read_seconds=None,
+        timeout_write_seconds=2.5,
+        timeout_pool_seconds=0.0,
+    )
+    provider = OpenAIProvider(config)
+    timeout = provider._get_timeout()
+
+    assert timeout.connect == 0.1
+    assert timeout.read == 10
+    assert timeout.write == 2.5
+    assert timeout.pool == 0.0
+
+
+@pytest.mark.parametrize(
+    ("model_arg", "override_model", "error_type_arg", "expected_model", "expected_error_type"),
+    [
+        ("explicit-model", "override-model", None, "explicit-model", ProviderErrorType.UNKNOWN),
+        (None, "override-model", None, "override-model", ProviderErrorType.UNKNOWN),
+        (None, None, None, "default-model", ProviderErrorType.UNKNOWN),
+        ("timeout-model", None, ProviderErrorType.TIMEOUT, "timeout-model", ProviderErrorType.TIMEOUT),
+    ],
+)
+def test_make_error_response_model_precedence(
+    model_arg,
+    override_model,
+    error_type_arg,
+    expected_model,
+    expected_error_type,
+):
+    """Test model precedence and error_type handling in error responses."""
+    config = ProviderConfig(
+        name=ProviderName.OPENAI,
+        api_key_env="OPENAI_API_KEY",
+        base_url="https://example.com",
+        default_model="default-model",
+    )
+    provider = OpenAIProvider(config)
+    request = AIRequest(role=RoleName.SCREENER, user_prompt="test", override_model=override_model)
+    response = provider._make_error_response(
+        request,
+        "boom",
+        error_type=error_type_arg,
+        model=model_arg,
+    )
+
+    assert response.model == expected_model
+    assert response.error_type == expected_error_type
+
+
+@pytest.mark.asyncio
+async def test_make_request_timeout_classification():
+    """Test that timeouts raise ProviderTimeoutError with TIMEOUT error_type."""
+    config = ProviderConfig(
+        name=ProviderName.OPENAI,
+        api_key_env="OPENAI_API_KEY",
+        base_url="https://example.com",
+        default_model="default-model",
+    )
+    provider = OpenAIProvider(config)
+    client = MagicMock(spec=httpx.AsyncClient)
+    client.request = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(ProviderTimeoutError) as exc:
+            await provider._make_request(client, "GET", "https://example.com")
+
+    assert exc.value.error_type == ProviderErrorType.TIMEOUT
 
 
 # ---------------------------------------------------------------------------

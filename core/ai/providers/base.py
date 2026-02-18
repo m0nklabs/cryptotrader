@@ -9,11 +9,12 @@ import math
 import random
 import time
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any, Callable, NoReturn
 
 import httpx
 
-from core.ai.types import AIRequest, AIResponse, ProviderConfig, ProviderName
+from core.ai.types import AIRequest, AIResponse, ProviderConfig, ProviderErrorType, ProviderName
 
 logger = logging.getLogger(__name__)
 
@@ -107,24 +108,131 @@ class TokenBucket:
 class LLMError(Exception):
     """Base exception for LLM provider errors."""
 
-    def __init__(self, message: str, is_transient: bool = False, status_code: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_type: ProviderErrorType = ProviderErrorType.UNKNOWN,
+        is_transient: bool = False,
+        status_code: int | None = None,
+    ):
         super().__init__(message)
         self.is_transient = is_transient
         self.status_code = status_code
+        self.error_type = error_type
 
 
 class TransientError(LLMError):
     """Transient error (retry-able)."""
 
-    def __init__(self, message: str, status_code: int | None = None):
-        super().__init__(message, is_transient=True, status_code=status_code)
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        *,
+        error_type: ProviderErrorType = ProviderErrorType.UNKNOWN,
+    ):
+        super().__init__(
+            message,
+            error_type=error_type,
+            is_transient=True,
+            status_code=status_code,
+        )
 
 
 class PermanentError(LLMError):
     """Permanent error (not retry-able)."""
 
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        *,
+        error_type: ProviderErrorType = ProviderErrorType.UNKNOWN,
+    ):
+        super().__init__(
+            message,
+            error_type=error_type,
+            is_transient=False,
+            status_code=status_code,
+        )
+
+
+class RateLimitedError(TransientError):
+    """HTTP 429 rate limiting."""
+
+    def __init__(self, message: str, status_code: int | None = 429):
+        super().__init__(
+            message,
+            status_code=status_code,
+            error_type=ProviderErrorType.RATE_LIMITED,
+        )
+
+
+class ProviderTimeoutError(TransientError):
+    """Timeout error (connect/read/write)."""
+
     def __init__(self, message: str, status_code: int | None = None):
-        super().__init__(message, is_transient=False, status_code=status_code)
+        super().__init__(
+            message,
+            status_code=status_code,
+            error_type=ProviderErrorType.TIMEOUT,
+        )
+
+
+class InvalidResponseError(TransientError):
+    """Invalid or malformed response."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(
+            message,
+            status_code=status_code,
+            error_type=ProviderErrorType.INVALID_RESPONSE,
+        )
+
+
+class AuthError(PermanentError):
+    """Authentication/authorization error."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(
+            message,
+            status_code=status_code,
+            error_type=ProviderErrorType.AUTH_ERROR,
+        )
+
+
+class NetworkError(TransientError):
+    """Network error (DNS, connection reset, etc.)."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(
+            message,
+            status_code=status_code,
+            error_type=ProviderErrorType.NETWORK_ERROR,
+        )
+
+
+class ServerError(TransientError):
+    """Server-side errors (5xx)."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(
+            message,
+            status_code=status_code,
+            error_type=ProviderErrorType.SERVER_ERROR,
+        )
+
+
+class ClientError(PermanentError):
+    """Client-side errors (4xx)."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(
+            message,
+            status_code=status_code,
+            error_type=ProviderErrorType.CLIENT_ERROR,
+        )
 
 
 def classify_http_error(status_code: int, message: str) -> LLMError:
@@ -137,25 +245,43 @@ def classify_http_error(status_code: int, message: str) -> LLMError:
     Returns:
         Appropriate LLMError subclass
     """
-    # Transient errors (retry-able)
-    if status_code in {429, 502, 503, 504}:
-        return TransientError(message, status_code)
+    if status_code == 429:
+        return RateLimitedError(message, status_code)
 
-    # Permanent errors (not retry-able)
-    if status_code in {400, 401, 403, 404}:
-        return PermanentError(message, status_code)
+    if status_code in {401, 403}:
+        return AuthError(message, status_code)
 
-    # Default to transient for 5xx (except those explicitly handled)
+    if status_code == 408:
+        return ProviderTimeoutError(message, status_code)
+
     if 500 <= status_code < 600:
-        return TransientError(message, status_code)
+        return ServerError(message, status_code)
 
-    # 4xx errors default to permanent
     if 400 <= status_code < 500:
-        return PermanentError(message, status_code)
+        return ClientError(message, status_code)
 
     # Unexpected status codes (< 400 or >= 600) - treat as permanent
     # since they indicate unexpected behavior that shouldn't be retried
-    return PermanentError(message, status_code)
+    return PermanentError(message, status_code, error_type=ProviderErrorType.UNKNOWN)
+
+
+# ---------------------------------------------------------------------------
+# Metrics Hook
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ProviderRequestMetrics:
+    """Lightweight metrics snapshot for a provider request."""
+
+    provider: ProviderName
+    model: str | None
+    method: str
+    url: str
+    status: str
+    latency_ms: float
+    status_code: int | None = None
+    error_type: ProviderErrorType | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -312,10 +438,53 @@ class LLMProvider(ABC):
         self.config = config
         self._client: httpx.AsyncClient | None = None
         self._rate_limiter: TokenBucket | None = None
+        self._metrics_hook: Callable[[ProviderRequestMetrics], None] | None = None
 
     @property
     def name(self) -> ProviderName:
         return self.config.name
+
+    def set_metrics_hook(self, hook: Callable[[ProviderRequestMetrics], None] | None) -> None:
+        """Register a metrics hook for provider request timing/status."""
+        self._metrics_hook = hook
+
+    def _record_metrics(self, metrics: ProviderRequestMetrics) -> None:
+        if self._metrics_hook is None:
+            return
+        try:
+            self._metrics_hook(metrics)
+        except Exception:
+            logger.debug("Provider metrics hook failed", exc_info=True)
+
+    def _get_timeout(self) -> httpx.Timeout:
+        """Build per-request connect/read/write timeouts."""
+        base_timeout = self.config.timeout_seconds
+        connect = (
+            self.config.timeout_connect_seconds if self.config.timeout_connect_seconds is not None else base_timeout
+        )
+        read = self.config.timeout_read_seconds if self.config.timeout_read_seconds is not None else base_timeout
+        write = self.config.timeout_write_seconds if self.config.timeout_write_seconds is not None else base_timeout
+        pool = self.config.timeout_pool_seconds if self.config.timeout_pool_seconds is not None else base_timeout
+        return httpx.Timeout(
+            timeout=base_timeout,
+            connect=connect,
+            read=read,
+            write=write,
+            pool=pool,
+        )
+
+    def _extract_model_name(self, request_kwargs: dict[str, Any]) -> str | None:
+        payload = request_kwargs.get("json")
+        if isinstance(payload, dict):
+            model = payload.get("model")
+            if isinstance(model, str):
+                return model
+        return None
+
+    def _error_type_from_exception(self, exc: Exception) -> ProviderErrorType:
+        if isinstance(exc, LLMError):
+            return exc.error_type
+        return ProviderErrorType.UNKNOWN
 
     async def _get_rate_limiter(self) -> TokenBucket:
         """Get or create rate limiter for this provider."""
@@ -356,8 +525,14 @@ class LLMProvider(ABC):
         rate_limiter = await self._get_rate_limiter()
         await rate_limiter.acquire()
 
+        start = self._start_timer()
+        status_code: int | None = None
+        error_type: ProviderErrorType | None = None
+        model_name = self._extract_model_name(kwargs)
+
         try:
             resp = await client.request(method, url, **kwargs)
+            status_code = resp.status_code
             resp.raise_for_status()
             try:
                 return resp.json()
@@ -365,26 +540,53 @@ class LLMProvider(ABC):
                 # Malformed or non-JSON response bodies are typically transient
                 # (proxy errors, gateway timeouts with HTML, etc.)
                 text_snippet = resp.text[:200] if hasattr(resp, "text") else ""
-                raise TransientError(
+                raise InvalidResponseError(
                     f"{method} {url} returned invalid JSON: {e}; body snippet: {text_snippet}",
-                    status_code=resp.status_code,
+                    status_code=status_code,
                 ) from e
+        except LLMError as e:
+            error_type = e.error_type
+            status_code = e.status_code or status_code
+            raise
         except httpx.HTTPStatusError as e:
             # Classify the error
             error = classify_http_error(
                 e.response.status_code,
                 f"{method} {url} failed: {e.response.text[:200]}",
             )
+            error_type = error.error_type
+            status_code = error.status_code
             raise error from e
         except httpx.TimeoutException as e:
             # Timeouts are transient
-            raise TransientError(f"{method} {url} timed out: {e}")
+            error = ProviderTimeoutError(f"{method} {url} timed out: {e}")
+            error_type = error.error_type
+            raise error from e
         except httpx.NetworkError as e:
             # Network errors are transient
-            raise TransientError(f"{method} {url} network error: {e}")
+            error = NetworkError(f"{method} {url} network error: {e}")
+            error_type = error.error_type
+            raise error from e
         except Exception as e:
             # Unknown errors - permanent
-            raise PermanentError(f"{method} {url} failed: {e}")
+            error = PermanentError(f"{method} {url} failed: {e}", error_type=ProviderErrorType.UNKNOWN)
+            error_type = error.error_type
+            raise error from e
+        finally:
+            latency_ms = self._elapsed_ms(start)
+            status = "success" if error_type is None else "error"
+            self._record_metrics(
+                ProviderRequestMetrics(
+                    provider=self.config.name,
+                    model=model_name,
+                    method=method,
+                    url=url,
+                    status=status,
+                    latency_ms=latency_ms,
+                    status_code=status_code,
+                    error_type=error_type,
+                )
+            )
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -473,14 +675,26 @@ class LLMProvider(ABC):
         request: AIRequest,
         error: str,
         latency_ms: float = 0.0,
+        error_type: ProviderErrorType | None = None,
+        model: str | None = None,
     ) -> AIResponse:
         """Build an error AIResponse without raising."""
+        if error_type is None:
+            error_type = ProviderErrorType.UNKNOWN
+        override_model = getattr(request, "override_model", None)
+        if model is not None:
+            effective_model = model
+        elif override_model is not None:
+            effective_model = override_model
+        else:
+            effective_model = self.config.default_model
         return AIResponse(
             role=request.role,
             provider=self.config.name,
-            model=self.config.default_model,
+            model=effective_model,
             raw_text="",
             error=error,
+            error_type=error_type,
             latency_ms=latency_ms,
         )
 

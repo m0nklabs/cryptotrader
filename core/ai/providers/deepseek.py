@@ -10,7 +10,6 @@ import httpx
 
 from core.ai.providers.base import (
     LLMProvider,
-    TransientError,
     calculate_backoff_delay,
     validate_json_response,
 )
@@ -66,7 +65,7 @@ class DeepSeekProvider(LLMProvider):
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                timeout=httpx.Timeout(self.config.timeout_seconds),
+                timeout=self._get_timeout(),
             )
         return self._client
 
@@ -111,7 +110,13 @@ class DeepSeekProvider(LLMProvider):
         except Exception as exc:
             latency = self._elapsed_ms(start)
             logger.error("DeepSeek request failed: %s", exc)
-            return self._make_error_response(request, str(exc), latency)
+            return self._make_error_response(
+                request,
+                str(exc),
+                latency,
+                error_type=self._error_type_from_exception(exc),
+                model=model,
+            )
 
         latency = self._elapsed_ms(start)
         choice = data["choices"][0]
@@ -172,10 +177,10 @@ class DeepSeekProvider(LLMProvider):
             str: Text chunks as they arrive
 
         Raises:
-            TransientError: For retry-able errors (429, 503, network issues)
-            PermanentError: For non-retry-able errors (401, 400, etc.)
+            RateLimitedError/ServerError/NetworkError/ProviderTimeoutError: Retry-able failures (429/5xx/network/timeout)
+            AuthError/ClientError: Non-retry-able failures (401/403/4xx)
         """
-        from core.ai.providers.base import classify_http_error
+        from core.ai.providers.base import NetworkError, ProviderTimeoutError, classify_http_error
 
         # Acquire rate limit token for each streaming attempt (including retries)
         rate_limiter = await self._get_rate_limiter()
@@ -224,12 +229,14 @@ class DeepSeekProvider(LLMProvider):
                 # If reading the body fails for any reason, fall back to the base message
                 logger.debug("Failed to read DeepSeek error response body", exc_info=True)
             if status_code is None:
-                raise TransientError(f"HTTP error without status code: {message}") from e
+                raise NetworkError(f"HTTP error without status code: {message}") from e
             error = classify_http_error(status_code, message)
             raise error from e
-        except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
+        except httpx.TimeoutException as e:
+            raise ProviderTimeoutError(f"Network timeout: {e}", status_code=None) from e
+        except (httpx.NetworkError, httpx.ConnectError) as e:
             # Network errors are transient
-            raise TransientError(f"Network error: {e}", status_code=None) from e
+            raise NetworkError(f"Network error: {e}", status_code=None) from e
 
     async def complete_stream(
         self,

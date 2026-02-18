@@ -34,6 +34,25 @@ class RoleName(str, Enum):
 
 
 # ---------------------------------------------------------------------------
+# Provider error taxonomy
+# ---------------------------------------------------------------------------
+
+
+class ProviderErrorType(str, Enum):
+    """Normalized error taxonomy for provider failures."""
+
+    RATE_LIMITED = "rate_limited"
+    TIMEOUT = "timeout"
+    INVALID_RESPONSE = "invalid_response"
+    AUTH_ERROR = "auth_error"
+    NETWORK_ERROR = "network_error"
+    SERVER_ERROR = "server_error"
+    CLIENT_ERROR = "client_error"
+    CIRCUIT_BREAKER_OPEN = "circuit_breaker_open"
+    UNKNOWN = "unknown"
+
+
+# ---------------------------------------------------------------------------
 # Provider configuration
 # ---------------------------------------------------------------------------
 
@@ -49,6 +68,10 @@ class ProviderConfig:
     max_tokens: int = 4096
     temperature: float = 0.0
     timeout_seconds: int = 60
+    timeout_connect_seconds: float | None = None
+    timeout_read_seconds: float | None = None
+    timeout_write_seconds: float | None = None
+    timeout_pool_seconds: float | None = None
     rate_limit_rpm: int = 60  # requests per minute
 
 
@@ -122,6 +145,7 @@ class AIResponse:
     cost_usd: float = 0.0
     timestamp: datetime = field(default_factory=datetime.utcnow)
     error: str | None = None
+    error_type: ProviderErrorType | None = None
 
 
 # ---------------------------------------------------------------------------

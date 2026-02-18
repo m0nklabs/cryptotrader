@@ -25,6 +25,7 @@ from core.ai.types import (
     AIRequest,
     AIResponse,
     ConsensusDecision,
+    ProviderErrorType,
     ProviderName,
     RoleName,
     RoleVerdict,
@@ -283,9 +284,11 @@ class LLMRouter:
             # Error responses (timeout/exception) return NEUTRAL with conf=0.0
             # but we still want to track them in the decision log
             if response.error is not None:
+                error_label = response.error_type.value if response.error_type else "unknown"
                 logger.info(
-                    "Role %s returned error response: %s",
+                    "Role %s returned error response (%s): %s",
                     role.name.value,
+                    error_label,
                     response.error,
                 )
                 failed_roles.append(role.name.value)
@@ -410,6 +413,7 @@ class LLMRouter:
                     model=role.config.model,
                     raw_text="",
                     error="circuit breaker open",
+                    error_type=ProviderErrorType.CIRCUIT_BREAKER_OPEN,
                     tokens_in=0,
                     tokens_out=0,
                     cost_usd=0.0,
@@ -458,6 +462,7 @@ class LLMRouter:
                 model=role.config.model,
                 raw_text="",
                 error=f"timeout after {timeout}s",
+                error_type=ProviderErrorType.TIMEOUT,
                 tokens_in=0,
                 tokens_out=0,
                 cost_usd=0.0,
@@ -488,6 +493,7 @@ class LLMRouter:
                 model=role.config.model,
                 raw_text="",
                 error=str(exc),
+                error_type=ProviderErrorType.UNKNOWN,
                 tokens_in=0,
                 tokens_out=0,
                 cost_usd=0.0,
