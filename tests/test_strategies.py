@@ -22,11 +22,13 @@ def test_rsi_strategy_buy_signal():
     """Test RSI strategy generates BUY signal when oversold."""
     strategy = RSIMeanReversionStrategy(oversold=30.0, overbought=70.0)
 
+    now = datetime.now(timezone.utc)
     candle = Candle(
         exchange="test",
         symbol="BTCUSD",
         timeframe="1h",
-        open_time=datetime.now(timezone.utc),
+        open_time=now,
+        close_time=now,
         open=Decimal("50000"),
         high=Decimal("51000"),
         low=Decimal("49000"),
@@ -46,11 +48,13 @@ def test_rsi_strategy_sell_signal():
     """Test RSI strategy generates SELL signal when overbought."""
     strategy = RSIMeanReversionStrategy(oversold=30.0, overbought=70.0)
 
+    now = datetime.now(timezone.utc)
     candle = Candle(
         exchange="test",
         symbol="BTCUSD",
         timeframe="1h",
-        open_time=datetime.now(timezone.utc),
+        open_time=now,
+        close_time=now,
         open=Decimal("50000"),
         high=Decimal("51000"),
         low=Decimal("49000"),
@@ -70,11 +74,13 @@ def test_rsi_strategy_hold_signal():
     """Test RSI strategy generates HOLD signal in neutral zone."""
     strategy = RSIMeanReversionStrategy(oversold=30.0, overbought=70.0)
 
+    now = datetime.now(timezone.utc)
     candle = Candle(
         exchange="test",
         symbol="BTCUSD",
         timeframe="1h",
-        open_time=datetime.now(timezone.utc),
+        open_time=now,
+        close_time=now,
         open=Decimal("50000"),
         high=Decimal("51000"),
         low=Decimal("49000"),
@@ -94,11 +100,13 @@ def test_rsi_strategy_no_rsi():
     """Test RSI strategy returns None when RSI not available."""
     strategy = RSIMeanReversionStrategy()
 
+    now = datetime.now(timezone.utc)
     candle = Candle(
         exchange="test",
         symbol="BTCUSD",
         timeframe="1h",
-        open_time=datetime.now(timezone.utc),
+        open_time=now,
+        close_time=now,
         open=Decimal("50000"),
         high=Decimal("51000"),
         low=Decimal("49000"),
@@ -135,11 +143,13 @@ def test_sma_crossover_golden_cross():
     """Test SMA crossover generates BUY on golden cross."""
     strategy = SMACrossoverStrategy(fast_period=10, slow_period=30)
 
+    now = datetime.now(timezone.utc)
     candle = Candle(
         exchange="test",
         symbol="BTCUSD",
         timeframe="1h",
-        open_time=datetime.now(timezone.utc),
+        open_time=now,
+        close_time=now,
         open=Decimal("50000"),
         high=Decimal("51000"),
         low=Decimal("49000"),
@@ -165,11 +175,13 @@ def test_sma_crossover_death_cross():
     """Test SMA crossover generates SELL on death cross."""
     strategy = SMACrossoverStrategy(fast_period=10, slow_period=30)
 
+    now = datetime.now(timezone.utc)
     candle = Candle(
         exchange="test",
         symbol="BTCUSD",
         timeframe="1h",
-        open_time=datetime.now(timezone.utc),
+        open_time=now,
+        close_time=now,
         open=Decimal("50000"),
         high=Decimal("51000"),
         low=Decimal("49000"),
@@ -195,11 +207,13 @@ def test_sma_crossover_no_indicators():
     """Test SMA crossover returns None when SMAs not available."""
     strategy = SMACrossoverStrategy(fast_period=10, slow_period=30)
 
+    now = datetime.now(timezone.utc)
     candle = Candle(
         exchange="test",
         symbol="BTCUSD",
         timeframe="1h",
-        open_time=datetime.now(timezone.utc),
+        open_time=now,
+        close_time=now,
         open=Decimal("50000"),
         high=Decimal("51000"),
         low=Decimal("49000"),

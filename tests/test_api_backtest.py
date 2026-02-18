@@ -71,6 +71,7 @@ def test_run_backtest_success(mock_get_stores):
             symbol="BTCUSD",
             timeframe="1h",
             open_time=now - timedelta(hours=i),
+            close_time=now - timedelta(hours=i - 1),
             open=Decimal("50000"),
             high=Decimal("51000"),
             low=Decimal("49000"),

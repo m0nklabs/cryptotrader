@@ -8,6 +8,8 @@ export const VIEW_IDS = {
   // Paper Trading
   PAPER_ORDERS: 'paper-orders',
   PAPER_POSITIONS: 'paper-positions',
+  // Backtesting
+  BACKTEST: 'backtest',
   // Analysis
   SIGNALS: 'signals',
   OPPORTUNITIES: 'opportunities',
@@ -70,6 +72,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: VIEW_IDS.WATCHLIST, label: 'Watchlist', icon: '⭐', status: 'new' },
       { id: VIEW_IDS.TRADE_HISTORY, label: 'Trade History', icon: '📜', status: 'new' },
       { id: VIEW_IDS.RISK_CALCULATOR, label: 'Risk Calculator', icon: '🎲', status: 'new' },
+    ],
+  },
+  {
+    id: 'backtesting',
+    title: 'Backtesting',
+    items: [
+      { id: VIEW_IDS.BACKTEST, label: 'Backtest', icon: '🔬', status: 'new' },
     ],
   },
   {
