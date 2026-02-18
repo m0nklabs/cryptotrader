@@ -754,21 +754,22 @@ async def evaluate_opportunity(request: EvaluationRequest):
                 )
             raise HTTPException(status_code=429, detail=error_detail)
 
-        # Check per-role budgets if specific roles are requested
-        if roles:
-            for role in roles:
-                role_budget_status = await ai_crud.check_budget_exceeded(db, role.value)
-                if role_budget_status["exceeded"]:
-                    error_detail = {"error": "Budget exceeded", "role": role.value, "budget_status": role_budget_status}
-                    if role_budget_status["daily_exceeded"]:
-                        error_detail["message"] = (
-                            f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
-                        )
-                    elif role_budget_status["monthly_exceeded"]:
-                        error_detail["message"] = (
-                            f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
-                        )
-                    raise HTTPException(status_code=429, detail=error_detail)
+        # Check per-role budgets for all roles that will be evaluated
+        # If roles are specified, check those; otherwise check all active roles
+        roles_to_check = roles if roles else [RoleName(r.name) for r in RoleRegistry.active_roles()]
+        for role in roles_to_check:
+            role_budget_status = await ai_crud.check_budget_exceeded(db, role.value)
+            if role_budget_status["exceeded"]:
+                error_detail = {"error": "Budget exceeded", "role": role.value, "budget_status": role_budget_status}
+                if role_budget_status["daily_exceeded"]:
+                    error_detail["message"] = (
+                        f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
+                    )
+                elif role_budget_status["monthly_exceeded"]:
+                    error_detail["message"] = (
+                        f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
+                    )
+                raise HTTPException(status_code=429, detail=error_detail)
 
     # Run evaluation
     decision = await router_instance.evaluate_opportunity(
@@ -1132,8 +1133,16 @@ async def get_budget_config(scope: str = PathParam(..., description="Budget scop
 @router.put("/budget/config/{scope}")
 async def update_budget_config(
     scope: str = PathParam(..., description="Budget scope: 'global' or role name"),
-    daily_limit_usd: float | None = Query(None, description="Daily limit in USD (0.0 = unlimited)"),
-    monthly_limit_usd: float | None = Query(None, description="Monthly limit in USD (0.0 = unlimited)"),
+    daily_limit_usd: float | None = Query(
+        None,
+        description="Daily limit in USD (0.0 = unlimited)",
+        ge=0.0,
+    ),
+    monthly_limit_usd: float | None = Query(
+        None,
+        description="Monthly limit in USD (0.0 = unlimited)",
+        ge=0.0,
+    ),
     enabled: bool | None = Query(None, description="Enable/disable budget enforcement"),
 ):
     """Update budget configuration for a scope.

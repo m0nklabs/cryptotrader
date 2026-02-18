@@ -719,7 +719,8 @@ async def check_budget_exceeded(
     # Get budget config
     config = await get_budget_config(db, scope)
     if not config:
-        # No config found - budget enforcement disabled
+        # No config found - budget enforcement disabled (logged as warning)
+        logger.warning(f"Budget config not found for scope '{scope}' - treating as unlimited")
         return {
             "exceeded": False,
             "daily_exceeded": False,
@@ -729,21 +730,6 @@ async def check_budget_exceeded(
             "daily_remaining": 0.0,
             "monthly_spent": 0.0,
             "monthly_limit": 0.0,
-            "monthly_remaining": 0.0,
-            "enabled": False,
-        }
-
-    # If budget enforcement is disabled, return early
-    if not config.enabled:
-        return {
-            "exceeded": False,
-            "daily_exceeded": False,
-            "monthly_exceeded": False,
-            "daily_spent": 0.0,
-            "daily_limit": config.daily_limit_usd,
-            "daily_remaining": 0.0,
-            "monthly_spent": 0.0,
-            "monthly_limit": config.monthly_limit_usd,
             "monthly_remaining": 0.0,
             "enabled": False,
         }
@@ -773,6 +759,32 @@ async def check_budget_exceeded(
     monthly_query = select(func.sum(AIUsageLog.cost_usd).label("total_cost")).where(and_(*monthly_conditions))
     monthly_result = await db.execute(monthly_query)
     monthly_spent = float(monthly_result.scalar() or 0.0)
+
+    # If budget enforcement is disabled, still return actual spend but don't enforce
+    if not config.enabled:
+        # Calculate remaining budget for monitoring even when disabled
+        if config.daily_limit_usd > 0.0:
+            daily_remaining = config.daily_limit_usd - daily_spent
+        else:
+            daily_remaining = 0.0  # unlimited
+
+        if config.monthly_limit_usd > 0.0:
+            monthly_remaining = config.monthly_limit_usd - monthly_spent
+        else:
+            monthly_remaining = 0.0  # unlimited
+
+        return {
+            "exceeded": False,  # Never exceeded when disabled
+            "daily_exceeded": False,
+            "monthly_exceeded": False,
+            "daily_spent": daily_spent,
+            "daily_limit": config.daily_limit_usd,
+            "daily_remaining": daily_remaining,
+            "monthly_spent": monthly_spent,
+            "monthly_limit": config.monthly_limit_usd,
+            "monthly_remaining": monthly_remaining,
+            "enabled": False,
+        }
 
     # Check if limits are exceeded (0.0 means unlimited)
     daily_exceeded = config.daily_limit_usd > 0.0 and daily_spent >= config.daily_limit_usd

@@ -16,12 +16,6 @@ from api.main import app
 
 
 @pytest.fixture
-def client():
-    """Create test client for FastAPI app."""
-    return TestClient(app)
-
-
-@pytest.fixture
 def mock_router():
     """Mock LLMRouter for testing."""
     with patch("api.routes.ai._get_router") as mock:
@@ -47,13 +41,19 @@ def mock_db_factory():
         yield db_session
 
 
+@pytest.fixture
+def client(mock_router, mock_db_factory):
+    """Create test client for FastAPI app with mocked dependencies."""
+    return TestClient(app)
+
+
 # =============================================================================
 # Budget Enforcement Tests - /api/ai/evaluate
 # =============================================================================
 
 
-@pytest.mark.asyncio
-async def test_evaluate_endpoint_rejects_on_daily_budget_exceeded(client, mock_router, mock_db_factory):
+
+def test_evaluate_endpoint_rejects_on_daily_budget_exceeded(client, mock_router, mock_db_factory):
     """Test that /api/ai/evaluate returns 429 when daily budget is exceeded."""
     from db.crud import ai as ai_crud
 
@@ -88,8 +88,8 @@ async def test_evaluate_endpoint_rejects_on_daily_budget_exceeded(client, mock_r
         assert "$10.00" in data["detail"]["message"]
 
 
-@pytest.mark.asyncio
-async def test_evaluate_endpoint_rejects_on_monthly_budget_exceeded(client, mock_router, mock_db_factory):
+
+def test_evaluate_endpoint_rejects_on_monthly_budget_exceeded(client, mock_router, mock_db_factory):
     """Test that /api/ai/evaluate returns 429 when monthly budget is exceeded."""
     from db.crud import ai as ai_crud
 
@@ -124,8 +124,8 @@ async def test_evaluate_endpoint_rejects_on_monthly_budget_exceeded(client, mock
         assert "$100.00" in data["detail"]["message"]
 
 
-@pytest.mark.asyncio
-async def test_evaluate_endpoint_rejects_on_role_budget_exceeded(client, mock_router, mock_db_factory):
+
+def test_evaluate_endpoint_rejects_on_role_budget_exceeded(client, mock_router, mock_db_factory):
     """Test that /api/ai/evaluate returns 429 when role-specific budget is exceeded."""
     from db.crud import ai as ai_crud
 
@@ -178,8 +178,8 @@ async def test_evaluate_endpoint_rejects_on_role_budget_exceeded(client, mock_ro
         assert "tactical" in data["detail"]["message"]
 
 
-@pytest.mark.asyncio
-async def test_evaluate_endpoint_proceeds_when_budget_ok(client, mock_router, mock_db_factory):
+
+def test_evaluate_endpoint_proceeds_when_budget_ok(client, mock_router, mock_db_factory):
     """Test that /api/ai/evaluate proceeds normally when budget is not exceeded."""
     from core.ai.types import ConsensusDecision, RoleName, RoleVerdict
     from db.crud import ai as ai_crud
@@ -243,8 +243,8 @@ async def test_evaluate_endpoint_proceeds_when_budget_ok(client, mock_router, mo
 # =============================================================================
 
 
-@pytest.mark.asyncio
-async def test_evaluate_single_rejects_on_budget_exceeded(client, mock_router, mock_db_factory):
+
+def test_evaluate_single_rejects_on_budget_exceeded(client, mock_router, mock_db_factory):
     """Test that /api/ai/evaluate/single returns 429 when budget is exceeded."""
     from db.crud import ai as ai_crud
 
@@ -277,8 +277,8 @@ async def test_evaluate_single_rejects_on_budget_exceeded(client, mock_router, m
         assert data["detail"]["error"] == "Budget exceeded"
 
 
-@pytest.mark.asyncio
-async def test_evaluate_single_proceeds_when_budget_ok(client, mock_router, mock_db_factory):
+
+def test_evaluate_single_proceeds_when_budget_ok(client, mock_router, mock_db_factory):
     """Test that /api/ai/evaluate/single proceeds normally when budget is OK."""
     from core.ai.types import ConsensusDecision, RoleName, RoleVerdict
     from db.crud import ai as ai_crud

@@ -84,8 +84,22 @@ PUT /api/ai/budget/config/{scope}?daily_limit_usd=10.0&monthly_limit_usd=100.0&e
 When evaluation endpoints are called (`POST /api/ai/evaluate`, `POST /api/ai/evaluate/single`), the system:
 
 1. **Checks Global Budget**: If global budget exceeded, return HTTP 429
-2. **Checks Per-Role Budgets**: If any requested role's budget exceeded, return HTTP 429
+2. **Checks Per-Role Budgets**: If any active role's budget exceeded, return HTTP 429
 3. **Proceeds if OK**: Evaluation runs normally if budgets are within limits
+
+### Concurrency Considerations
+
+**Important**: Budget enforcement is currently "best-effort" under concurrent requests. Multiple evaluation requests can pass budget checks before any of them logs usage, potentially allowing spend to exceed configured caps during high-traffic periods.
+
+This is acceptable for most deployments where:
+- Traffic is relatively low or bursty
+- Budgets have reasonable margins (e.g., 10-20% buffer)
+- Monitoring alerts trigger before hard limits
+
+If strict caps are required under high concurrency:
+- Consider adding a concurrency control mechanism (e.g., per-scope in-process lock)
+- Implement DB-backed reservation/locking strategy
+- Add rate limiting at the API layer
 
 ### Error Response (HTTP 429)
 
