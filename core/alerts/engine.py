@@ -8,8 +8,7 @@ from typing import Optional
 import pandas as pd
 
 from core.alerts.models import Alert, AlertHistory, AlertType, ComparisonOperator
-from core.indicators.rsi import calculate_rsi
-from core.indicators.macd import calculate_macd
+from core.types import Candle
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +77,10 @@ class AlertEngine:
             # RSI alerts
             if alert_type == "rsi_overbought":
                 period = alert.condition.indicator_params.get("period", 14) if alert.condition.indicator_params else 14
-                rsi = calculate_rsi(ohlcv_data, period=period)
-                if rsi.empty:
+                rsi = self._calculate_rsi(ohlcv_data, period=period)
+                if rsi is None:
                     return False, None
-                current_rsi = rsi.iloc[-1]
+                current_rsi = rsi
                 triggered = self._check_price_condition(
                     alert.id, current_rsi, threshold, "above", operator
                 )
@@ -95,10 +94,10 @@ class AlertEngine:
 
             elif alert_type == "rsi_oversold":
                 period = alert.condition.indicator_params.get("period", 14) if alert.condition.indicator_params else 14
-                rsi = calculate_rsi(ohlcv_data, period=period)
-                if rsi.empty:
+                rsi = self._calculate_rsi(ohlcv_data, period=period)
+                if rsi is None:
                     return False, None
-                current_rsi = rsi.iloc[-1]
+                current_rsi = rsi
                 triggered = self._check_price_condition(
                     alert.id, current_rsi, threshold, "below", operator
                 )
@@ -112,15 +111,23 @@ class AlertEngine:
 
             # MACD crossover alerts
             elif alert_type == "macd_cross_up":
-                macd_result = calculate_macd(ohlcv_data)
-                if macd_result.empty:
+                macd_result = self._calculate_macd(ohlcv_data)
+                if macd_result is None:
                     return False, None
                 
                 # Check if MACD line crossed above signal line
-                macd_line = macd_result["macd"].iloc[-1]
-                signal_line = macd_result["signal"].iloc[-1]
-                prev_macd = macd_result["macd"].iloc[-2] if len(macd_result) > 1 else macd_line
-                prev_signal = macd_result["signal"].iloc[-2] if len(macd_result) > 1 else signal_line
+                macd_line, signal_line = macd_result
+                prev_macd = self._previous_states.get(alert.id, {}).get("prev_macd")
+                prev_signal = self._previous_states.get(alert.id, {}).get("prev_signal")
+                
+                # Store current for next evaluation
+                self._previous_states[alert.id] = {
+                    "prev_macd": macd_line,
+                    "prev_signal": signal_line,
+                }
+                
+                if prev_macd is None or prev_signal is None:
+                    return False, None
                 
                 triggered = prev_macd <= prev_signal and macd_line > signal_line
                 if triggered:
@@ -132,15 +139,23 @@ class AlertEngine:
                     )
 
             elif alert_type == "macd_cross_down":
-                macd_result = calculate_macd(ohlcv_data)
-                if macd_result.empty:
+                macd_result = self._calculate_macd(ohlcv_data)
+                if macd_result is None:
                     return False, None
                 
                 # Check if MACD line crossed below signal line
-                macd_line = macd_result["macd"].iloc[-1]
-                signal_line = macd_result["signal"].iloc[-1]
-                prev_macd = macd_result["macd"].iloc[-2] if len(macd_result) > 1 else macd_line
-                prev_signal = macd_result["signal"].iloc[-2] if len(macd_result) > 1 else signal_line
+                macd_line, signal_line = macd_result
+                prev_macd = self._previous_states.get(alert.id, {}).get("prev_macd")
+                prev_signal = self._previous_states.get(alert.id, {}).get("prev_signal")
+                
+                # Store current for next evaluation
+                self._previous_states[alert.id] = {
+                    "prev_macd": macd_line,
+                    "prev_signal": signal_line,
+                }
+                
+                if prev_macd is None or prev_signal is None:
+                    return False, None
                 
                 triggered = prev_macd >= prev_signal and macd_line < signal_line
                 if triggered:
@@ -238,3 +253,70 @@ class AlertEngine:
         """
         if alert_id in self._previous_states:
             del self._previous_states[alert_id]
+
+    def _calculate_rsi(self, df: pd.DataFrame, period: int = 14) -> Optional[float]:
+        """Calculate RSI from OHLCV data.
+
+        Args:
+            df: DataFrame with 'close' column
+            period: RSI period
+
+        Returns:
+            Current RSI value or None if insufficient data
+        """
+        try:
+            if "close" not in df.columns or len(df) < period + 1:
+                return None
+
+            # Calculate price changes
+            delta = df["close"].diff()
+
+            # Separate gains and losses
+            gain = delta.where(delta > 0, 0.0)
+            loss = -delta.where(delta < 0, 0.0)
+
+            # Calculate exponential moving averages
+            avg_gain = gain.ewm(span=period, adjust=False).mean()
+            avg_loss = loss.ewm(span=period, adjust=False).mean()
+
+            # Calculate RS and RSI
+            rs = avg_gain / avg_loss
+            rsi = 100.0 - (100.0 / (1.0 + rs))
+
+            return float(rsi.iloc[-1])
+        except Exception as e:
+            logger.error(f"Error calculating RSI: {e}")
+            return None
+
+    def _calculate_macd(
+        self, df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9
+    ) -> Optional[tuple[float, float]]:
+        """Calculate MACD from OHLCV data.
+
+        Args:
+            df: DataFrame with 'close' column
+            fast: Fast EMA period
+            slow: Slow EMA period
+            signal: Signal line EMA period
+
+        Returns:
+            Tuple of (macd_line, signal_line) or None if insufficient data
+        """
+        try:
+            if "close" not in df.columns or len(df) < slow + signal:
+                return None
+
+            # Calculate EMAs
+            ema_fast = df["close"].ewm(span=fast, adjust=False).mean()
+            ema_slow = df["close"].ewm(span=slow, adjust=False).mean()
+
+            # MACD line
+            macd_line = ema_fast - ema_slow
+
+            # Signal line
+            signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+
+            return float(macd_line.iloc[-1]), float(signal_line.iloc[-1])
+        except Exception as e:
+            logger.error(f"Error calculating MACD: {e}")
+            return None
