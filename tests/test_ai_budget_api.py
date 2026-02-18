@@ -56,7 +56,6 @@ def client(mock_router, mock_db_factory):
 # =============================================================================
 
 
-
 def test_evaluate_endpoint_rejects_on_daily_budget_exceeded(client, mock_router, mock_db_factory):
     """Test that /api/ai/evaluate returns 429 when daily budget is exceeded."""
     from db.crud import ai as ai_crud
@@ -92,7 +91,6 @@ def test_evaluate_endpoint_rejects_on_daily_budget_exceeded(client, mock_router,
         assert "$10.00" in data["detail"]["message"]
 
 
-
 def test_evaluate_endpoint_rejects_on_monthly_budget_exceeded(client, mock_router, mock_db_factory):
     """Test that /api/ai/evaluate returns 429 when monthly budget is exceeded."""
     from db.crud import ai as ai_crud
@@ -126,7 +124,6 @@ def test_evaluate_endpoint_rejects_on_monthly_budget_exceeded(client, mock_route
         assert data["detail"]["error"] == "Budget exceeded"
         assert "Monthly budget limit" in data["detail"]["message"]
         assert "$100.00" in data["detail"]["message"]
-
 
 
 def test_evaluate_endpoint_rejects_on_role_budget_exceeded(client, mock_router, mock_db_factory):
@@ -180,7 +177,6 @@ def test_evaluate_endpoint_rejects_on_role_budget_exceeded(client, mock_router, 
         assert data["detail"]["error"] == "Budget exceeded"
         assert data["detail"]["role"] == "tactical"
         assert "tactical" in data["detail"]["message"]
-
 
 
 def test_evaluate_endpoint_proceeds_when_budget_ok(client, mock_router, mock_db_factory):
@@ -247,7 +243,6 @@ def test_evaluate_endpoint_proceeds_when_budget_ok(client, mock_router, mock_db_
 # =============================================================================
 
 
-
 def test_evaluate_single_rejects_on_budget_exceeded(client, mock_router, mock_db_factory):
     """Test that /api/ai/evaluate/single returns 429 when budget is exceeded."""
     from db.crud import ai as ai_crud
@@ -279,7 +274,6 @@ def test_evaluate_single_rejects_on_budget_exceeded(client, mock_router, mock_db
         assert response.status_code == 429
         data = response.json()
         assert data["detail"]["error"] == "Budget exceeded"
-
 
 
 def test_evaluate_single_proceeds_when_budget_ok(client, mock_router, mock_db_factory):
