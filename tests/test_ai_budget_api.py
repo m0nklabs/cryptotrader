@@ -19,10 +19,12 @@ from api.main import app
 def mock_router():
     """Mock LLMRouter for testing."""
     with patch("api.routes.ai._get_router") as mock:
+        from unittest.mock import Mock
+
         router = AsyncMock()
         router.evaluate_opportunity = AsyncMock()
-        router.get_usage_log = AsyncMock(return_value=[])
-        router.clear_usage_log = AsyncMock()
+        router.get_usage_log = Mock(return_value=[])  # Regular method, not async
+        router.clear_usage_log = Mock()  # Regular method, not async
         mock.return_value = router
         yield router
 
@@ -35,8 +37,10 @@ def mock_db_factory():
         db_session.__aenter__ = AsyncMock(return_value=db_session)
         db_session.__aexit__ = AsyncMock(return_value=False)
 
-        factory = AsyncMock()
-        factory.return_value = db_session
+        # Factory should be a regular callable that returns the async context manager
+        def factory():
+            return db_session
+
         mock.return_value = factory
         yield db_session
 
