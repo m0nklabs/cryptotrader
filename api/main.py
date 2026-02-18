@@ -53,6 +53,7 @@ from api.routes import (
     portfolio,
     watchlist,
     trade_history,
+    alerts as alerts_routes,
 )
 
 # Import middleware for rate limit tracking
@@ -2073,3 +2074,4 @@ app.include_router(ai_routes.router)
 app.include_router(portfolio.router)
 app.include_router(watchlist.router)
 app.include_router(trade_history.router)
+app.include_router(alerts_routes.router)
