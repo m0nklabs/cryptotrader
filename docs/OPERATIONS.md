@@ -95,6 +95,74 @@ Quickstart (examples use instance format `@SYMBOL-TIMEFRAME`, e.g. `@BTCUSD-1m`)
   `systemctl --user start cryptotrader-bitfinex-gap-repair@BTCUSD-1m.service`\
   `systemctl --user start cryptotrader-frontend.service`
 
+## AI System Initialization
+
+The Multi-Brain AI system requires database initialization to function properly.
+
+### Automatic Seeding on Startup
+
+**Default behavior**: The FastAPI backend automatically seeds default AI configuration on startup (via `bootstrap_ai()` in `api/routes/ai.py`).
+
+This seeding is **idempotent** and ensures:
+- Default system prompts exist for all 4 roles (Screener, Tactical, Fundamental, Strategist)
+- Exactly one prompt is marked active per role
+- Default role configs exist with proper provider/model assignments
+- Existing user modifications are never overwritten
+
+**No manual action required** - the seeding happens automatically when the API starts.
+
+### Manual Seeding (Optional)
+
+If you need to manually seed or re-seed the AI configuration (e.g., after a database reset):
+
+```bash
+export DATABASE_URL="postgresql://user:pass@host:port/cryptotrader"
+python scripts/seed_ai_defaults.py
+```
+
+**Output example:**
+```
+Seeding system prompts...
+  ✓ Created prompt: screener_v1 (role=screener, v1)
+  ✓ Created prompt: tactical_v1 (role=tactical, v1)
+  ✓ Created prompt: fundamental_v1 (role=fundamental, v1)
+  ✓ Created prompt: strategist_v1 (role=strategist, v1)
+
+Seeding role configurations...
+  ✓ Created role config: screener (deepseek/deepseek-chat)
+  ✓ Created role config: tactical (deepseek/deepseek-reasoner)
+  ✓ Created role config: fundamental (xai/grok-4)
+  ✓ Created role config: strategist (openai/o3-mini)
+
+✅ Seeding completed successfully!
+```
+
+**Running multiple times is safe** - the script checks for existing records and skips them.
+
+### Verifying AI Configuration
+
+Check that the AI system is properly initialized:
+
+```bash
+# Query role configs
+psql $DATABASE_URL -c "SELECT name, provider, model, enabled FROM ai_role_configs;"
+
+# Query active prompts
+psql $DATABASE_URL -c "SELECT role, id, version, is_active FROM system_prompts WHERE is_active = true;"
+```
+
+Expected output: 4 role configs (one per role) and 4 active prompts (one per role).
+
+### Troubleshooting
+
+**Issue**: "No role configs found in database" warning at startup
+- **Cause**: Database migration not applied or seeding failed
+- **Fix**: Run database migrations manually, then restart the API
+
+**Issue**: "AI bootstrap failed to seed defaults" warning
+- **Cause**: Database connection issue or insufficient permissions
+- **Fix**: Check DATABASE_URL and database permissions; the API will fall back to in-memory defaults
+
 ## Backend API service (FastAPI)
 
 The frontend proxies `/api/*`, `/candles/*`, `/ws/*` and other routes to FastAPI.
