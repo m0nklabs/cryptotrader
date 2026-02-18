@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from core.backtest.engine import BacktestEngine, BacktestResult
-from core.backtest.strategy import Signal
+from core.backtest.engine import BacktestEngine
 from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
-from core.types import Candle
 
 router = APIRouter(prefix="/backtest", tags=["backtest"])
 

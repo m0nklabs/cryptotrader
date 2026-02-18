@@ -48,11 +48,11 @@ from core.types import Candle
 class MyStrategy:
     def on_candle(self, candle: Candle, indicators: dict) -> Signal | None:
         """Process candle and return trading signal.
-        
+
         Args:
             candle: Current OHLCV candle
             indicators: Pre-computed indicators (e.g., {'rsi': 45.2})
-            
+
         Returns:
             Signal with side ('BUY', 'SELL', 'HOLD') or None
         """

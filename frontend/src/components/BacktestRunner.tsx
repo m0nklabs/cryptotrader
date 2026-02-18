@@ -19,7 +19,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
   const [strategy, setStrategy] = useState<'rsi'>('rsi')
   const [initialCapital, setInitialCapital] = useState(10000)
   const [daysBack, setDaysBack] = useState(30)
-  
+
   // RSI parameters
   const [rsiOversold, setRsiOversold] = useState(30)
   const [rsiOverbought, setRsiOverbought] = useState(70)
@@ -59,7 +59,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
       }
 
       const result = await runBacktest(request)
-      
+
       if (onResultsReady) {
         onResultsReady(result)
       }

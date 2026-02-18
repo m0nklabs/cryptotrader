@@ -9,8 +9,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
-from core.backtest.metrics import Trade
-
 
 @dataclass
 class BacktestReport:
