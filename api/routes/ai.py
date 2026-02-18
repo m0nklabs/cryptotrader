@@ -147,7 +147,7 @@ async def _seed_defaults(session: AsyncSession) -> None:
     It's safe to call multiple times - existing records are not modified.
     """
     from core.ai.prompts.defaults import ALL_DEFAULT_PROMPTS
-    from core.ai.types import ProviderName
+    from scripts.seed_ai_defaults import DEFAULT_ROLE_CONFIGS
 
     # Seed system prompts first (role configs reference them)
     for prompt in ALL_DEFAULT_PROMPTS:
@@ -166,50 +166,7 @@ async def _seed_defaults(session: AsyncSession) -> None:
         )
 
     # Seed role configs (if they don't exist)
-    default_role_configs = [
-        {
-            "name": RoleName.SCREENER.value,
-            "provider": ProviderName.DEEPSEEK.value,
-            "model": "deepseek-chat",
-            "system_prompt_id": "screener_v1",
-            "temperature": 0.0,
-            "max_tokens": 4096,
-            "weight": 0.5,
-            "enabled": True,
-        },
-        {
-            "name": RoleName.TACTICAL.value,
-            "provider": ProviderName.DEEPSEEK.value,
-            "model": "deepseek-reasoner",
-            "system_prompt_id": "tactical_v1",
-            "temperature": 0.0,
-            "max_tokens": 4096,
-            "weight": 1.5,
-            "enabled": True,
-        },
-        {
-            "name": RoleName.FUNDAMENTAL.value,
-            "provider": ProviderName.XAI.value,
-            "model": "grok-4",
-            "system_prompt_id": "fundamental_v1",
-            "temperature": 0.0,
-            "max_tokens": 4096,
-            "weight": 1.0,
-            "enabled": True,
-        },
-        {
-            "name": RoleName.STRATEGIST.value,
-            "provider": ProviderName.OPENAI.value,
-            "model": "o3-mini",
-            "system_prompt_id": "strategist_v1",
-            "temperature": 0.0,
-            "max_tokens": 4096,
-            "weight": 1.2,
-            "enabled": True,
-        },
-    ]
-
-    for config_data in default_role_configs:
+    for config_data in DEFAULT_ROLE_CONFIGS:
         existing = await ai_crud.get_role_config(session, config_data["name"])
         if existing:
             continue

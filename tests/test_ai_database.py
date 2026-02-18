@@ -726,11 +726,11 @@ async def test_seed_does_not_clobber_existing_prompts(db_session):
         version=2,
         content=custom_content,
         description="User-created custom tactical prompt",
-        is_active=True,
+        is_active=False,
     )
-
-    # Deactivate the original
-    await activate_prompt(db_session, "tactical_v1", is_active=False)
+    
+    # Activate the new prompt (this will automatically deactivate tactical_v1)
+    await activate_prompt(db_session, "tactical_v2")
 
     # Run seeding again
     await seed_system_prompts(db_session)
