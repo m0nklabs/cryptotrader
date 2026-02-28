@@ -114,6 +114,17 @@ class DossierEntry:
     predicted_timeframe: str = "24h"
     prediction_correct: bool | None = None
 
+    # LLM Assessment (structured recommendation)
+    assessment_action: str = ""  # BUY/SELL/HOLD/AVOID
+    assessment_confidence: int = 0  # 1-10
+    assessment_risk: str = ""  # low/medium/high/extreme
+    assessment_entry_low: float = 0.0
+    assessment_entry_high: float = 0.0
+    assessment_stop_loss: float = 0.0
+    assessment_take_profit_1: float = 0.0
+    assessment_take_profit_2: float = 0.0
+    assessment_reasoning: str = ""
+
     # Metadata
     model_used: str = ""
     tokens_used: int = 0
@@ -227,6 +238,30 @@ Structure your response EXACTLY as follows (use these exact headers):
 
 ## PREDICTION
 (2-3 paragraphs with your new outlook — direction, target, confidence level, key triggers)
+
+## ASSESSMENT
+(Structured JSON block with your trading recommendation - must be valid JSON)
+```json
+{
+  "action": "BUY",
+  "confidence": 7,
+  "risk_level": "medium",
+  "entry_zone": [0.038, 0.042],
+  "stop_loss": 0.035,
+  "take_profit": [0.048, 0.055],
+  "timeframe": "24h",
+  "reasoning_summary": "Bullish MACD crossover with increasing volume suggests continuation."
+}
+```
+Notes:
+- action: BUY, SELL, HOLD, or AVOID
+- confidence: integer 1-10 (1=very uncertain, 10=very confident)
+- risk_level: low, medium, high, or extreme
+- entry_zone: [low, high] price range for entry
+- stop_loss: price level to exit if wrong
+- take_profit: [target1, target2] price targets
+- timeframe: "24h" or "7d"
+- reasoning_summary: 1-2 sentences explaining the recommendation
 
 ## DIRECTION
 (Exactly one word: UP, DOWN, or SIDEWAYS)
@@ -685,6 +720,9 @@ If this is the first entry, skip the retrospective section and focus on laying a
         stats: dict[str, Any],
     ) -> DossierEntry:
         """Parse the LLM response into a structured DossierEntry."""
+        import json
+        import re
+
         text = response.get("response", "")
 
         # Extract sections by headers
@@ -693,6 +731,7 @@ If this is the first entry, skip the retrospective section and focus on laying a
             "tech_analysis": "",
             "retrospective": "",
             "prediction": "",
+            "assessment": "",
         }
 
         current_section = ""
@@ -724,6 +763,11 @@ If this is the first entry, skip the retrospective section and focus on laying a
                 if current_section:
                     sections[current_section] = "\n".join(current_lines).strip()
                 current_section = "prediction"
+                current_lines = []
+            elif "ASSESSMENT" in stripped and stripped.startswith("#"):
+                if current_section:
+                    sections[current_section] = "\n".join(current_lines).strip()
+                current_section = "assessment"
                 current_lines = []
             elif "DIRECTION" in stripped and stripped.startswith("#"):
                 if current_section:
@@ -762,6 +806,46 @@ If this is the first entry, skip the retrospective section and focus on laying a
         if target_price == 0:
             target_price = stats.get("price", 0)
 
+        # Parse assessment JSON (with robust fallback)
+        assessment_action = ""
+        assessment_confidence = 0
+        assessment_risk = ""
+        assessment_entry_low = 0.0
+        assessment_entry_high = 0.0
+        assessment_stop_loss = 0.0
+        assessment_take_profit_1 = 0.0
+        assessment_take_profit_2 = 0.0
+        assessment_reasoning = ""
+
+        assessment_text = sections.get("assessment", "")
+        if assessment_text:
+            # Extract JSON from markdown code block
+            json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", assessment_text, re.DOTALL)
+            if json_match:
+                try:
+                    assessment_data = json.loads(json_match.group(1))
+                    assessment_action = assessment_data.get("action", "").upper()
+                    assessment_confidence = int(assessment_data.get("confidence", 0))
+                    assessment_risk = assessment_data.get("risk_level", "").lower()
+
+                    entry_zone = assessment_data.get("entry_zone", [])
+                    if isinstance(entry_zone, list) and len(entry_zone) >= 2:
+                        assessment_entry_low = float(entry_zone[0])
+                        assessment_entry_high = float(entry_zone[1])
+
+                    assessment_stop_loss = float(assessment_data.get("stop_loss", 0))
+
+                    take_profit = assessment_data.get("take_profit", [])
+                    if isinstance(take_profit, list) and len(take_profit) >= 1:
+                        assessment_take_profit_1 = float(take_profit[0])
+                    if isinstance(take_profit, list) and len(take_profit) >= 2:
+                        assessment_take_profit_2 = float(take_profit[1])
+
+                    assessment_reasoning = assessment_data.get("reasoning_summary", "")
+                except (json.JSONDecodeError, ValueError, TypeError) as e:
+                    logger.warning(f"Failed to parse assessment JSON for {symbol}: {e}")
+                    # Keep default empty values
+
         return DossierEntry(
             exchange=exchange,
             symbol=symbol,
@@ -785,6 +869,16 @@ If this is the first entry, skip the retrospective section and focus on laying a
             predicted_direction=direction,
             predicted_target=target_price,
             predicted_timeframe="24h",
+            # LLM Assessment fields
+            assessment_action=assessment_action,
+            assessment_confidence=assessment_confidence,
+            assessment_risk=assessment_risk,
+            assessment_entry_low=assessment_entry_low,
+            assessment_entry_high=assessment_entry_high,
+            assessment_stop_loss=assessment_stop_loss,
+            assessment_take_profit_1=assessment_take_profit_1,
+            assessment_take_profit_2=assessment_take_profit_2,
+            assessment_reasoning=assessment_reasoning,
         )
 
     # ------------------------------------------------------------------
@@ -859,6 +953,9 @@ If this is the first entry, skip the retrospective section and focus on laying a
                     lore, stats_summary, tech_analysis,
                     retrospective, prediction, full_narrative,
                     predicted_direction, predicted_target, predicted_timeframe,
+                    assessment_action, assessment_confidence, assessment_risk,
+                    assessment_entry_low, assessment_entry_high, assessment_stop_loss,
+                    assessment_take_profit_1, assessment_take_profit_2, assessment_reasoning,
                     model_used, tokens_used, generation_time_ms
                 ) VALUES (
                     $1, $2, $3,
@@ -868,7 +965,10 @@ If this is the first entry, skip the retrospective section and focus on laying a
                     $14, $15, $16,
                     $17, $18, $19,
                     $20, $21, $22,
-                    $23, $24, $25
+                    $23, $24, $25,
+                    $26, $27, $28,
+                    $29, $30, $31,
+                    $32, $33, $34
                 )
                 ON CONFLICT (exchange, symbol, entry_date)
                 DO UPDATE SET
@@ -891,6 +991,15 @@ If this is the first entry, skip the retrospective section and focus on laying a
                     predicted_direction = EXCLUDED.predicted_direction,
                     predicted_target = EXCLUDED.predicted_target,
                     predicted_timeframe = EXCLUDED.predicted_timeframe,
+                    assessment_action = EXCLUDED.assessment_action,
+                    assessment_confidence = EXCLUDED.assessment_confidence,
+                    assessment_risk = EXCLUDED.assessment_risk,
+                    assessment_entry_low = EXCLUDED.assessment_entry_low,
+                    assessment_entry_high = EXCLUDED.assessment_entry_high,
+                    assessment_stop_loss = EXCLUDED.assessment_stop_loss,
+                    assessment_take_profit_1 = EXCLUDED.assessment_take_profit_1,
+                    assessment_take_profit_2 = EXCLUDED.assessment_take_profit_2,
+                    assessment_reasoning = EXCLUDED.assessment_reasoning,
                     model_used = EXCLUDED.model_used,
                     tokens_used = EXCLUDED.tokens_used,
                     generation_time_ms = EXCLUDED.generation_time_ms,
@@ -919,6 +1028,15 @@ If this is the first entry, skip the retrospective section and focus on laying a
                 entry.predicted_direction,
                 entry.predicted_target,
                 entry.predicted_timeframe,
+                entry.assessment_action,
+                entry.assessment_confidence,
+                entry.assessment_risk,
+                entry.assessment_entry_low,
+                entry.assessment_entry_high,
+                entry.assessment_stop_loss,
+                entry.assessment_take_profit_1,
+                entry.assessment_take_profit_2,
+                entry.assessment_reasoning,
                 entry.model_used,
                 entry.tokens_used,
                 entry.generation_time_ms,
@@ -960,6 +1078,15 @@ If this is the first entry, skip the retrospective section and focus on laying a
             predicted_target=float(row["predicted_target"] or 0),
             predicted_timeframe=row["predicted_timeframe"] or "24h",
             prediction_correct=row["prediction_correct"],
+            assessment_action=row.get("assessment_action", "") or "",
+            assessment_confidence=row.get("assessment_confidence", 0) or 0,
+            assessment_risk=row.get("assessment_risk", "") or "",
+            assessment_entry_low=float(row.get("assessment_entry_low", 0) or 0),
+            assessment_entry_high=float(row.get("assessment_entry_high", 0) or 0),
+            assessment_stop_loss=float(row.get("assessment_stop_loss", 0) or 0),
+            assessment_take_profit_1=float(row.get("assessment_take_profit_1", 0) or 0),
+            assessment_take_profit_2=float(row.get("assessment_take_profit_2", 0) or 0),
+            assessment_reasoning=row.get("assessment_reasoning", "") or "",
             model_used=row["model_used"] or "",
             tokens_used=row["tokens_used"] or 0,
             generation_time_ms=row["generation_time_ms"] or 0,
