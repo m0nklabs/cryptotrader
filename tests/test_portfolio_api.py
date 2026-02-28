@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,12 +15,12 @@ from api.main import app
 @pytest.fixture
 def mock_db_pool():
     """Mock asyncpg connection pool."""
-    pool = AsyncMock()
-    conn = AsyncMock()
+    pool = MagicMock()  # Sync mock — pool.acquire() is a sync call in asyncpg
+    conn = AsyncMock()  # Async mock — conn.fetch(), conn.fetchrow() are async
 
-    # Mock context manager for pool.acquire()
-    pool.acquire.return_value.__aenter__.return_value = conn
-    pool.acquire.return_value.__aexit__.return_value = None
+    # pool.acquire() returns async context manager (sync call, async CM)
+    pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+    pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
     return pool, conn
 
@@ -44,7 +44,7 @@ def test_portfolio_snapshots_returns_results(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.portfolio._get_db_pool", return_value=pool):
+    with patch("api.routes.portfolio._get_db_pool", new_callable=AsyncMock, return_value=pool):
         client = TestClient(app)
         response = client.get("/portfolio/snapshots?limit=10")
 
@@ -57,13 +57,13 @@ def test_portfolio_snapshots_returns_results(mock_db_pool):
 
 def test_portfolio_latest_snapshot_not_found():
     """Test fetching latest snapshot when none exists."""
-    pool = AsyncMock()
+    pool = MagicMock()
     conn = AsyncMock()
     conn.fetchrow.return_value = None
-    pool.acquire.return_value.__aenter__.return_value = conn
-    pool.acquire.return_value.__aexit__.return_value = None
+    pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+    pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("api.routes.portfolio._get_db_pool", return_value=pool):
+    with patch("api.routes.portfolio._get_db_pool", new_callable=AsyncMock, return_value=pool):
         client = TestClient(app)
         response = client.get("/portfolio/snapshots/latest")
 
@@ -89,7 +89,7 @@ def test_portfolio_position_history_with_symbol_filter(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.portfolio._get_db_pool", return_value=pool):
+    with patch("api.routes.portfolio._get_db_pool", new_callable=AsyncMock, return_value=pool):
         client = TestClient(app)
         response = client.get("/portfolio/positions/history?symbol=BTCUSD&limit=10")
 
@@ -116,7 +116,7 @@ def test_portfolio_balance_history(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.portfolio._get_db_pool", return_value=pool):
+    with patch("api.routes.portfolio._get_db_pool", new_callable=AsyncMock, return_value=pool):
         client = TestClient(app)
         response = client.get("/portfolio/balances/history?exchange=bitfinex&currency=USD")
 
