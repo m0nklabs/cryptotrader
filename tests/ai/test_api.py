@@ -8,13 +8,12 @@ Part of issue #209 (P6) for #205 Multi-Brain AI.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-# Import after setting up mocks to avoid DB initialization
 from core.ai.types import ProviderName, RoleName
 
 
@@ -28,25 +27,14 @@ def mock_router():
     """Mock LLMRouter for testing."""
     router = Mock()
     router.evaluate_opportunity = AsyncMock()
+    router.get_usage_log = Mock(return_value=[])
+    router.clear_usage_log = Mock()
     return router
-
-
-@pytest.fixture
-def mock_session_factory():
-    """Mock database session factory."""
-    factory = Mock()
-    session = AsyncMock()
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    factory.return_value.__aenter__ = AsyncMock(return_value=session)
-    factory.return_value.__aexit__ = AsyncMock(return_value=False)
-    return factory
 
 
 @pytest.fixture
 def test_client():
     """Create test client with mocked dependencies."""
-    # Mock both router and session factory globally
     with (
         patch("api.routes.ai._get_router") as mock_get_router,
         patch("api.routes.ai._get_session_factory") as mock_get_factory,
@@ -54,9 +42,11 @@ def test_client():
         # Setup mock router
         mock_router_instance = Mock()
         mock_router_instance.evaluate_opportunity = AsyncMock()
+        mock_router_instance.get_usage_log = Mock(return_value=[])
+        mock_router_instance.clear_usage_log = Mock()
         mock_get_router.return_value = mock_router_instance
 
-        # Setup mock session factory
+        # Setup mock session factory - returns an async context manager
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
@@ -79,40 +69,42 @@ def test_client():
 
 def test_get_providers_health(test_client):
     """Test GET /api/ai/providers returns provider health status."""
-    with patch("api.routes.ai.ProviderRegistry.list_all") as mock_list:
-        # Mock providers
-        mock_provider = Mock()
-        mock_provider.name = ProviderName.DEEPSEEK
-        mock_provider.config.model = "deepseek-chat"
-        mock_provider.health_check = AsyncMock(return_value=True)
+    mock_instance = Mock()
+    mock_instance.config.api_key_env = "FAKE_KEY"
+    mock_instance.health_check = AsyncMock(return_value=True)
+    mock_instance.close = AsyncMock()
 
-        mock_list.return_value = [mock_provider]
-
+    with (
+        patch("api.routes.ai._provider_factory", return_value=lambda: mock_instance),
+        patch("api.routes.ai._provider_models", return_value=["test-model"]),
+        patch.dict("os.environ", {"FAKE_KEY": "test-value"}),
+    ):
         response = test_client.get("/api/ai/providers")
 
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) > 0
-        # Note: actual response structure depends on implementation
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
 
 
 def test_get_providers_includes_all_providers(test_client):
     """Test that all registered providers are included in response."""
-    with patch("api.routes.ai.ProviderRegistry.list_all") as mock_list:
-        # Mock multiple providers
-        providers = []
-        for name in [ProviderName.DEEPSEEK, ProviderName.OPENAI, ProviderName.XAI]:
-            mock_prov = Mock()
-            mock_prov.name = name
-            mock_prov.config.model = f"{name.value}-model"
-            mock_prov.health_check = AsyncMock(return_value=True)
-            providers.append(mock_prov)
+    mock_instance = Mock()
+    mock_instance.config.api_key_env = "FAKE_KEY"
+    mock_instance.health_check = AsyncMock(return_value=True)
+    mock_instance.close = AsyncMock()
 
-        mock_list.return_value = providers
-
+    with (
+        patch("api.routes.ai._provider_factory", return_value=lambda: mock_instance),
+        patch("api.routes.ai._provider_models", return_value=["test-model"]),
+        patch.dict("os.environ", {"FAKE_KEY": "test-value"}),
+    ):
         response = test_client.get("/api/ai/providers")
 
-        assert response.status_code == 200
+    assert response.status_code == 200
+    data = response.json()
+    # Should have one entry per ProviderName
+    assert len(data) == len(ProviderName.__members__)
 
 
 # ---------------------------------------------------------------------------
@@ -122,45 +114,58 @@ def test_get_providers_includes_all_providers(test_client):
 
 def test_get_roles(test_client):
     """Test GET /api/ai/roles returns all role configurations."""
-    with patch("api.routes.ai.RoleRegistry.list_all") as mock_list:
-        # Mock roles
-        mock_role = Mock()
-        mock_role.name = RoleName.TACTICAL
-        mock_role.config.provider = ProviderName.DEEPSEEK
-        mock_role.config.weight = 1.0
+    mock_config = Mock()
+    mock_config.name = "tactical"
+    mock_config.provider = ProviderName.DEEPSEEK.value
+    mock_config.model = "deepseek-chat"
+    mock_config.system_prompt_id = "tactical_v1"
+    mock_config.temperature = 0.7
+    mock_config.max_tokens = 2000
+    mock_config.weight = 1.0
+    mock_config.enabled = True
+    mock_config.fallback_provider = None
+    mock_config.fallback_model = None
+    mock_config.updated_at = datetime.now(timezone.utc)
 
-        mock_list.return_value = [mock_role]
-
+    with patch("api.routes.ai.ai_crud.get_role_configs", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = [mock_config]
         response = test_client.get("/api/ai/roles")
 
-        assert response.status_code == 200
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 1
 
 
 def test_get_single_role(test_client):
     """Test GET /api/ai/roles/{role} returns specific role config."""
-    with patch("api.routes.ai.RoleRegistry.get") as mock_get:
-        mock_role = Mock()
-        mock_role.name = RoleName.TACTICAL
-        mock_role.config.provider = ProviderName.DEEPSEEK
-        mock_role.config.weight = 1.0
-        mock_role.config.enabled = True
+    mock_config = Mock()
+    mock_config.name = "tactical"
+    mock_config.provider = ProviderName.DEEPSEEK.value
+    mock_config.model = "deepseek-chat"
+    mock_config.system_prompt_id = "tactical_v1"
+    mock_config.temperature = 0.7
+    mock_config.max_tokens = 2000
+    mock_config.weight = 1.0
+    mock_config.enabled = True
+    mock_config.fallback_provider = None
+    mock_config.fallback_model = None
+    mock_config.updated_at = datetime.now(timezone.utc)
 
-        mock_get.return_value = mock_role
+    with patch("api.routes.ai.ai_crud.get_role_config", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_config
+        response = test_client.get("/api/ai/roles/tactical")
 
-        response = test_client.get("/api/ai/roles/TACTICAL")
-
-        assert response.status_code == 200
+    assert response.status_code == 200
 
 
 def test_get_nonexistent_role_returns_404(test_client):
     """Test getting non-existent role returns 404."""
-    with patch("api.routes.ai.RoleRegistry.get") as mock_get:
+    with patch("api.routes.ai.ai_crud.get_role_config", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = None
-
         response = test_client.get("/api/ai/roles/NONEXISTENT")
 
-        # May return 404 or 422 depending on validation
-        assert response.status_code in [404, 422]
+    assert response.status_code == 404
 
 
 def test_update_role_config(test_client):
@@ -172,20 +177,24 @@ def test_update_role_config(test_client):
         "enabled": True,
     }
 
-    with (
-        patch("api.routes.ai.RoleRegistry.get") as mock_get,
-        patch("api.routes.ai.ai_crud.update_role_config") as mock_update,
-    ):
-        mock_role = Mock()
-        mock_role.name = RoleName.TACTICAL
-        mock_get.return_value = mock_role
+    mock_config = Mock()
+    mock_config.name = "tactical"
+    mock_config.provider = "OPENAI"
+    mock_config.model = "o3-mini"
+    mock_config.system_prompt_id = "tactical_v1"
+    mock_config.temperature = 0.7
+    mock_config.max_tokens = 2000
+    mock_config.weight = 1.5
+    mock_config.enabled = True
+    mock_config.fallback_provider = None
+    mock_config.fallback_model = None
+    mock_config.updated_at = datetime.now(timezone.utc)
 
-        mock_update.return_value = AsyncMock()
+    with patch("api.routes.ai.ai_crud.update_role_config", new_callable=AsyncMock) as mock_update:
+        mock_update.return_value = mock_config
+        response = test_client.put("/api/ai/roles/tactical", json=update_data)
 
-        response = test_client.put("/api/ai/roles/TACTICAL", json=update_data)
-
-        # Check response (may be 200 or 422 depending on validation)
-        assert response.status_code in [200, 422]
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -196,9 +205,6 @@ def test_update_role_config(test_client):
 def test_get_prompts_for_role(test_client):
     """Test GET /api/ai/prompts/{role} returns all prompts for role."""
     with patch("api.routes.ai.ai_crud.get_prompts", new_callable=AsyncMock) as mock_list:
-        from datetime import datetime, timezone
-
-        # Mock DB prompt object
         mock_prompt = Mock()
         mock_prompt.id = "tactical_v1"
         mock_prompt.role = "tactical"
@@ -210,15 +216,15 @@ def test_get_prompts_for_role(test_client):
 
         mock_list.return_value = [mock_prompt]
 
-        response = test_client.get("/api/ai/prompts/tactical")  # lowercase role
+        response = test_client.get("/api/ai/prompts/tactical")
 
-        assert response.status_code == 200
+    assert response.status_code == 200
 
 
 def test_create_new_prompt_version(test_client):
     """Test POST /api/ai/prompts creates new prompt version."""
     prompt_data = {
-        "role": "tactical",  # lowercase
+        "role": "tactical",
         "content": "New prompt content",
         "description": "New version",
     }
@@ -227,13 +233,10 @@ def test_create_new_prompt_version(test_client):
         patch("api.routes.ai.ai_crud.get_next_version", new_callable=AsyncMock) as mock_next,
         patch("api.routes.ai.ai_crud.create_prompt", new_callable=AsyncMock) as mock_create,
     ):
-        from datetime import datetime, timezone
-
         mock_next.return_value = 2
 
-        # Mock DB prompt object
         new_prompt = Mock()
-        new_prompt.id = "TACTICAL_v2"
+        new_prompt.id = "tactical_v2"
         new_prompt.role = "tactical"
         new_prompt.version = 2
         new_prompt.content = "New prompt content"
@@ -245,16 +248,12 @@ def test_create_new_prompt_version(test_client):
 
         response = test_client.post("/api/ai/prompts", json=prompt_data)
 
-        # Check response
-        assert response.status_code in [200, 201, 422]
+    assert response.status_code == 201
 
 
 def test_activate_prompt_version(test_client):
     """Test PUT /api/ai/prompts/{prompt_id}/activate activates a version."""
     with patch("api.routes.ai.ai_crud.activate_prompt", new_callable=AsyncMock) as mock_activate:
-        from datetime import datetime, timezone
-
-        # Mock DB prompt object
         activated_prompt = Mock()
         activated_prompt.id = "tactical_v2"
         activated_prompt.role = "tactical"
@@ -268,7 +267,7 @@ def test_activate_prompt_version(test_client):
 
         response = test_client.put("/api/ai/prompts/tactical_v2/activate")
 
-        assert response.status_code in [200, 422]
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +284,6 @@ def test_evaluate_opportunity_success(test_client):
         "timeframe": "1h",
     }
 
-    # Mock decision
     mock_decision = ConsensusDecision(
         final_action="BUY",
         final_confidence=0.85,
@@ -303,19 +301,31 @@ def test_evaluate_opportunity_success(test_client):
         total_latency_ms=450.0,
     )
 
-    with patch("api.routes.ai._get_router") as mock_get_router:
-        mock_router = Mock()
-        mock_router.evaluate_opportunity = AsyncMock(return_value=mock_decision)
-        mock_get_router.return_value = mock_router
+    mock_logged = Mock()
+    mock_logged.created_at = datetime.now(timezone.utc)
+
+    with (
+        patch("api.routes.ai._get_router") as mock_get_router,
+        patch("api.routes.ai.ai_crud.check_budget_exceeded", new_callable=AsyncMock) as mock_budget,
+        patch("api.routes.ai.ai_crud.log_decision_with_usage", new_callable=AsyncMock) as mock_log,
+        patch("api.routes.ai.RoleRegistry") as mock_role_reg,
+    ):
+        mock_router_inst = Mock()
+        mock_router_inst.evaluate_opportunity = AsyncMock(return_value=mock_decision)
+        mock_router_inst.get_usage_log = Mock(return_value=[])
+        mock_router_inst.clear_usage_log = Mock()
+        mock_get_router.return_value = mock_router_inst
+
+        mock_budget.return_value = {"exceeded": False, "daily_exceeded": False, "monthly_exceeded": False}
+        mock_role_reg.active_roles.return_value = []
+        mock_log.return_value = mock_logged
 
         response = test_client.post("/api/ai/evaluate", json=eval_request)
 
-        # Check response
-        assert response.status_code in [200, 422]
-
-        if response.status_code == 200:
-            data = response.json()
-            assert "final_action" in data or "action" in data
+    assert response.status_code == 200
+    data = response.json()
+    assert data["finalAction"] == "BUY"
+    assert data["finalConfidence"] == 0.85
 
 
 def test_evaluate_with_budget_exceeded(test_client):
@@ -325,16 +335,20 @@ def test_evaluate_with_budget_exceeded(test_client):
         "timeframe": "1h",
     }
 
-    with (
-        patch("api.routes.ai.ai_crud.check_budget_exceeded") as mock_budget,
-        patch("api.routes.ai._get_router") as mock_get_router,
-    ):
-        mock_budget.return_value = True  # Budget exceeded
+    with patch("api.routes.ai.ai_crud.check_budget_exceeded", new_callable=AsyncMock) as mock_budget:
+        mock_budget.return_value = {
+            "exceeded": True,
+            "daily_exceeded": True,
+            "monthly_exceeded": False,
+            "daily_limit": 1.0,
+            "monthly_limit": 30.0,
+            "daily_spent": 1.50,
+            "monthly_spent": 5.00,
+        }
 
         response = test_client.post("/api/ai/evaluate", json=eval_request)
 
-        # Should return 429 or 503
-        assert response.status_code in [429, 503, 422]
+    assert response.status_code == 429
 
 
 def test_evaluate_with_provider_error(test_client):
@@ -344,27 +358,26 @@ def test_evaluate_with_provider_error(test_client):
         "timeframe": "1h",
     }
 
-    with patch("api.routes.ai._get_router") as mock_get_router:
-        mock_router = Mock()
-        mock_router.evaluate_opportunity = AsyncMock(side_effect=Exception("Provider timeout"))
-        mock_get_router.return_value = mock_router
+    with (
+        patch("api.routes.ai._get_router") as mock_get_router,
+        patch("api.routes.ai.ai_crud.check_budget_exceeded", new_callable=AsyncMock) as mock_budget,
+        patch("api.routes.ai.RoleRegistry") as mock_role_reg,
+    ):
+        mock_router_inst = Mock()
+        mock_router_inst.evaluate_opportunity = AsyncMock(side_effect=Exception("Provider timeout"))
+        mock_get_router.return_value = mock_router_inst
+
+        mock_budget.return_value = {"exceeded": False, "daily_exceeded": False, "monthly_exceeded": False}
+        mock_role_reg.active_roles.return_value = []
 
         response = test_client.post("/api/ai/evaluate", json=eval_request)
 
-        # Should return 500 or 503
-        assert response.status_code in [500, 503]
+    assert response.status_code in [500, 503]
 
 
 def test_evaluate_missing_required_fields(test_client):
     """Test evaluation with missing required fields returns 422."""
-    # Missing timeframe
-    eval_request = {
-        "symbol": "BTC/USD",
-    }
-
-    response = test_client.post("/api/ai/evaluate", json=eval_request)
-
-    # Should return 422 Unprocessable Entity
+    response = test_client.post("/api/ai/evaluate", json={})
     assert response.status_code == 422
 
 
@@ -375,10 +388,20 @@ def test_evaluate_invalid_symbol_format(test_client):
         "timeframe": "1h",
     }
 
-    response = test_client.post("/api/ai/evaluate", json=eval_request)
+    with (
+        patch("api.routes.ai._get_router") as mock_get_router,
+        patch("api.routes.ai.ai_crud.check_budget_exceeded", new_callable=AsyncMock) as mock_budget,
+        patch("api.routes.ai.RoleRegistry") as mock_role_reg,
+    ):
+        mock_router_inst = Mock()
+        mock_router_inst.evaluate_opportunity = AsyncMock(side_effect=Exception("Unknown symbol"))
+        mock_get_router.return_value = mock_router_inst
 
-    # May return 422 or 200 depending on validation
-    # API may accept any string as symbol
+        mock_budget.return_value = {"exceeded": False, "daily_exceeded": False, "monthly_exceeded": False}
+        mock_role_reg.active_roles.return_value = []
+
+        response = test_client.post("/api/ai/evaluate", json=eval_request)
+
     assert response.status_code in [200, 422, 500, 503]
 
 
@@ -389,29 +412,26 @@ def test_evaluate_invalid_symbol_format(test_client):
 
 def test_get_decisions_history(test_client):
     """Test GET /api/ai/decisions returns decision history."""
-    with patch("api.routes.ai.ai_crud.get_decisions") as mock_get:
+    with patch("api.routes.ai.ai_crud.get_decisions", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = []
-
         response = test_client.get("/api/ai/decisions")
 
-        assert response.status_code in [200, 422]
+    assert response.status_code == 200
 
 
 def test_get_decisions_with_filters(test_client):
     """Test GET /api/ai/decisions with query filters."""
-    with patch("api.routes.ai.ai_crud.get_decisions") as mock_get:
+    with patch("api.routes.ai.ai_crud.get_decisions", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = []
-
         response = test_client.get(
             "/api/ai/decisions",
             params={
                 "symbol": "BTC/USD",
-                "timeframe": "1h",
                 "limit": 10,
             },
         )
 
-        assert response.status_code in [200, 422]
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -421,25 +441,27 @@ def test_get_decisions_with_filters(test_client):
 
 def test_get_usage_summary(test_client):
     """Test GET /api/ai/usage returns usage summary."""
-    with patch("api.routes.ai.ai_crud.get_usage_summary") as mock_summary:
+    with patch("api.routes.ai.ai_crud.get_usage_summary", new_callable=AsyncMock) as mock_summary:
         mock_summary.return_value = {
-            "total_calls": 100,
+            "total_requests": 100,
             "total_cost_usd": 3.40,
             "total_tokens_in": 15000,
             "total_tokens_out": 7500,
+            "by_role": {},
+            "by_provider": {},
         }
 
         response = test_client.get("/api/ai/usage")
 
-        assert response.status_code in [200, 422]
+    assert response.status_code == 200
 
 
 def test_get_daily_usage(test_client):
     """Test GET /api/ai/usage/daily returns daily breakdown."""
-    with patch("api.routes.ai.ai_crud.get_daily_usage") as mock_daily:
+    with patch("api.routes.ai.ai_crud.get_daily_usage", new_callable=AsyncMock) as mock_daily:
         mock_daily.return_value = [
             {
-                "date": "2026-02-18",
+                "date": "2026-02-28",
                 "total_calls": 50,
                 "total_cost_usd": 1.70,
             },
@@ -447,23 +469,30 @@ def test_get_daily_usage(test_client):
 
         response = test_client.get("/api/ai/usage/daily")
 
-        assert response.status_code in [200, 422]
+    assert response.status_code == 200
 
 
 def test_get_usage_with_date_range(test_client):
     """Test usage endpoints with date range filters."""
-    with patch("api.routes.ai.ai_crud.get_usage_summary") as mock_summary:
-        mock_summary.return_value = {}
+    with patch("api.routes.ai.ai_crud.get_usage_summary", new_callable=AsyncMock) as mock_summary:
+        mock_summary.return_value = {
+            "total_requests": 0,
+            "total_cost_usd": 0.0,
+            "total_tokens_in": 0,
+            "total_tokens_out": 0,
+            "by_role": {},
+            "by_provider": {},
+        }
 
         response = test_client.get(
             "/api/ai/usage",
             params={
-                "start_date": "2026-02-01",
-                "end_date": "2026-02-18",
+                "start_date": "2026-02-01T00:00:00Z",
+                "end_date": "2026-02-28T23:59:59Z",
             },
         )
 
-        assert response.status_code in [200, 422]
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -473,27 +502,21 @@ def test_get_usage_with_date_range(test_client):
 
 def test_missing_api_key_error():
     """Test that missing API key is handled appropriately."""
-    # This test assumes providers check for API keys
-    # The actual behavior depends on implementation
     pass
 
 
 def test_database_connection_error(test_client):
     """Test handling of database connection errors."""
     with patch("api.routes.ai._get_session_factory") as mock_factory:
-        mock_factory.side_effect = Exception("Database connection failed")
+        mock_factory.side_effect = RuntimeError("DATABASE_URL not set")
 
-        # Try to access an endpoint that needs DB
         response = test_client.get("/api/ai/decisions")
 
-        # Should return 500 or 503
-        assert response.status_code in [500, 503]
+    assert response.status_code in [500, 503]
 
 
 def test_rate_limit_exceeded():
     """Test handling of rate limit errors from providers."""
-    # This would be tested at the provider level
-    # API layer should handle these gracefully
     pass
 
 
@@ -505,21 +528,33 @@ def test_rate_limit_exceeded():
 @pytest.mark.asyncio
 async def test_budget_enforcement_daily_limit():
     """Test that daily budget limit is enforced before evaluation."""
-    from api.routes.ai import EvaluationRequest
+    from api.routes.ai import EvaluationRequest, evaluate_opportunity
 
-    request = EvaluationRequest(
-        symbol="BTC/USD",
-        timeframe="1h",
-    )
+    request = EvaluationRequest(symbol="BTC/USD", timeframe="1h")
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+
+    mock_factory = Mock()
+    mock_factory.return_value = mock_session
 
     with (
-        patch("api.routes.ai.ai_crud.check_budget_exceeded") as mock_budget,
-        patch("api.routes.ai._get_router") as mock_router,
+        patch("api.routes.ai.ai_crud.check_budget_exceeded", new_callable=AsyncMock) as mock_budget,
+        patch("api.routes.ai._get_router"),
+        patch("api.routes.ai._get_session_factory", return_value=mock_factory),
     ):
-        mock_budget.return_value = True  # Budget exceeded
+        mock_budget.return_value = {
+            "exceeded": True,
+            "daily_exceeded": True,
+            "monthly_exceeded": False,
+            "daily_limit": 1.0,
+            "monthly_limit": 30.0,
+            "daily_spent": 1.50,
+            "monthly_spent": 5.00,
+        }
 
-        # Import the endpoint function
-        from api.routes.ai import evaluate_opportunity
+        from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as exc_info:
             await evaluate_opportunity(request)
@@ -530,23 +565,38 @@ async def test_budget_enforcement_daily_limit():
 @pytest.mark.asyncio
 async def test_budget_enforcement_monthly_limit():
     """Test that monthly budget limit is checked."""
-    from api.routes.ai import EvaluationRequest
+    from api.routes.ai import EvaluationRequest, evaluate_opportunity
 
-    request = EvaluationRequest(
-        symbol="BTC/USD",
-        timeframe="1h",
-    )
+    request = EvaluationRequest(symbol="BTC/USD", timeframe="1h")
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+
+    mock_factory = Mock()
+    mock_factory.return_value = mock_session
 
     with (
-        patch("api.routes.ai.ai_crud.check_budget_exceeded") as mock_budget,
-        patch("api.routes.ai._get_router") as mock_router,
+        patch("api.routes.ai.ai_crud.check_budget_exceeded", new_callable=AsyncMock) as mock_budget,
+        patch("api.routes.ai._get_router"),
+        patch("api.routes.ai._get_session_factory", return_value=mock_factory),
     ):
-        # Daily OK, monthly exceeded
-        mock_budget.side_effect = [False, True]
+        mock_budget.return_value = {
+            "exceeded": True,
+            "daily_exceeded": False,
+            "monthly_exceeded": True,
+            "daily_limit": 5.0,
+            "monthly_limit": 30.0,
+            "daily_spent": 1.00,
+            "monthly_spent": 35.00,
+        }
 
-        # This depends on implementation details
-        # May check monthly budget separately
-        pass
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            await evaluate_opportunity(request)
+
+        assert exc_info.value.status_code == 429
 
 
 # ---------------------------------------------------------------------------
@@ -555,34 +605,43 @@ async def test_budget_enforcement_monthly_limit():
 
 
 def test_full_evaluation_workflow(test_client):
-    """Test complete workflow: check providers → roles → evaluate."""
+    """Test complete workflow: check providers -> roles -> evaluate."""
     from core.ai.types import ConsensusDecision
 
     # 1. Check providers are healthy
-    with patch("api.routes.ai.ProviderRegistry.list_all") as mock_providers:
-        mock_prov = Mock()
-        mock_prov.name = ProviderName.DEEPSEEK
-        mock_prov.health_check = AsyncMock(return_value=True)
-        mock_providers.return_value = [mock_prov]
+    mock_instance = Mock()
+    mock_instance.config.api_key_env = "FAKE_KEY"
+    mock_instance.health_check = AsyncMock(return_value=True)
+    mock_instance.close = AsyncMock()
 
+    with (
+        patch("api.routes.ai._provider_factory", return_value=lambda: mock_instance),
+        patch("api.routes.ai._provider_models", return_value=["test-model"]),
+        patch.dict("os.environ", {"FAKE_KEY": "test-value"}),
+    ):
         providers_response = test_client.get("/api/ai/providers")
         assert providers_response.status_code == 200
 
     # 2. Check roles are configured
-    with patch("api.routes.ai.RoleRegistry.list_all") as mock_roles:
-        mock_role = Mock()
-        mock_role.name = RoleName.TACTICAL
-        mock_roles.return_value = [mock_role]
+    mock_config = Mock()
+    mock_config.name = "tactical"
+    mock_config.provider = ProviderName.DEEPSEEK.value
+    mock_config.model = "deepseek-chat"
+    mock_config.system_prompt_id = "tactical_v1"
+    mock_config.temperature = 0.7
+    mock_config.max_tokens = 2000
+    mock_config.weight = 1.0
+    mock_config.enabled = True
+    mock_config.fallback_provider = None
+    mock_config.fallback_model = None
+    mock_config.updated_at = datetime.now(timezone.utc)
 
+    with patch("api.routes.ai.ai_crud.get_role_configs", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = [mock_config]
         roles_response = test_client.get("/api/ai/roles")
         assert roles_response.status_code == 200
 
     # 3. Evaluate
-    eval_request = {
-        "symbol": "BTC/USD",
-        "timeframe": "1h",
-    }
-
     mock_decision = ConsensusDecision(
         final_action="BUY",
         final_confidence=0.85,
@@ -593,19 +652,31 @@ def test_full_evaluation_workflow(test_client):
         total_latency_ms=450.0,
     )
 
-    with patch("api.routes.ai._get_router") as mock_get_router:
-        mock_router = Mock()
-        mock_router.evaluate_opportunity = AsyncMock(return_value=mock_decision)
-        mock_get_router.return_value = mock_router
+    mock_logged = Mock()
+    mock_logged.created_at = datetime.now(timezone.utc)
 
-        eval_response = test_client.post("/api/ai/evaluate", json=eval_request)
-        assert eval_response.status_code in [200, 422]
+    with (
+        patch("api.routes.ai._get_router") as mock_get_router,
+        patch("api.routes.ai.ai_crud.check_budget_exceeded", new_callable=AsyncMock) as mock_budget,
+        patch("api.routes.ai.ai_crud.log_decision_with_usage", new_callable=AsyncMock) as mock_log,
+        patch("api.routes.ai.RoleRegistry") as mock_role_reg,
+    ):
+        mock_router_inst = Mock()
+        mock_router_inst.evaluate_opportunity = AsyncMock(return_value=mock_decision)
+        mock_router_inst.get_usage_log = Mock(return_value=[])
+        mock_router_inst.clear_usage_log = Mock()
+        mock_get_router.return_value = mock_router_inst
+
+        mock_budget.return_value = {"exceeded": False, "daily_exceeded": False, "monthly_exceeded": False}
+        mock_role_reg.active_roles.return_value = []
+        mock_log.return_value = mock_logged
+
+        eval_response = test_client.post("/api/ai/evaluate", json={"symbol": "BTC/USD", "timeframe": "1h"})
+        assert eval_response.status_code == 200
 
 
 def test_prompt_version_management_workflow(test_client):
     """Test creating and activating a new prompt version."""
-    from datetime import datetime, timezone
-
     # 1. Get current prompts
     with patch("api.routes.ai.ai_crud.get_prompts", new_callable=AsyncMock) as mock_list:
         v1 = Mock()
@@ -618,7 +689,7 @@ def test_prompt_version_management_workflow(test_client):
         v1.created_at = datetime.now(timezone.utc)
         mock_list.return_value = [v1]
 
-        get_response = test_client.get("/api/ai/prompts/tactical")  # lowercase
+        get_response = test_client.get("/api/ai/prompts/tactical")
         assert get_response.status_code == 200
 
     # 2. Create new version
@@ -629,7 +700,7 @@ def test_prompt_version_management_workflow(test_client):
         mock_next.return_value = 2
 
         v2 = Mock()
-        v2.id = "tactical_v2"  # lowercase
+        v2.id = "tactical_v2"
         v2.role = "tactical"
         v2.version = 2
         v2.content = "V2"
@@ -640,18 +711,14 @@ def test_prompt_version_management_workflow(test_client):
 
         create_response = test_client.post(
             "/api/ai/prompts",
-            json={
-                "role": "tactical",  # lowercase
-                "content": "V2",
-                "description": "V2",
-            },
+            json={"role": "tactical", "content": "V2", "description": "V2"},
         )
-        assert create_response.status_code in [200, 201, 422]
+        assert create_response.status_code == 201
 
     # 3. Activate new version
     with patch("api.routes.ai.ai_crud.activate_prompt", new_callable=AsyncMock) as mock_activate:
         v2_active = Mock()
-        v2_active.id = "tactical_v2"  # lowercase
+        v2_active.id = "tactical_v2"
         v2_active.role = "tactical"
         v2_active.version = 2
         v2_active.content = "V2"
@@ -660,5 +727,5 @@ def test_prompt_version_management_workflow(test_client):
         v2_active.created_at = datetime.now(timezone.utc)
         mock_activate.return_value = v2_active
 
-        activate_response = test_client.put("/api/ai/prompts/tactical_v2/activate")  # lowercase
-        assert activate_response.status_code in [200, 422]
+        activate_response = test_client.put("/api/ai/prompts/tactical_v2/activate")
+        assert activate_response.status_code == 200
