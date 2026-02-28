@@ -18,6 +18,7 @@ import { Watchlist } from './components/Watchlist'
 import { TradeHistory } from './components/TradeHistory'
 import { RiskCalculator } from './components/RiskCalculator'
 import AiEvaluationPanel from './components/AiEvaluationPanel'
+import BacktestView from './views/BacktestView'
 import { sampleEquityCurve } from './data/performanceSample'
 import {
   placeOrder,
@@ -2042,6 +2043,9 @@ export default function App() {
               <AlertManager />
             </Panel>
           )}
+
+          {/* Backtest view — run backtests on historical data */}
+          {activeView === VIEW_IDS.BACKTEST && <BacktestView />}
         </main>
 
         <footer className="border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
