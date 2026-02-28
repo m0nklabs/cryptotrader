@@ -668,3 +668,127 @@ async def test_seed_idempotency(db_session):
     # Should have the same counts (no duplicates)
     assert len(configs_after) == len(configs_before)
     assert len(prompts_after) == len(prompts_before)
+
+
+@pytest.mark.asyncio
+async def test_seed_does_not_clobber_existing_configs(db_session):
+    """Test that seeding preserves user modifications to role configs."""
+    from scripts.seed_ai_defaults import seed_role_configs
+
+    # Modify an existing role config (should have been seeded in the fixture)
+    screener_config = await get_role_config(db_session, "screener")
+    assert screener_config is not None
+
+    # Update the config with custom values
+    custom_model = "custom-model-v2"
+    custom_temperature = 0.7
+    custom_weight = 2.5
+
+    await update_role_config(
+        db_session,
+        "screener",
+        model=custom_model,
+        temperature=custom_temperature,
+        weight=custom_weight,
+    )
+
+    # Verify the update
+    updated_config = await get_role_config(db_session, "screener")
+    assert updated_config.model == custom_model
+    assert updated_config.temperature == custom_temperature
+    assert updated_config.weight == custom_weight
+
+    # Run seeding again
+    await seed_role_configs(db_session)
+
+    # Verify user changes are preserved (not clobbered)
+    after_seed_config = await get_role_config(db_session, "screener")
+    assert after_seed_config.model == custom_model, "Seeding clobbered user's model choice"
+    assert after_seed_config.temperature == custom_temperature, "Seeding clobbered user's temperature"
+    assert after_seed_config.weight == custom_weight, "Seeding clobbered user's weight"
+
+
+@pytest.mark.asyncio
+async def test_seed_does_not_clobber_existing_prompts(db_session):
+    """Test that seeding preserves user modifications to prompts."""
+    from scripts.seed_ai_defaults import seed_system_prompts
+
+    # Get an existing prompt
+    tactical_prompts = await get_prompts(db_session, role="tactical")
+    assert len(tactical_prompts) > 0
+
+    # Create a new version of the tactical prompt
+    custom_content = "Custom tactical prompt with user modifications"
+    await create_prompt(
+        db_session,
+        prompt_id="tactical_v2",
+        role="tactical",
+        version=2,
+        content=custom_content,
+        description="User-created custom tactical prompt",
+        is_active=False,
+    )
+
+    # Activate the new prompt (this will automatically deactivate tactical_v1)
+    await activate_prompt(db_session, "tactical_v2")
+
+    # Run seeding again
+    await seed_system_prompts(db_session)
+
+    # Verify the custom prompt still exists
+    tactical_prompts_after = await get_prompts(db_session, role="tactical")
+    custom_prompt_exists = any(p.id == "tactical_v2" and p.content == custom_content for p in tactical_prompts_after)
+    assert custom_prompt_exists, "Seeding removed user's custom prompt"
+
+    # Verify custom prompt is still active
+    active_prompt = await get_active_prompt(db_session, "tactical")
+    assert active_prompt is not None
+    assert active_prompt.id == "tactical_v2", "Seeding changed the active prompt"
+
+
+@pytest.mark.asyncio
+async def test_seed_ensures_one_active_prompt_per_role(db_session):
+    """Test that each role has exactly one active prompt after seeding."""
+    from scripts.seed_ai_defaults import seed_system_prompts
+    from core.ai.types import RoleName
+
+    # Seed prompts
+    await seed_system_prompts(db_session)
+
+    # Check each role has exactly one active prompt
+    for role in list(RoleName):
+        role_prompts = await get_prompts(db_session, role=role.value)
+        active_prompts = [p for p in role_prompts if p.is_active]
+
+        assert len(active_prompts) == 1, (
+            f"Role {role.value} should have exactly 1 active prompt, found {len(active_prompts)}"
+        )
+
+        # Also verify get_active_prompt works
+        active_prompt = await get_active_prompt(db_session, role.value)
+        assert active_prompt is not None, f"Role {role.value} has no active prompt via get_active_prompt"
+        assert active_prompt.is_active, f"Active prompt for {role.value} is not marked as active"
+
+
+@pytest.mark.asyncio
+async def test_seed_creates_all_default_roles(db_session):
+    """Test that seeding creates configs for all 4 roles."""
+    from scripts.seed_ai_defaults import seed_role_configs
+    from core.ai.types import RoleName
+
+    # Clear existing configs for this test
+    await db_session.execute(text("DELETE FROM ai_role_configs"))
+    await db_session.commit()
+
+    # Seed role configs
+    await seed_role_configs(db_session)
+
+    # Verify all 4 roles have configs
+    configs = await get_role_configs(db_session)
+    config_names = {c.name for c in configs}
+
+    assert RoleName.SCREENER.value in config_names, "Missing SCREENER config"
+    assert RoleName.TACTICAL.value in config_names, "Missing TACTICAL config"
+    assert RoleName.FUNDAMENTAL.value in config_names, "Missing FUNDAMENTAL config"
+    assert RoleName.STRATEGIST.value in config_names, "Missing STRATEGIST config"
+    assert len(configs) == 4, f"Expected 4 role configs, found {len(configs)}"
