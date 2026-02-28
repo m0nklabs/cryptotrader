@@ -417,7 +417,9 @@ class MultiAgentPredictionService:
                         stats = await dossier_svc._gather_stats(exchange, sym)
                         current_prices[sym] = float(stats.get("price", 0))
                     except Exception:
-                        pass
+                        # Price lookup failure is non-fatal; symbol will be
+                        # skipped during outcome evaluation (current_price == 0).
+                        logger.debug("Price lookup failed for %s, skipping", sym)
 
                 # Evaluate outcomes
                 evaluated = 0

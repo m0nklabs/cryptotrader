@@ -488,34 +488,6 @@ async def list_providers():
         finally:
             await instance.close()
 
-            try:
-                healthy = await instance.health_check()
-                message = "OK" if healthy else "Unavailable"
-            except Exception:
-                logger.exception("Health check failed for provider %s", provider.value)
-                healthy = False
-                message = "Health check failed"
-
-            providers.append(
-                ProviderHealthResponse(
-                    name=provider.value,
-                    healthy=healthy,
-                    model=models[0] if models else instance.config.default_model,
-                    last_checked=checked_at,
-                    message=message,
-                )
-                continue
-
-        try:
-            healthy = await instance.health_check()
-            message = "OK" if healthy else "Unavailable"
-        except Exception as exc:
-            healthy = False
-            logger.exception("Health check failed for provider %s", provider.value)
-            message = "Health check failed"
-        finally:
-            await instance.close()
-
         providers.append(
             ProviderHealthResponse(
                 name=provider.value,
