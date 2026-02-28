@@ -16,6 +16,28 @@ from fastapi.testclient import TestClient
 
 from core.ai.types import ConsensusDecision, ProviderName, RoleName, RoleVerdict
 
+# Budget status that allows evaluation (not exceeded)
+_BUDGET_OK = {
+    "exceeded": False,
+    "daily_exceeded": False,
+    "monthly_exceeded": False,
+    "daily_limit": 10.0,
+    "monthly_limit": 100.0,
+    "daily_spent": 0.0,
+    "monthly_spent": 0.0,
+}
+
+
+@pytest.fixture(autouse=True)
+def _mock_budget_check():
+    """Auto-mock budget check so evaluate tests don't need a real DB."""
+    with patch(
+        "api.routes.ai.ai_crud.check_budget_exceeded",
+        new_callable=AsyncMock,
+        return_value=_BUDGET_OK,
+    ):
+        yield
+
 
 @pytest.fixture
 def client():
