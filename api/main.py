@@ -50,6 +50,9 @@ from api.routes import (
     arbitrage as arbitrage_routes,
     dossier as dossier_routes,
     ai as ai_routes,
+    portfolio,
+    watchlist,
+    trade_history,
 )
 
 # Import middleware for rate limit tracking
@@ -2067,3 +2070,6 @@ app.include_router(ws_routes.router)
 app.include_router(arbitrage_routes.router)
 app.include_router(dossier_routes.router)
 app.include_router(ai_routes.router)
+app.include_router(portfolio.router)
+app.include_router(watchlist.router)
+app.include_router(trade_history.router)

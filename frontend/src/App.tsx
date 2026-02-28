@@ -12,6 +12,10 @@ import ShortcutHelp from './components/ShortcutHelp'
 import OpportunityScore from './components/OpportunityScore'
 import CoinDossier from './components/CoinDossier'
 import PerformanceCharts from './components/PerformanceCharts'
+import { PortfolioDashboard } from './components/PortfolioDashboard'
+import { Watchlist } from './components/Watchlist'
+import { TradeHistory } from './components/TradeHistory'
+import { RiskCalculator } from './components/RiskCalculator'
 import { sampleEquityCurve } from './data/performanceSample'
 import {
   placeOrder,
@@ -2001,6 +2005,26 @@ export default function App() {
             <Panel title="Coin Dossiers" subtitle="Daily AI-generated analysis per coin">
               <CoinDossier exchange={selectedExchange} />
             </Panel>
+          )}
+
+          {/* Portfolio Dashboard view */}
+          {activeView === VIEW_IDS.PORTFOLIO && (
+            <PortfolioDashboard />
+          )}
+
+          {/* Watchlist view */}
+          {activeView === VIEW_IDS.WATCHLIST && (
+            <Watchlist />
+          )}
+
+          {/* Trade History view */}
+          {activeView === VIEW_IDS.TRADE_HISTORY && (
+            <TradeHistory />
+          )}
+
+          {/* Risk Calculator view */}
+          {activeView === VIEW_IDS.RISK_CALCULATOR && (
+            <RiskCalculator />
           )}
         </main>
 
