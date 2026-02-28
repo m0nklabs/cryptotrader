@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import { useAlerts, useCreateAlert, useDeleteAlert, useUpdateAlert } from '../hooks/useAlerts'
 import AlertForm from './AlertForm'
 import type { Alert } from '../api/alerts'
-import { requestNotificationPermission, isNotificationSupported } from '../lib/notifications'
+import { requestNotificationPermission } from '../lib/notifications'
 
 type ViewMode = 'list' | 'create' | 'history'
 
