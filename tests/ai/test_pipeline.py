@@ -603,7 +603,9 @@ async def test_pipeline_different_symbols():
         enabled=True,
     )
 
-    async def mock_eval(symbol, *args, **kwargs):
+    async def mock_eval(request, system_prompt="", **kwargs):
+        # Extract symbol from request context
+        symbol = request.context.get("symbol", "") if request.context else ""
         # Return different actions based on symbol
         action = "BUY" if "BTC" in symbol else "SELL"
         return (
@@ -660,7 +662,9 @@ async def test_pipeline_different_timeframes():
         enabled=True,
     )
 
-    async def mock_eval(symbol, timeframe, *args, **kwargs):
+    async def mock_eval(request, system_prompt="", **kwargs):
+        # Extract timeframe from request context
+        timeframe = request.context.get("timeframe", "") if request.context else ""
         return (
             AIResponse(
                 role=RoleName.TACTICAL,

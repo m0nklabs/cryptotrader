@@ -92,8 +92,8 @@ async def test_load_from_db_success(mock_db_session):
     """Test loading prompts from database."""
     # Mock DB prompts - use lowercase role names to match RoleName enum
     db_prompt1 = Mock()
-    db_prompt1.id = "TACTICAL_v1"
-    db_prompt1.role = "TACTICAL"  # Registry converts to RoleName
+    db_prompt1.id = "tactical_v1"
+    db_prompt1.role = "tactical"  # RoleName.TACTICAL.value = "tactical"
     db_prompt1.version = 1
     db_prompt1.content = "Test prompt content"
     db_prompt1.description = "Test prompt"
@@ -101,8 +101,8 @@ async def test_load_from_db_success(mock_db_session):
     db_prompt1.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
     db_prompt2 = Mock()
-    db_prompt2.id = "SCREENER_v1"
-    db_prompt2.role = "SCREENER"
+    db_prompt2.id = "screener_v1"
+    db_prompt2.role = "screener"  # RoleName.SCREENER.value = "screener"
     db_prompt2.version = 1
     db_prompt2.content = "Screener prompt"
     db_prompt2.description = "Screener v1"
@@ -116,8 +116,8 @@ async def test_load_from_db_success(mock_db_session):
 
     # Check prompts were loaded
     assert len(PromptRegistry._prompts) == 2
-    assert "TACTICAL_v1" in PromptRegistry._prompts
-    assert "SCREENER_v1" in PromptRegistry._prompts
+    assert "tactical_v1" in PromptRegistry._prompts
+    assert "screener_v1" in PromptRegistry._prompts
     assert PromptRegistry._db_enabled is True
     assert PromptRegistry._db_loaded is True
 
@@ -154,8 +154,8 @@ async def test_load_from_db_skips_invalid_roles(mock_db_session):
     """Test that prompts with invalid role names are skipped."""
     # Mock DB prompt with invalid role
     db_prompt_valid = Mock()
-    db_prompt_valid.id = "TACTICAL_v1"
-    db_prompt_valid.role = "TACTICAL"
+    db_prompt_valid.id = "tactical_v1"
+    db_prompt_valid.role = "tactical"  # Valid lowercase role name
     db_prompt_valid.version = 1
     db_prompt_valid.content = "Valid prompt"
     db_prompt_valid.description = "Valid"
@@ -178,7 +178,7 @@ async def test_load_from_db_skips_invalid_roles(mock_db_session):
 
     # Should only have the valid prompt
     assert len(PromptRegistry._prompts) == 1
-    assert "TACTICAL_v1" in PromptRegistry._prompts
+    assert "tactical_v1" in PromptRegistry._prompts
     assert "invalid_v1" not in PromptRegistry._prompts
 
 
@@ -335,7 +335,7 @@ async def test_activate_prompt_by_id(mock_db_session):
         # Mock DB response
         db_prompt = Mock()
         db_prompt.id = "TACTICAL_v2"
-        db_prompt.role = "TACTICAL"
+        db_prompt.role = "tactical"  # lowercase to match RoleName.TACTICAL.value
         db_prompt.version = 2
         db_prompt.content = "V2"
         db_prompt.description = "V2"

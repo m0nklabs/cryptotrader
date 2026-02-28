@@ -86,95 +86,8 @@ async def list_trades(
     }
 
 
-@router.get("/{trade_id}")
-async def get_trade(trade_id: str) -> dict[str, Any]:
-    """Get a specific trade by trade_id."""
-    pool = await _get_db_pool()
-
-    async with pool.acquire() as conn:
-        trade = await trade_crud.get_trade_by_id(conn, trade_id)
-
-    if not trade:
-        raise HTTPException(status_code=404, detail="Trade not found")
-
-    return {
-        "trade": {
-            "id": trade["id"],
-            "trade_id": trade["trade_id"],
-            "order_id": trade["order_id"],
-            "exchange": trade["exchange"],
-            "symbol": trade["symbol"],
-            "side": trade["side"],
-            "quantity": str(trade["quantity"]),
-            "price": str(trade["price"]),
-            "fee": str(trade["fee"]),
-            "fee_currency": trade["fee_currency"],
-            "quote_qty": str(trade["quote_qty"]),
-            "trade_type": trade["trade_type"],
-            "execution_time": trade["execution_time"].isoformat(),
-            "is_paper": trade["is_paper"],
-        }
-    }
-
-
-@router.post("/")
-async def create_trade(
-    trade_id: str,
-    exchange: str,
-    symbol: str,
-    side: str,
-    quantity: str,
-    price: str,
-    execution_time: str,
-    order_id: str | None = None,
-    fee: str = "0",
-    fee_currency: str | None = None,
-    trade_type: str = "market",
-    is_paper: bool = True,
-) -> dict[str, Any]:
-    """Create a trade execution record.
-
-    This endpoint allows manual creation of trade records for testing
-    or integration with external systems.
-    """
-    pool = await _get_db_pool()
-
-    try:
-        quantity_dec = Decimal(quantity)
-        price_dec = Decimal(price)
-        fee_dec = Decimal(fee)
-        execution_dt = datetime.fromisoformat(execution_time)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid input: {e}")
-
-    async with pool.acquire() as conn:
-        record_id = await trade_crud.create_trade(
-            conn,
-            trade_id=trade_id,
-            exchange=exchange,
-            symbol=symbol,
-            side=side,
-            quantity=quantity_dec,
-            price=price_dec,
-            execution_time=execution_dt,
-            order_id=order_id,
-            fee=fee_dec,
-            fee_currency=fee_currency,
-            trade_type=trade_type,
-            is_paper=is_paper,
-        )
-
-    if not record_id:
-        raise HTTPException(status_code=409, detail="Trade ID already exists")
-
-    return {
-        "success": True,
-        "trade_record_id": record_id,
-    }
-
-
 # ---------------------------------------------------------------------------
-# Order Audit Log
+# Order Audit Log (must be before /{trade_id} to avoid route shadowing)
 # ---------------------------------------------------------------------------
 
 
@@ -281,4 +194,96 @@ async def log_order_event(
     return {
         "success": True,
         "log_id": log_id,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Single Trade Lookup
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{trade_id}")
+async def get_trade(trade_id: str) -> dict[str, Any]:
+    """Get a specific trade by trade_id."""
+    pool = await _get_db_pool()
+
+    async with pool.acquire() as conn:
+        trade = await trade_crud.get_trade_by_id(conn, trade_id)
+
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+
+    return {
+        "trade": {
+            "id": trade["id"],
+            "trade_id": trade["trade_id"],
+            "order_id": trade["order_id"],
+            "exchange": trade["exchange"],
+            "symbol": trade["symbol"],
+            "side": trade["side"],
+            "quantity": str(trade["quantity"]),
+            "price": str(trade["price"]),
+            "fee": str(trade["fee"]),
+            "fee_currency": trade["fee_currency"],
+            "quote_qty": str(trade["quote_qty"]),
+            "trade_type": trade["trade_type"],
+            "execution_time": trade["execution_time"].isoformat(),
+            "is_paper": trade["is_paper"],
+        }
+    }
+
+
+@router.post("/")
+async def create_trade(
+    trade_id: str,
+    exchange: str,
+    symbol: str,
+    side: str,
+    quantity: str,
+    price: str,
+    execution_time: str,
+    order_id: str | None = None,
+    fee: str = "0",
+    fee_currency: str | None = None,
+    trade_type: str = "market",
+    is_paper: bool = True,
+) -> dict[str, Any]:
+    """Create a trade execution record.
+
+    This endpoint allows manual creation of trade records for testing
+    or integration with external systems.
+    """
+    pool = await _get_db_pool()
+
+    try:
+        quantity_dec = Decimal(quantity)
+        price_dec = Decimal(price)
+        fee_dec = Decimal(fee)
+        execution_dt = datetime.fromisoformat(execution_time)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid input: {e}")
+
+    async with pool.acquire() as conn:
+        record_id = await trade_crud.create_trade(
+            conn,
+            trade_id=trade_id,
+            exchange=exchange,
+            symbol=symbol,
+            side=side,
+            quantity=quantity_dec,
+            price=price_dec,
+            execution_time=execution_dt,
+            order_id=order_id,
+            fee=fee_dec,
+            fee_currency=fee_currency,
+            trade_type=trade_type,
+            is_paper=is_paper,
+        )
+
+    if not record_id:
+        raise HTTPException(status_code=409, detail="Trade ID already exists")
+
+    return {
+        "success": True,
+        "trade_record_id": record_id,
     }

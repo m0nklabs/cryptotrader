@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,11 +14,12 @@ from api.main import app
 @pytest.fixture
 def mock_db_pool():
     """Mock asyncpg connection pool."""
-    pool = AsyncMock()
-    conn = AsyncMock()
+    pool = MagicMock()  # Sync mock — pool.acquire() is a sync call in asyncpg
+    conn = AsyncMock()  # Async mock — conn.fetch(), conn.fetchrow() are async
 
-    pool.acquire.return_value.__aenter__.return_value = conn
-    pool.acquire.return_value.__aexit__.return_value = None
+    # pool.acquire() returns async context manager (sync call, async CM)
+    pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+    pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
     return pool, conn
 
@@ -39,7 +40,7 @@ def test_list_watchlists(mock_db_pool):
         }
     ]
 
-    with patch("api.routes.watchlist._get_db_pool", return_value=pool):
+    with patch("api.routes.watchlist._get_db_pool", new_callable=AsyncMock, return_value=pool):
         client = TestClient(app)
         response = client.get("/watchlist/")
 
@@ -76,7 +77,7 @@ def test_get_watchlist_with_items(mock_db_pool):
         [],  # column preferences
     ]
 
-    with patch("api.routes.watchlist._get_db_pool", return_value=pool):
+    with patch("api.routes.watchlist._get_db_pool", new_callable=AsyncMock, return_value=pool):
         client = TestClient(app)
         response = client.get("/watchlist/1")
 
@@ -92,7 +93,7 @@ def test_get_watchlist_not_found(mock_db_pool):
     pool, conn = mock_db_pool
     conn.fetchrow.return_value = None
 
-    with patch("api.routes.watchlist._get_db_pool", return_value=pool):
+    with patch("api.routes.watchlist._get_db_pool", new_callable=AsyncMock, return_value=pool):
         client = TestClient(app)
         response = client.get("/watchlist/999")
 
@@ -104,9 +105,9 @@ def test_create_watchlist(mock_db_pool):
     pool, conn = mock_db_pool
     conn.fetchval.return_value = 1
 
-    with patch("api.routes.watchlist._get_db_pool", return_value=pool):
+    with patch("api.routes.watchlist._get_db_pool", new_callable=AsyncMock, return_value=pool):
         client = TestClient(app)
-        response = client.post("/watchlist/", params={"name": "New Watchlist", "description": "Test list"})
+        response = client.post("/watchlist/", json={"name": "New Watchlist", "description": "Test list"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -119,7 +120,7 @@ def test_delete_watchlist(mock_db_pool):
     pool, conn = mock_db_pool
     conn.execute.return_value = "DELETE 1"
 
-    with patch("api.routes.watchlist._get_db_pool", return_value=pool):
+    with patch("api.routes.watchlist._get_db_pool", new_callable=AsyncMock, return_value=pool):
         client = TestClient(app)
         response = client.delete("/watchlist/1")
 
