@@ -125,3 +125,21 @@ class AIDecision(Base):
 
     def __repr__(self) -> str:
         return f"<AIDecision(id={self.id}, symbol={self.symbol}, action={self.final_action})>"
+
+
+class AIBudgetConfig(Base):
+    """Budget configuration for LLM spend control.
+
+    Table: ai_budget_config
+    """
+
+    __tablename__ = "ai_budget_config"
+
+    id = Column(Text, primary_key=True)  # 'global' or role name
+    daily_limit_usd = Column(Float, nullable=False, default=0.0)  # 0.0 = unlimited
+    monthly_limit_usd = Column(Float, nullable=False, default=0.0)  # 0.0 = unlimited
+    enabled = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    def __repr__(self) -> str:
+        return f"<AIBudgetConfig(id={self.id}, daily=${self.daily_limit_usd}, monthly=${self.monthly_limit_usd})>"

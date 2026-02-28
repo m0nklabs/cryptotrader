@@ -13,7 +13,7 @@ from typing import Sequence
 from sqlalchemy import select, update, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models.ai import AIDecision, AIRoleConfig, AIUsageLog, SystemPrompt
+from db.models.ai import AIBudgetConfig, AIDecision, AIRoleConfig, AIUsageLog, SystemPrompt
 
 logger = logging.getLogger(__name__)
 
@@ -646,3 +646,196 @@ async def get_daily_usage(
         }
         for row in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Budget Configuration Operations
+# ---------------------------------------------------------------------------
+
+
+async def get_budget_config(db: AsyncSession, scope: str = "global") -> AIBudgetConfig | None:
+    """Get budget configuration for a specific scope.
+
+    Args:
+        scope: Budget scope - 'global' or a role name (screener|tactical|fundamental|strategist)
+
+    Returns:
+        AIBudgetConfig object if found, None otherwise.
+    """
+    result = await db.execute(select(AIBudgetConfig).where(AIBudgetConfig.id == scope))
+    return result.scalars().first()
+
+
+async def update_budget_config(
+    db: AsyncSession,
+    scope: str,
+    daily_limit_usd: float | None = None,
+    monthly_limit_usd: float | None = None,
+    enabled: bool | None = None,
+) -> AIBudgetConfig | None:
+    """Update budget configuration for a scope.
+
+    Args:
+        scope: Budget scope - 'global' or a role name
+        daily_limit_usd: Daily spend limit in USD (0.0 = unlimited)
+        monthly_limit_usd: Monthly spend limit in USD (0.0 = unlimited)
+        enabled: Whether budget enforcement is enabled
+
+    Returns:
+        Updated AIBudgetConfig or None if not found.
+    """
+    values = {"updated_at": func.now()}
+    if daily_limit_usd is not None:
+        values["daily_limit_usd"] = daily_limit_usd
+    if monthly_limit_usd is not None:
+        values["monthly_limit_usd"] = monthly_limit_usd
+    if enabled is not None:
+        values["enabled"] = enabled
+
+    await db.execute(update(AIBudgetConfig).where(AIBudgetConfig.id == scope).values(**values))
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    return await get_budget_config(db, scope)
+
+
+async def check_budget_exceeded(
+    db: AsyncSession,
+    scope: str = "global",
+    roles: list[str] | None = None,
+) -> dict:
+    """Check if budget limits are exceeded for a scope.
+
+    Args:
+        scope: Budget scope - 'global' or a role name
+        roles: List of role names to check (for global scope, checks all specified roles)
+
+    Returns:
+        Dict with keys:
+        - exceeded: bool - True if any limit is exceeded
+        - daily_exceeded: bool - True if daily limit exceeded
+        - monthly_exceeded: bool - True if monthly limit exceeded
+        - daily_spent: float - Amount spent today
+        - daily_limit: float - Daily limit (0.0 = unlimited)
+        - daily_remaining: float - Remaining daily budget (negative if exceeded)
+        - monthly_spent: float - Amount spent this month
+        - monthly_limit: float - Monthly limit (0.0 = unlimited)
+        - monthly_remaining: float - Remaining monthly budget (negative if exceeded)
+        - enabled: bool - Whether budget enforcement is enabled
+    """
+    from datetime import timezone
+
+    # Get budget config
+    config = await get_budget_config(db, scope)
+    if not config:
+        # No config found - budget enforcement disabled (logged as warning)
+        logger.warning(f"Budget config not found for scope '{scope}' - treating as unlimited")
+        return {
+            "exceeded": False,
+            "daily_exceeded": False,
+            "monthly_exceeded": False,
+            "daily_spent": 0.0,
+            "daily_limit": 0.0,
+            "daily_remaining": 0.0,
+            "monthly_spent": 0.0,
+            "monthly_limit": 0.0,
+            "monthly_remaining": 0.0,
+            "enabled": False,
+        }
+
+    # Calculate time boundaries (UTC)
+    now = datetime.now(timezone.utc)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Build query conditions
+    conditions = [AIUsageLog.created_at >= start_of_day]
+    if scope != "global":
+        # For role-specific scope, filter by role
+        conditions.append(AIUsageLog.role == scope)
+    elif roles:
+        # For global scope with specific roles, filter by those roles
+        conditions.append(AIUsageLog.role.in_(roles))
+
+    # Get daily spending
+    daily_query = select(func.sum(AIUsageLog.cost_usd).label("total_cost")).where(and_(*conditions))
+    daily_result = await db.execute(daily_query)
+    daily_spent = float(daily_result.scalar() or 0.0)
+
+    # Get monthly spending
+    monthly_conditions = conditions.copy()
+    monthly_conditions[0] = AIUsageLog.created_at >= start_of_month
+    monthly_query = select(func.sum(AIUsageLog.cost_usd).label("total_cost")).where(and_(*monthly_conditions))
+    monthly_result = await db.execute(monthly_query)
+    monthly_spent = float(monthly_result.scalar() or 0.0)
+
+    # If budget enforcement is disabled, still return actual spend but don't enforce
+    if not config.enabled:
+        # Calculate remaining budget for monitoring even when disabled
+        if config.daily_limit_usd > 0.0:
+            daily_remaining = config.daily_limit_usd - daily_spent
+        else:
+            daily_remaining = 0.0  # unlimited
+
+        if config.monthly_limit_usd > 0.0:
+            monthly_remaining = config.monthly_limit_usd - monthly_spent
+        else:
+            monthly_remaining = 0.0  # unlimited
+
+        return {
+            "exceeded": False,  # Never exceeded when disabled
+            "daily_exceeded": False,
+            "monthly_exceeded": False,
+            "daily_spent": daily_spent,
+            "daily_limit": config.daily_limit_usd,
+            "daily_remaining": daily_remaining,
+            "monthly_spent": monthly_spent,
+            "monthly_limit": config.monthly_limit_usd,
+            "monthly_remaining": monthly_remaining,
+            "enabled": False,
+        }
+
+    # Check if limits are exceeded (0.0 means unlimited)
+    daily_exceeded = config.daily_limit_usd > 0.0 and daily_spent >= config.daily_limit_usd
+    monthly_exceeded = config.monthly_limit_usd > 0.0 and monthly_spent >= config.monthly_limit_usd
+
+    # Calculate remaining budget
+    if config.daily_limit_usd > 0.0:
+        daily_remaining = config.daily_limit_usd - daily_spent
+    else:
+        daily_remaining = 0.0  # unlimited
+
+    if config.monthly_limit_usd > 0.0:
+        monthly_remaining = config.monthly_limit_usd - monthly_spent
+    else:
+        monthly_remaining = 0.0  # unlimited
+
+    return {
+        "exceeded": daily_exceeded or monthly_exceeded,
+        "daily_exceeded": daily_exceeded,
+        "monthly_exceeded": monthly_exceeded,
+        "daily_spent": daily_spent,
+        "daily_limit": config.daily_limit_usd,
+        "daily_remaining": daily_remaining,
+        "monthly_spent": monthly_spent,
+        "monthly_limit": config.monthly_limit_usd,
+        "monthly_remaining": monthly_remaining,
+        "enabled": config.enabled,
+    }
+
+
+async def get_budget_status(db: AsyncSession) -> dict:
+    """Get budget status for all scopes (global + all roles).
+
+    Returns:
+        Dict with keys 'global', 'screener', 'tactical', 'fundamental', 'strategist'.
+        Each value is a dict from check_budget_exceeded().
+    """
+    scopes = ["global", "screener", "tactical", "fundamental", "strategist"]
+    result = {}
+    for scope in scopes:
+        result[scope] = await check_budget_exceeded(db, scope)
+    return result
