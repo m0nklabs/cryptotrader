@@ -511,6 +511,13 @@ async def log_decision_with_usage(
     if usage_records is None:
         usage_records = []
 
+    # Validate required keys in usage records before touching the session
+    required_keys = {"role", "provider", "model", "tokens_in", "tokens_out", "cost_usd", "latency_ms"}
+    for idx, record in enumerate(usage_records):
+        missing = required_keys - record.keys()
+        if missing:
+            raise KeyError(f"usage_records[{idx}] missing required keys: {sorted(missing)}")
+
     # Create decision
     decision = AIDecision(
         symbol=symbol,
