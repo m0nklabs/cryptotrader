@@ -16,6 +16,7 @@ import { PortfolioDashboard } from './components/PortfolioDashboard'
 import { Watchlist } from './components/Watchlist'
 import { TradeHistory } from './components/TradeHistory'
 import { RiskCalculator } from './components/RiskCalculator'
+import AiEvaluationPanel from './components/AiEvaluationPanel'
 import { sampleEquityCurve } from './data/performanceSample'
 import {
   placeOrder,
@@ -2025,6 +2026,13 @@ export default function App() {
           {/* Risk Calculator view */}
           {activeView === VIEW_IDS.RISK_CALCULATOR && (
             <RiskCalculator />
+          )}
+
+          {/* AI Multi-Brain Evaluation view */}
+          {activeView === VIEW_IDS.AI_EVALUATE && (
+            <Panel title="Multi-Brain Evaluation" subtitle="AI consensus decision engine">
+              <AiEvaluationPanel />
+            </Panel>
           )}
         </main>
 

@@ -11,6 +11,8 @@ export const VIEW_IDS = {
   SIGNALS: 'signals',
   OPPORTUNITIES: 'opportunities',
   COIN_DOSSIER: 'coin-dossier',
+  // AI
+  AI_EVALUATE: 'ai-evaluate',
   // Market Data
   MARKET_WATCH: 'market-watch',
   INGESTION_STATUS: 'ingestion-status',
@@ -75,6 +77,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: VIEW_IDS.SIGNALS, label: 'Signals', icon: '🎯', status: 'ready' },
       { id: VIEW_IDS.OPPORTUNITIES, label: 'Opportunities', icon: '💡', status: 'beta' },
       { id: VIEW_IDS.COIN_DOSSIER, label: 'Dossiers', icon: '📁', status: 'new' },
+    ],
+  },
+  {
+    id: 'ai',
+    title: 'AI',
+    items: [
+      { id: VIEW_IDS.AI_EVALUATE, label: 'Multi-Brain', icon: '🧠', status: 'new' },
     ],
   },
   {
