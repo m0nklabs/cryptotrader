@@ -1,17 +1,21 @@
-"""Ollama LLM integration for natural language trading analysis.
+"""Guardian LLM integration for natural language trading analysis.
 
 Provides AI-powered explanations and insights for trading decisions.
-Uses local Ollama models for privacy and cost efficiency.
+Uses the local Guardian proxy (llama_cpp_guardian) via the OpenAI-compatible
+/v1/chat/completions endpoint for privacy and cost efficiency.
 
 Usage:
-    from core.signals.llm import OllamaAnalyst, get_llm_analysis
+    from core.signals.llm import GuardianAnalyst, get_llm_analysis
 
     # Quick analysis
     explanation = await get_llm_analysis(analysis, question="should I buy?")
 
     # Full analyst
-    analyst = OllamaAnalyst(model="llama3.2")
+    analyst = GuardianAnalyst(model="GLM-4.7-Flash")
     response = await analyst.explain(analysis)
+
+# Backward-compat alias:
+#   OllamaAnalyst = GuardianAnalyst  (defined at module bottom)
 """
 
 from __future__ import annotations
@@ -39,10 +43,14 @@ class LLMResponse:
     tokens_used: int = 0
 
 
-class OllamaAnalyst:
-    """Ollama-based trading analyst for natural language explanations."""
+class GuardianAnalyst:
+    """Guardian-proxy-based trading analyst for natural language explanations.
 
-    DEFAULT_MODEL = "llama3.2"
+    Uses the local llama_cpp_guardian proxy at /v1/chat/completions with
+    Bearer token authentication (GUARDIAN_API_KEY env var).
+    """
+
+    DEFAULT_MODEL = "GLM-4.7-Flash"
     DEFAULT_HOST = "http://localhost:11434"
 
     # System prompt for trading analysis
@@ -69,24 +77,25 @@ CONFIDENCE: (your confidence in the analysis)"""
         host: str | None = None,
         timeout: float = 60.0,
     ):
-        """Initialize Ollama analyst.
+        """Initialize Guardian analyst.
 
         Args:
-            model: Ollama model name (default: llama3.2)
-            host: Ollama API host (default: http://localhost:11434)
+            model: Model name served by Guardian (default: GLM-4.7-Flash)
+            host: Guardian proxy host (default: http://localhost:11434)
             timeout: Request timeout in seconds
+
+        Environment variables:
+            GUARDIAN_API_KEY: Bearer token for Guardian proxy
+            GUARDIAN_HOST: Guardian proxy URL
+            GUARDIAN_MODEL: Override default model
         """
-        self.model = model or os.environ.get("OLLAMA_MODEL", self.DEFAULT_MODEL)
-        self.host = host or os.environ.get("OLLAMA_HOST", self.DEFAULT_HOST)
+        self.model = model or os.environ.get("GUARDIAN_MODEL", self.DEFAULT_MODEL)
+        self.host = host or os.environ.get("GUARDIAN_HOST", self.DEFAULT_HOST)
         self.timeout = timeout
-        # HTTP Basic Auth for ollama_guardian proxy (optional)
-        self._auth_user = os.environ.get("OLLAMA_USER")
-        self._auth_password = os.environ.get("OLLAMA_PASSWORD")
-        self._auth: httpx.BasicAuth | None = (
-            httpx.BasicAuth(username=self._auth_user, password=self._auth_password)
-            if self._auth_user and self._auth_password
-            else None
-        )
+        api_key = os.environ.get("GUARDIAN_API_KEY", "")
+        self._headers: dict[str, str] = {"Content-Type": "application/json"}
+        if api_key:
+            self._headers["Authorization"] = f"Bearer {api_key}"
 
     async def explain(
         self,
@@ -105,10 +114,10 @@ CONFIDENCE: (your confidence in the analysis)"""
         prompt = self._build_prompt(analysis, question)
 
         try:
-            response = await self._query_ollama(prompt)
+            response = await self._query_guardian(prompt)
             return self._parse_response(response)
         except Exception as e:
-            logger.exception(f"Ollama query failed: {e}")
+            logger.exception(f"Guardian query failed: {e}")
             return self._fallback_response(analysis, str(e))
 
     async def summarize(self, analysis: TechnicalAnalysis) -> str:
@@ -130,7 +139,7 @@ Key factors: {", ".join(analysis.reasoning[:3])}
 One sentence summary:"""
 
         try:
-            response = await self._query_ollama(prompt, max_tokens=100)
+            response = await self._query_guardian(prompt, max_tokens=100)
             return response.get("response", "").strip()
         except Exception as e:
             logger.warning(f"Summary failed: {e}")
@@ -177,7 +186,7 @@ Resistance levels: {", ".join(f"${r:,.0f}" for r in analysis.resistance_levels)}
 === ANSWER ==="""
 
         try:
-            response = await self._query_ollama(prompt, max_tokens=500)
+            response = await self._query_guardian(prompt, max_tokens=500)
             return response.get("response", "").strip()
         except Exception as e:
             logger.warning(f"Question answering failed: {e}")
@@ -251,33 +260,42 @@ CONFIDENCE: (your confidence in the analysis)"""
 
         return prompt
 
-    async def _query_ollama(
+    async def _query_guardian(
         self,
         prompt: str,
         max_tokens: int = 1000,
     ) -> dict:
-        """Query Ollama API."""
-        url = f"{self.host}/api/generate"
+        """Query Guardian proxy via OpenAI-compatible /v1/chat/completions.
+
+        Returns a dict with a "response" key containing the text, and
+        "eval_count" with the token count — matching the shape callers expect.
+        """
+        url = f"{self.host}/v1/chat/completions"
 
         payload = {
             "model": self.model,
-            "prompt": prompt,
-            "system": self.SYSTEM_PROMPT,
+            "messages": [
+                {"role": "system", "content": self.SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
             "stream": False,
-            "options": {
-                "num_predict": max_tokens,
-                "temperature": 0.7,
-            },
         }
 
-        async with httpx.AsyncClient(auth=self._auth) as client:
+        async with httpx.AsyncClient(headers=self._headers) as client:
             response = await client.post(
                 url,
                 json=payload,
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+
+        # Normalise to the shape callers expect
+        text = data["choices"][0]["message"]["content"]
+        tokens = data.get("usage", {}).get("completion_tokens", 0)
+        return {"response": text, "eval_count": tokens}
 
     def _parse_response(self, response: dict) -> LLMResponse:
         """Parse Ollama response into structured format."""
@@ -386,28 +404,36 @@ Note: LLM analysis unavailable ({error}). This is rule-based analysis only."""
         )
 
     async def is_available(self) -> bool:
-        """Check if Ollama is available."""
+        """Check if Guardian proxy is available."""
         try:
-            async with httpx.AsyncClient(auth=self._auth) as client:
-                response = await client.get(f"{self.host}/api/tags", timeout=5.0)
+            async with httpx.AsyncClient(headers=self._headers) as client:
+                response = await client.get(f"{self.host}/v1/models", timeout=5.0)
                 return response.status_code == 200
         except Exception:
             return False
 
     async def list_models(self) -> list[str]:
-        """List available Ollama models."""
+        """List models available on the Guardian proxy."""
         try:
-            async with httpx.AsyncClient(auth=self._auth) as client:
-                response = await client.get(f"{self.host}/api/tags", timeout=5.0)
+            async with httpx.AsyncClient(headers=self._headers) as client:
+                response = await client.get(f"{self.host}/v1/models", timeout=5.0)
                 response.raise_for_status()
                 data = response.json()
-                return [m["name"] for m in data.get("models", [])]
+                return [m["id"] for m in data.get("data", [])]
         except Exception as e:
             logger.warning(f"Failed to list models: {e}")
             return []
 
 
+# Backward-compat alias — callers using OllamaAnalyst still work
+OllamaAnalyst = GuardianAnalyst
+
+
+# ---------------------------------------------------------------------------
 # Convenience functions
+# ---------------------------------------------------------------------------
+
+
 async def get_llm_analysis(
     analysis: TechnicalAnalysis,
     question: str | None = None,
@@ -418,22 +444,22 @@ async def get_llm_analysis(
     Args:
         analysis: Technical analysis to explain
         question: Optional specific question
-        model: Ollama model to use
+        model: Guardian model to use (default: GLM-4.7-Flash)
 
     Returns:
         LLM response with explanation
     """
-    analyst = OllamaAnalyst(model=model)
+    analyst = GuardianAnalyst(model=model)
     return await analyst.explain(analysis, question)
 
 
-async def check_ollama() -> dict:
-    """Check Ollama availability and list models.
+async def check_guardian() -> dict:
+    """Check Guardian proxy availability and list models.
 
     Returns:
         Dict with status and available models
     """
-    analyst = OllamaAnalyst()
+    analyst = GuardianAnalyst()
     available = await analyst.is_available()
     models = await analyst.list_models() if available else []
 
@@ -443,3 +469,7 @@ async def check_ollama() -> dict:
         "default_model": analyst.model,
         "available_models": models,
     }
+
+
+# Backward-compat alias
+check_ollama = check_guardian

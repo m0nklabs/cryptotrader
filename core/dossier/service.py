@@ -197,7 +197,7 @@ COIN_LORE: dict[str, dict[str, str]] = {
 # Default model setup
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "llama3.2:3b"
+DEFAULT_MODEL = "GLM-4.7-Flash"
 DEFAULT_HOST = "http://localhost:11434"
 
 
@@ -244,13 +244,13 @@ Structure your response EXACTLY as follows (use these exact headers):
             "DATABASE_URL",
             "postgresql://cryptotrader:cryptotrader@localhost:5432/cryptotrader",
         )
-        self.model = model or os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL)
-        self.host = host or os.environ.get("OLLAMA_HOST", DEFAULT_HOST)
+        self.model = model or os.environ.get("GUARDIAN_MODEL", DEFAULT_MODEL)
+        self.host = host or os.environ.get("GUARDIAN_HOST", DEFAULT_HOST)
         self._pg_ssl = _build_pg_ssl_context_from_env()
-        self._auth_user = os.environ.get("OLLAMA_USER", "cryptotrader")
-        self._auth: httpx.BasicAuth | None = (
-            httpx.BasicAuth(username=self._auth_user, password="") if self._auth_user else None
-        )
+        api_key = os.environ.get("GUARDIAN_API_KEY", "")
+        self._headers: dict[str, str] = {"Content-Type": "application/json"}
+        if api_key:
+            self._headers["Authorization"] = f"Bearer {api_key}"
 
     # ------------------------------------------------------------------
     # Public API
@@ -642,30 +642,39 @@ If this is the first entry, skip the retrospective section and focus on laying a
         return prompt
 
     async def _query_llm(self, prompt: str, max_tokens: int = 2000) -> dict:
-        """Query Ollama for dossier generation."""
-        url = f"{self.host}/api/generate"
+        """Query Guardian proxy via /v1/chat/completions for dossier generation.
+
+        Returns a dict with a "response" key containing the text, and
+        "eval_count" with the token count — matching the shape callers expect.
+        """
+        url = f"{self.host}/v1/chat/completions"
 
         payload = {
             "model": self.model,
-            "prompt": prompt,
-            "system": self.DOSSIER_SYSTEM_PROMPT,
+            "messages": [
+                {"role": "system", "content": self.DOSSIER_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
             "stream": False,
-            "options": {
-                "num_predict": max_tokens,
-                "temperature": 0.7,
-            },
         }
 
         _debug(f"🤖 Querying {self.model} at {self.host}")
 
-        async with httpx.AsyncClient(auth=self._auth) as client:
+        async with httpx.AsyncClient(headers=self._headers) as client:
             response = await client.post(
                 url,
                 json=payload,
                 timeout=120.0,  # Dossier generation can take time
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+
+        # Normalise to the shape _parse_llm_response expects
+        text = data["choices"][0]["message"]["content"]
+        tokens = data.get("usage", {}).get("completion_tokens", 0)
+        return {"response": text, "eval_count": tokens}
 
     def _parse_llm_response(
         self,

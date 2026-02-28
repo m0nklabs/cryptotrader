@@ -170,7 +170,7 @@ When implementing features, use these technologies:
 - **Providers**: DeepSeek R1/V3.2, OpenAI o3-mini, xAI Grok 4, Ollama (local), OpenRouter (multi-model gateway), Google Gemini
 - **HTTP client**: httpx (async, shared with exchange adapters)
 - **Prompt storage**: PostgreSQL (versioned per role)
-- **Tracking issue**: #205
+- **Tracking issue**: #205 (multi-brain skeleton), #231 (PairDossier multi-agent predictions)
 - **Research**: m0nklabs/market-data PR #14 (8 benchmark docs)
 - **Current status**: Skeleton committed (types, providers, roles, consensus, router, DB migration). API endpoints in PR #223. Provider `complete()` and `health_check()` methods need real implementation.
 - **Safety**: Budget caps (daily/monthly), cost tracking per evaluation (~$0.034/eval), fallback chains, VETO logic in Strategist role

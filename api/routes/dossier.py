@@ -16,6 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
+from core.dossier.multi_agent import MultiAgentPredictionService
 from core.dossier.queue import get_queue
 from core.dossier.service import DossierService
 
@@ -23,8 +24,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dossier", tags=["dossier"])
 
-# Singleton service (lazy init)
+# Singleton services (lazy init)
 _service: DossierService | None = None
+_ma_service: MultiAgentPredictionService | None = None
 
 
 def _get_service() -> DossierService:
@@ -32,6 +34,13 @@ def _get_service() -> DossierService:
     if _service is None:
         _service = DossierService()
     return _service
+
+
+def _get_ma_service() -> MultiAgentPredictionService:
+    global _ma_service
+    if _ma_service is None:
+        _ma_service = MultiAgentPredictionService()
+    return _ma_service
 
 
 # =======================================================================
@@ -105,9 +114,76 @@ async def cancel_queue():
     }
 
 
+@router.get("/pair-rankings")
+async def get_pair_rankings(
+    exchange: str = Query("bitfinex", description="Exchange code"),
+    timeframe: str = Query("7d", description="Look-back window, e.g. 7d, 30d"),
+    min_samples: int = Query(3, ge=1, description="Minimum predictions to qualify"),
+    limit: int = Query(20, ge=1, le=100, description="Max results per page"),
+):
+    """Get model/role accuracy rankings for the given time window.
+
+    Returns models ranked by directional prediction accuracy based on
+    outcomes recorded in the pair_predictions table.
+    Only pairs with at least *min_samples* evaluated predictions qualify.
+    """
+    # Parse "7d" / "30d" → int days
+    try:
+        days = int(timeframe.rstrip("d"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid timeframe '{timeframe}'. Use e.g. '7d' or '30d'.")
+
+    svc = _get_ma_service()
+    rankings = await svc.get_rankings(
+        exchange=exchange,
+        timeframe_days=days,
+        min_samples=min_samples,
+        limit=limit,
+    )
+    return {
+        "exchange": exchange,
+        "timeframe": timeframe,
+        "count": len(rankings),
+        "rankings": rankings,
+    }
+
+
 # =======================================================================
 # PARAMETERIZED ROUTES (/{symbol} — must come AFTER static routes)
 # =======================================================================
+
+
+@router.post("/{symbol}/predict")
+async def predict_pair(
+    symbol: str,
+    exchange: str = Query("bitfinex", description="Exchange code"),
+    horizon: str = Query("24h", description="Prediction horizon, e.g. 1h, 4h, 24h"),
+    force_refresh: bool = Query(False, description="Bypass 5-minute cache"),
+):
+    """Run multi-agent prediction for a trading pair.
+
+    Executes the 3-role pipeline (screener + tactical in parallel, then
+    strategist) against the latest market data and returns a consensus
+    directional signal with per-role verdicts.
+
+    Results are cached for 5 minutes by default; use force_refresh=true
+    to bypass the cache.
+    """
+    svc = _get_ma_service()
+    try:
+        result = await svc.predict(
+            exchange=exchange,
+            symbol=symbol.upper(),
+            horizon=horizon,
+            force_refresh=force_refresh,
+        )
+        return result.to_dict()
+    except Exception as e:
+        logger.exception("Multi-agent prediction failed for %s:%s", exchange, symbol)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {e}",
+        ) from e
 
 
 @router.get("/{symbol}")

@@ -20,8 +20,9 @@ class ProviderName(str, Enum):
     OPENAI = "openai"
     OPENROUTER = "openrouter"  # OpenAI-compatible gateway
     XAI = "xai"  # Grok
-    OLLAMA = "ollama"  # Local inference
+    GUARDIAN = "guardian"  # llama_cpp_guardian proxy — LOCAL, always prefer this
     GOOGLE = "google"  # Gemini
+    OLLAMA = "ollama"  # DEPRECATED — use GUARDIAN instead
 
 
 class RoleName(str, Enum):

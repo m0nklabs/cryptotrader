@@ -32,8 +32,8 @@ DEFAULT_SCREENER_CONFIG = RoleConfig(
     temperature=0.0,
     max_tokens=1024,  # short answers
     weight=0.5,  # lowest weight — filtering only
-    fallback_provider=ProviderName.OLLAMA,
-    fallback_model="llama3.2",
+    fallback_provider=ProviderName.GUARDIAN,
+    fallback_model="GLM-4.7-Flash",
 )
 
 

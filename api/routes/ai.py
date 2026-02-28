@@ -761,6 +761,18 @@ async def evaluate_opportunity(request: EvaluationRequest):
         for v in decision.verdicts
     ]
 
+    # Convert verdicts to JSON-serializable format
+    verdict_dicts = [
+        {
+            "role": v.role.value,  # Convert RoleName enum to string
+            "action": v.action,
+            "confidence": v.confidence,
+            "reasoning": v.reasoning,
+            "metrics": v.metrics,
+        }
+        for v in decision.verdicts
+    ]
+
     # Persist decision + usage logs to database (single transaction)
     usage_records = [
         {
@@ -800,6 +812,9 @@ async def evaluate_opportunity(request: EvaluationRequest):
     except Exception:
         logger.exception("AI decision persistence failed; returning decision anyway")
     finally:
+        if usage_records:
+            router_instance.clear_usage_log()
+
         if usage_records:
             router_instance.clear_usage_log()
 
