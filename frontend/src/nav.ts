@@ -4,6 +4,7 @@ export const VIEW_IDS = {
   // Trading
   DASHBOARD: 'dashboard',
   CHART: 'chart',
+  ALERTS: 'alerts',
   // Paper Trading
   PAPER_ORDERS: 'paper-orders',
   PAPER_POSITIONS: 'paper-positions',
@@ -50,6 +51,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: VIEW_IDS.DASHBOARD, label: 'Dashboard', icon: '📊', status: 'ready' },
       { id: VIEW_IDS.CHART, label: 'Chart', icon: '📈', status: 'ready' },
+      { id: VIEW_IDS.ALERTS, label: 'Alerts', icon: '🔔', status: 'new' },
     ],
   },
   {
