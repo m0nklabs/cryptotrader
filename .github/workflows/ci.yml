@@ -49,7 +49,9 @@ jobs:
 
       - name: Fix style issues
         run: |
-          pip install ruff pre-commit -q
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install pre-commit
 
           # Run pre-commit autofixes (end-of-file, trailing whitespace, etc.)
           pre-commit run --all-files || true

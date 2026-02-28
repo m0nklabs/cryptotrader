@@ -422,7 +422,7 @@ class SystemPromptResponse(BaseModel):
 class SystemPromptCreate(BaseModel):
     """Create new system prompt request.
 
-    Prompts are created inactive by default. To activate a prompt,
+    Prompts are always created inactive. To activate a prompt,
     use the `/prompts/{id}/activate` endpoint.
     """
 
@@ -636,6 +636,14 @@ async def update_role(
         if not config:
             raise HTTPException(status_code=404, detail=f"Role '{role}' not found")
 
+        # Sync in-memory RoleRegistry with new config
+        new_role_config = _role_config_from_db(config)
+        if new_role_config:
+            factories = _role_factory()
+            role_class = factories.get(new_role_config.name)
+            if role_class:
+                RoleRegistry.register(role_class(new_role_config))
+
         return RoleConfigResponse(
             name=config.name,
             provider=config.provider,
@@ -697,20 +705,31 @@ async def create_prompt(request: SystemPromptCreate):
     Args:
         request: Prompt creation request with role, content, and description
     """
+    # Validate and normalize role to one of the supported RoleName values
+    try:
+        role_enum = RoleName(request.role)
+    except ValueError as exc:
+        allowed_roles = [r.value for r in RoleName.__members__.values()]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid role '{request.role}'. Must be one of: {allowed_roles}",
+        ) from exc
+    role_value = role_enum.value
+
     factory = _get_session_factory()
     async with factory() as db:
         # Get next version number
-        next_version = await ai_crud.get_next_version(db, request.role)
+        next_version = await ai_crud.get_next_version(db, role_value)
 
         # Generate prompt ID
-        prompt_id = f"{request.role}_v{next_version}"
+        prompt_id = f"{role_value}_v{next_version}"
 
         # Force new prompts to be inactive by default to prevent multiple active prompts
         # Use activate endpoint to make a prompt active (which deactivates others)
         prompt = await ai_crud.create_prompt(
             db,
             prompt_id=prompt_id,
-            role=request.role,
+            role=role_value,
             version=next_version,
             content=request.content,
             description=request.description,
@@ -740,7 +759,15 @@ async def activate_prompt(prompt_id: str = PathParam(..., description="Prompt ID
     """
     factory = _get_session_factory()
     async with factory() as db:
-        prompt = await ai_crud.activate_prompt(db, prompt_id)
+        # Use PromptRegistry to ensure write-through cache update
+        # This keeps the in-memory registry in sync with the DB
+        try:
+            prompt = await PromptRegistry.activate_prompt(db, prompt_id)
+        except RuntimeError:
+            # Fallback if DB backend is not enabled in registry
+            logger.warning("PromptRegistry DB backend not enabled, falling back to direct DB update")
+            prompt = await ai_crud.activate_prompt(db, prompt_id)
+
         if not prompt:
             raise HTTPException(status_code=404, detail=f"Prompt '{prompt_id}' not found")
 
@@ -791,13 +818,13 @@ async def evaluate_opportunity(request: EvaluationRequest):
         if budget_status["exceeded"]:
             error_detail = {"error": "Budget exceeded", "budget_status": budget_status}
             if budget_status["daily_exceeded"]:
-                error_detail["message"] = (
-                    f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
-                )
+                error_detail[
+                    "message"
+                ] = f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
             elif budget_status["monthly_exceeded"]:
-                error_detail["message"] = (
-                    f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
-                )
+                error_detail[
+                    "message"
+                ] = f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
             raise HTTPException(status_code=429, detail=error_detail)
 
         # Check per-role budgets for all roles that will be evaluated
@@ -808,13 +835,13 @@ async def evaluate_opportunity(request: EvaluationRequest):
             if role_budget_status["exceeded"]:
                 error_detail = {"error": "Budget exceeded", "role": role.value, "budget_status": role_budget_status}
                 if role_budget_status["daily_exceeded"]:
-                    error_detail["message"] = (
-                        f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
-                    )
+                    error_detail[
+                        "message"
+                    ] = f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
                 elif role_budget_status["monthly_exceeded"]:
-                    error_detail["message"] = (
-                        f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
-                    )
+                    error_detail[
+                        "message"
+                    ] = f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
                 raise HTTPException(status_code=429, detail=error_detail)
 
     # Run evaluation
@@ -975,13 +1002,13 @@ async def evaluate_single_role(request: EvaluationRequest):
         if budget_status["exceeded"]:
             error_detail = {"error": "Budget exceeded", "budget_status": budget_status}
             if budget_status["daily_exceeded"]:
-                error_detail["message"] = (
-                    f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
-                )
+                error_detail[
+                    "message"
+                ] = f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
             elif budget_status["monthly_exceeded"]:
-                error_detail["message"] = (
-                    f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
-                )
+                error_detail[
+                    "message"
+                ] = f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
             raise HTTPException(status_code=429, detail=error_detail)
 
         # Check role-specific budget
@@ -989,13 +1016,13 @@ async def evaluate_single_role(request: EvaluationRequest):
         if role_budget_status["exceeded"]:
             error_detail = {"error": "Budget exceeded", "role": role.value, "budget_status": role_budget_status}
             if role_budget_status["daily_exceeded"]:
-                error_detail["message"] = (
-                    f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
-                )
+                error_detail[
+                    "message"
+                ] = f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
             elif role_budget_status["monthly_exceeded"]:
-                error_detail["message"] = (
-                    f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
-                )
+                error_detail[
+                    "message"
+                ] = f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
             raise HTTPException(status_code=429, detail=error_detail)
 
     # Run evaluation with single role
