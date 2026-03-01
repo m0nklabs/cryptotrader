@@ -18,6 +18,7 @@ import { Watchlist } from './components/Watchlist'
 import { TradeHistory } from './components/TradeHistory'
 import { RiskCalculator } from './components/RiskCalculator'
 import AiEvaluationPanel from './components/AiEvaluationPanel'
+import { AiConfigPanel } from './components/AiConfigPanel'
 import BacktestView from './views/BacktestView'
 import { sampleEquityCurve } from './data/performanceSample'
 import {
@@ -2034,6 +2035,13 @@ export default function App() {
           {activeView === VIEW_IDS.AI_EVALUATE && (
             <Panel title="Multi-Brain Evaluation" subtitle="AI consensus decision engine">
               <AiEvaluationPanel />
+            </Panel>
+          )}
+
+          {/* AI Configuration view */}
+          {activeView === VIEW_IDS.AI_CONFIG && (
+            <Panel title="AI Configuration" subtitle="Provider health, roles, prompts & budget">
+              <AiConfigPanel />
             </Panel>
           )}
 

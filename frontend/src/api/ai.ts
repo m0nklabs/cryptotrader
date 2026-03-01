@@ -47,6 +47,8 @@ export type RoleVerdict = {
 }
 
 export type ConsensusDecision = {
+  symbol: string
+  timeframe: string
   finalAction: SignalAction
   finalConfidence: number
   verdicts: RoleVerdict[]
@@ -54,6 +56,17 @@ export type ConsensusDecision = {
   vetoedBy: RoleName | null
   totalCostUsd: number
   totalLatencyMs: number
+  createdAt: string
+}
+
+export type EvaluationRequest = {
+  symbol: string
+  timeframe?: string
+  candles?: Record<string, unknown>[]
+  indicators?: Record<string, unknown>
+  portfolio?: Record<string, unknown>
+  riskLimits?: Record<string, unknown>
+  roles?: RoleName[]
 }
 
 export type UsageRecord = {
@@ -76,9 +89,44 @@ export type UsageSummary = {
   byProvider: Record<ProviderName, { cost: number; requests: number }>
 }
 
+export type DailyUsage = {
+  date: string
+  totalCostUsd: number
+  totalRequests: number
+  totalTokensIn: number
+  totalTokensOut: number
+}
+
+export type BudgetStatus = {
+  scope: string
+  dailyLimit: number
+  monthlyLimit: number
+  dailySpent: number
+  monthlySpent: number
+  dailyExceeded: boolean
+  monthlyExceeded: boolean
+  exceeded: boolean
+}
+
 // ---------------------------------------------------------------------------
 // API calls
 // ---------------------------------------------------------------------------
+
+/** Helper for fetch with abort timeout. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    return response
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
 
 /**
  * Fetch all provider health statuses.
@@ -86,15 +134,9 @@ export type UsageSummary = {
 export async function fetchProviderStatus(
   timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
 ): Promise<ProviderStatus[]> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch('/api/ai/providers', { signal: controller.signal })
-    if (!response.ok) throw new Error(`Failed to fetch providers: ${response.status}`)
-    return await response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+  const response = await fetchWithTimeout('/api/ai/providers', {}, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to fetch providers: ${response.status}`)
+  return await response.json()
 }
 
 /**
@@ -103,15 +145,9 @@ export async function fetchProviderStatus(
 export async function fetchRoleConfigs(
   timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
 ): Promise<RoleConfig[]> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch('/api/ai/roles', { signal: controller.signal })
-    if (!response.ok) throw new Error(`Failed to fetch roles: ${response.status}`)
-    return await response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+  const response = await fetchWithTimeout('/api/ai/roles', {}, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to fetch roles: ${response.status}`)
+  return await response.json()
 }
 
 /**
@@ -122,20 +158,13 @@ export async function updateRoleConfig(
   config: Partial<RoleConfig>,
   timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
 ): Promise<RoleConfig> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch(`/api/ai/roles/${role}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-      signal: controller.signal,
-    })
-    if (!response.ok) throw new Error(`Failed to update role: ${response.status}`)
-    return await response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+  const response = await fetchWithTimeout(`/api/ai/roles/${role}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  }, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to update role: ${response.status}`)
+  return await response.json()
 }
 
 /**
@@ -145,15 +174,9 @@ export async function fetchPrompts(
   role: RoleName,
   timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
 ): Promise<SystemPrompt[]> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch(`/api/ai/prompts/${role}`, { signal: controller.signal })
-    if (!response.ok) throw new Error(`Failed to fetch prompts: ${response.status}`)
-    return await response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+  const response = await fetchWithTimeout(`/api/ai/prompts/${role}`, {}, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to fetch prompts: ${response.status}`)
+  return await response.json()
 }
 
 /**
@@ -163,43 +186,64 @@ export async function createPrompt(
   prompt: Omit<SystemPrompt, 'createdAt'>,
   timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
 ): Promise<SystemPrompt> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch('/api/ai/prompts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(prompt),
-      signal: controller.signal,
-    })
-    if (!response.ok) throw new Error(`Failed to create prompt: ${response.status}`)
-    return await response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+  const response = await fetchWithTimeout('/api/ai/prompts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(prompt),
+  }, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to create prompt: ${response.status}`)
+  return await response.json()
 }
 
 /**
- * Request a Multi-Brain evaluation for a symbol.
+ * Activate a specific prompt version.
+ */
+export async function activatePrompt(
+  promptId: string,
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<{ status: string }> {
+  const response = await fetchWithTimeout(`/api/ai/prompts/${promptId}/activate`, {
+    method: 'PUT',
+  }, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to activate prompt: ${response.status}`)
+  return await response.json()
+}
+
+/**
+ * Request a Multi-Brain evaluation for a symbol (POST — canonical endpoint).
  */
 export async function evaluateSymbol(
-  symbol: string,
-  timeframe: string = '1h',
-  roles?: RoleName[],
+  request: EvaluationRequest,
   timeoutMs: number = 120_000, // longer timeout for multi-agent
 ): Promise<ConsensusDecision> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const params = new URLSearchParams({ symbol, timeframe })
-    if (roles) params.set('roles', roles.join(','))
-
-    const response = await fetch(`/api/ai/evaluate?${params}`, { signal: controller.signal })
-    if (!response.ok) throw new Error(`Evaluation failed: ${response.status}`)
-    return await response.json()
-  } finally {
-    clearTimeout(timeoutId)
+  const response = await fetchWithTimeout('/api/ai/evaluate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  }, timeoutMs)
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`Evaluation failed (${response.status}): ${detail}`)
   }
+  return await response.json()
+}
+
+/**
+ * Fetch recent AI decisions.
+ */
+export async function fetchDecisions(
+  params?: { symbol?: string; action?: string; limit?: number },
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<ConsensusDecision[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.symbol) searchParams.set('symbol', params.symbol)
+  if (params?.action) searchParams.set('action', params.action)
+  if (params?.limit) searchParams.set('limit', String(params.limit))
+  const qs = searchParams.toString()
+  const url = `/api/ai/decisions${qs ? `?${qs}` : ''}`
+  const response = await fetchWithTimeout(url, {}, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to fetch decisions: ${response.status}`)
+  return await response.json()
 }
 
 /**
@@ -208,13 +252,31 @@ export async function evaluateSymbol(
 export async function fetchUsageSummary(
   timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
 ): Promise<UsageSummary> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch('/api/ai/usage', { signal: controller.signal })
-    if (!response.ok) throw new Error(`Failed to fetch usage: ${response.status}`)
-    return await response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+  const response = await fetchWithTimeout('/api/ai/usage', {}, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to fetch usage: ${response.status}`)
+  return await response.json()
+}
+
+/**
+ * Fetch daily usage breakdown.
+ */
+export async function fetchDailyUsage(
+  days: number = 30,
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<DailyUsage[]> {
+  const response = await fetchWithTimeout(`/api/ai/usage/daily?days=${days}`, {}, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to fetch daily usage: ${response.status}`)
+  return await response.json()
+}
+
+/**
+ * Fetch budget status for a scope (global or role name).
+ */
+export async function fetchBudgetStatus(
+  scope: string = 'global',
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): Promise<BudgetStatus> {
+  const response = await fetchWithTimeout(`/api/ai/budget/status?scope=${scope}`, {}, timeoutMs)
+  if (!response.ok) throw new Error(`Failed to fetch budget status: ${response.status}`)
+  return await response.json()
 }

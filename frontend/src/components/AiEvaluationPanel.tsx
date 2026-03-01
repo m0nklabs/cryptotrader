@@ -1,51 +1,48 @@
 import { useState } from 'react'
-import { evaluateSymbol } from '../api/ai'
-import { useAiStore } from '../stores/aiStore'
+import { useEvaluate, useRoles } from '../hooks/useAi'
 import type { SignalAction, RoleName, ConsensusDecision, RoleVerdict } from '../api/ai'
 
 /**
  * AI Evaluation Panel — Manual Multi-Brain evaluation trigger.
  *
  * Provides:
- * - Symbol input + timeframe selector
+ * - Symbol input + timeframe selector + role selector
  * - "Evaluate" button with loading state
  * - Consensus decision display (action, confidence, reasoning, cost/latency)
  * - Per-role verdict breakdown
  * - Error handling with retry
- *
- * Minimal MVP: no filters, no complex settings.
  */
 export default function AiEvaluationPanel() {
-  const { setLastDecision, setEvaluating } = useAiStore()
+  const { data: availableRoles = [] } = useRoles()
+  const evaluate = useEvaluate()
 
   const [symbol, setSymbol] = useState('BTC/USDT')
   const [timeframe, setTimeframe] = useState('1h')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [selectedRoles, setSelectedRoles] = useState<RoleName[]>([])
   const [decision, setDecision] = useState<ConsensusDecision | null>(null)
 
-  const handleEvaluate = async () => {
-    if (!symbol.trim()) {
-      setError('Symbol is required')
-      return
-    }
+  const toggleRole = (roleName: RoleName) => {
+    setSelectedRoles((prev) =>
+      prev.includes(roleName)
+        ? prev.filter((r) => r !== roleName)
+        : [...prev, roleName],
+    )
+  }
 
-    setLoading(true)
-    setEvaluating(true)
-    setError(null)
+  const handleEvaluate = () => {
+    if (!symbol.trim()) return
+
     setDecision(null)
-
-    try {
-      const result = await evaluateSymbol(symbol.trim(), timeframe)
-      setDecision(result)
-      setLastDecision(result)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Evaluation failed'
-      setError(message)
-    } finally {
-      setLoading(false)
-      setEvaluating(false)
-    }
+    evaluate.mutate(
+      {
+        symbol: symbol.trim(),
+        timeframe,
+        roles: selectedRoles.length > 0 ? selectedRoles : undefined,
+      },
+      {
+        onSuccess: (result) => setDecision(result),
+      },
+    )
   }
 
   return (
@@ -63,13 +60,13 @@ export default function AiEvaluationPanel() {
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
               className="flex-1 rounded bg-zinc-800 px-2 py-1.5 text-zinc-300 border border-zinc-700 focus:border-blue-500 focus:outline-none"
-              disabled={loading}
+              disabled={evaluate.isPending}
             />
             <select
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value)}
               className="rounded bg-zinc-800 px-2 py-1.5 text-zinc-300 border border-zinc-700 focus:border-blue-500 focus:outline-none"
-              disabled={loading}
+              disabled={evaluate.isPending}
             >
               <option value="1m">1m</option>
               <option value="5m">5m</option>
@@ -79,33 +76,62 @@ export default function AiEvaluationPanel() {
               <option value="1d">1d</option>
             </select>
           </div>
+
+          {/* Role selector */}
+          {availableRoles.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {availableRoles.map((r) => (
+                <label
+                  key={r.name}
+                  className={`flex items-center gap-1 rounded px-2 py-1 cursor-pointer transition-colors ${
+                    selectedRoles.includes(r.name)
+                      ? 'bg-blue-900/40 border border-blue-500/50'
+                      : 'bg-zinc-800 border border-zinc-700 hover:border-zinc-600'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedRoles.includes(r.name)}
+                    onChange={() => toggleRole(r.name)}
+                    className="sr-only"
+                    disabled={evaluate.isPending}
+                  />
+                  <span className="capitalize text-zinc-300">{r.name}</span>
+                </label>
+              ))}
+              <span className="text-zinc-600 self-center">
+                {selectedRoles.length === 0 ? '(all roles)' : `${selectedRoles.length} selected`}
+              </span>
+            </div>
+          )}
+
           <button
             onClick={handleEvaluate}
-            disabled={loading}
+            disabled={evaluate.isPending}
             className={`rounded px-3 py-1.5 font-semibold transition-colors ${
-              loading
+              evaluate.isPending
                 ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
           >
-            {loading ? 'Evaluating…' : 'Evaluate'}
+            {evaluate.isPending ? 'Evaluating…' : 'Evaluate'}
           </button>
         </div>
       </section>
 
       {/* Loading State */}
-      {loading && (
+      {evaluate.isPending && (
         <div className="text-center text-zinc-400 animate-pulse">
           Running Multi-Brain evaluation…
         </div>
       )}
 
       {/* Error Display */}
-      {error && (
+      {evaluate.isError && (
         <section>
           <div className="rounded bg-red-900/20 border border-red-500/50 px-3 py-2">
             <div className="font-semibold text-red-400 mb-1">Error</div>
-            <div className="text-zinc-300">{error}</div>
+            <div className="text-zinc-300">{evaluate.error?.message ?? 'Evaluation failed'}</div>
             <button
               onClick={handleEvaluate}
               className="mt-2 text-xs text-red-400 hover:text-red-300 underline"

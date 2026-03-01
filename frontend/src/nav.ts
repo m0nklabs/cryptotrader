@@ -16,6 +16,7 @@ export const VIEW_IDS = {
   COIN_DOSSIER: 'coin-dossier',
   // AI
   AI_EVALUATE: 'ai-evaluate',
+  AI_CONFIG: 'ai-config',
   // Market Data
   MARKET_WATCH: 'market-watch',
   INGESTION_STATUS: 'ingestion-status',
@@ -95,6 +96,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'AI',
     items: [
       { id: VIEW_IDS.AI_EVALUATE, label: 'Multi-Brain', icon: '🧠', status: 'new' },
+      { id: VIEW_IDS.AI_CONFIG, label: 'AI Config', icon: '⚙️', status: 'new' },
     ],
   },
   {
