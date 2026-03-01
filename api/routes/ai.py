@@ -844,6 +844,14 @@ async def evaluate_opportunity(request: EvaluationRequest):
                     ] = f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
                 raise HTTPException(status_code=429, detail=error_detail)
 
+    # Log incoming evaluation request
+    logger.info(
+        "AI evaluate request: symbol=%s timeframe=%s roles=%s",
+        request.symbol,
+        request.timeframe,
+        [r.value for r in roles] if roles else "all",
+    )
+
     # Run evaluation
     decision = await router_instance.evaluate_opportunity(
         symbol=request.symbol,
@@ -855,17 +863,16 @@ async def evaluate_opportunity(request: EvaluationRequest):
         roles=roles,
     )
 
-    # Convert verdicts to JSON-serializable format
-    verdict_dicts = [
-        {
-            "role": v.role.value,  # Convert RoleName enum to string
-            "action": v.action,
-            "confidence": v.confidence,
-            "reasoning": v.reasoning,
-            "metrics": v.metrics,
-        }
-        for v in decision.verdicts
-    ]
+    logger.info(
+        "AI evaluate result: symbol=%s action=%s confidence=%.2f cost=$%.4f latency=%dms roles=%d vetoed=%s",
+        request.symbol,
+        decision.final_action,
+        decision.final_confidence,
+        decision.total_cost_usd,
+        decision.total_latency_ms,
+        len(decision.verdicts),
+        decision.vetoed_by.value if decision.vetoed_by else None,
+    )
 
     # Convert verdicts to JSON-serializable format
     verdict_dicts = [
@@ -918,9 +925,6 @@ async def evaluate_opportunity(request: EvaluationRequest):
     except Exception:
         logger.exception("AI decision persistence failed; returning decision anyway")
     finally:
-        if usage_records:
-            router_instance.clear_usage_log()
-
         if usage_records:
             router_instance.clear_usage_log()
 
