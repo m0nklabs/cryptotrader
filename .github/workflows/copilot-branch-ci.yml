@@ -34,7 +34,7 @@ jobs:
       ci_passed: ${{ steps.result.outputs.passed }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run header
         uses: m0nklabs/cryptotrader/.github/actions/run-header@master
