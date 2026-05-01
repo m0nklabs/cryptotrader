@@ -31,7 +31,7 @@ jobs:
 
       - name: Find Copilot PRs
         id: find-prs
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.generate-token.outputs.token }}
           script: |
@@ -78,7 +78,7 @@ jobs:
           git config user.email "flip-devops-bot[bot]@users.noreply.github.com"
 
       - name: Rebase PRs
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.generate-token.outputs.token }}
           script: |
