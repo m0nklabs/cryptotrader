@@ -1,6 +1,11 @@
 # Changelog
 
 ## 2026-05-25
+### Research Script Cleanup
+- Add ad-hoc Bitfinex market research scripts at the repo root and align them with the current `cex.bitfinex.api.bitfinex_client_v2.BitfinexClient` surface so they lint and compile cleanly before being committed.
+- Keep the archived public-safe MARK1 agent snapshot under `scratch/copilot-agent-archive/` for reference alongside the repo-local agent centralization work.
+
+## 2026-05-25
 ### Copilot Agent Centralization
 - Remove repo-local `.github/agents/` copies (`MARK1`, `monks`, `spock`, `trader`) and point the repo documentation at the canonical agents in `/home/flip/github-copilot-config/.github/agents/`.
 - Move the support repos under `related-repos/`, ignore that parent directory in the main repo, and treat `market-data` plus `wallets-data` as cryptotrader-owned sibling repos instead of loose home-root projects.
