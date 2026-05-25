@@ -361,7 +361,7 @@ class PortfolioManager:
         """Get portfolio summary.
 
         Returns:
-            Dict with portfolio state
+            Dict with portfolio state including drawdown, exposure, and daily PnL.
         """
         return {
             "quote_currency": self._config.quote_currency,
@@ -369,6 +369,7 @@ class PortfolioManager:
             "available_balance": float(self.get_available(self._config.quote_currency)),
             "unrealized_pnl": float(self.get_unrealized_pnl()),
             "realized_pnl": float(self.get_realized_pnl()),
+            "total_pnl": float(self.get_unrealized_pnl() + self.get_realized_pnl()),
             "position_count": len(self.get_all_positions()),
             "positions": [
                 {

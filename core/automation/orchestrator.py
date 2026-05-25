@@ -16,7 +16,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 
 from core.automation.audit import AuditEvent, AuditLogger
 from core.automation.rules import AutomationConfig, TradeHistory
@@ -25,6 +25,7 @@ from core.automation.safety import (
     CooldownCheck,
     DailyLossCheck,
     DailyTradeCountCheck,
+    DrawdownCheck,
     KillSwitchCheck,
     PositionSizeCheck,
     SafetyCheck,
@@ -35,6 +36,8 @@ from core.backtest.strategy import Signal, Strategy
 from core.execution.interfaces import OrderExecutor
 from core.execution.bitfinex_live import create_bitfinex_live_executor
 from core.execution.paper import PaperExecutor
+from core.risk.drawdown import DrawdownConfig, DrawdownMonitor
+from core.risk.limits import ExposureChecker, ExposureLimits
 from core.types import Candle, ExecutionResult, OrderIntent
 
 
@@ -104,6 +107,15 @@ class OrchestratorConfig:
     # Stop after N iterations (None = run forever)
     max_iterations: Optional[int] = None
 
+    # Drawdown limits (as percentages, e.g., 0.05 = 5%)
+    max_daily_drawdown: Decimal | None = None
+    max_total_drawdown: Decimal | None = None
+
+    # Exposure limits
+    max_position_size_per_symbol: Decimal | None = None
+    max_total_exposure: Decimal | None = None
+    max_positions: int | None = None
+
 
 class StrategyOrchestrator:
     """Main trading loop orchestrator.
@@ -142,6 +154,25 @@ class StrategyOrchestrator:
         self._running = False
         self._iteration = 0
 
+        # Drawdown monitoring
+        self.drawdown_monitor = DrawdownMonitor(
+            config=DrawdownConfig(
+                max_daily_drawdown=config.max_daily_drawdown,
+                max_total_drawdown=config.max_total_drawdown,
+            ),
+        )
+        # Initialize with starting balance
+        self.drawdown_monitor.update_balance(self.current_balance)
+
+        # Exposure checking
+        self.exposure_checker = ExposureChecker(
+            limits=ExposureLimits(
+                max_position_size_per_symbol=config.max_position_size_per_symbol,
+                max_total_exposure=config.max_total_exposure,
+                max_positions=config.max_positions,
+            ),
+        )
+
     def _build_executor(self) -> OrderExecutor:
         if self.config.dry_run:
             logger.info("Initializing paper executor (dry_run=True).")
@@ -159,13 +190,20 @@ class StrategyOrchestrator:
         )
         return PaperExecutor()
 
-    def _build_safety_checks(self, symbol: str) -> list[SafetyCheck]:
+    def _build_safety_checks(self, symbol: str, current_price: Decimal = Decimal("1")) -> list[SafetyCheck]:
         """Build the list of safety checks for a symbol."""
+        # Update drawdown with current balance
+        self.drawdown_monitor.update_balance(self.current_balance)
+
+        # Calculate total exposure (sum of all position values)
+        total_exposure = sum(self.positions.get(s, Decimal("0")) * current_price for s in self.config.symbols)
+
         return [
             KillSwitchCheck(config=self.automation_config),
             PositionSizeCheck(
                 config=self.automation_config,
                 current_position_value=self.positions.get(symbol, Decimal("0")),
+                current_price=current_price,
             ),
             CooldownCheck(
                 config=self.automation_config,
@@ -178,10 +216,18 @@ class StrategyOrchestrator:
             BalanceCheck(
                 config=self.automation_config,
                 current_balance=self.current_balance,
+                current_price=current_price,
             ),
             DailyLossCheck(
                 config=self.automation_config,
                 daily_pnl=self.daily_pnl,
+            ),
+            DrawdownCheck(
+                trading_paused=self.drawdown_monitor.state.trading_paused,
+                daily_drawdown_pct=self.drawdown_monitor.get_daily_drawdown(),
+                total_drawdown_pct=self.drawdown_monitor.get_total_drawdown(),
+                max_daily_drawdown=self.config.max_daily_drawdown,
+                max_total_drawdown=self.config.max_total_drawdown,
             ),
         ]
 
@@ -223,7 +269,7 @@ class StrategyOrchestrator:
             )
 
             # 5. Run safety checks
-            safety_checks = self._build_safety_checks(symbol)
+            safety_checks = self._build_safety_checks(symbol, current_price=current_price)
             safety_result = run_safety_checks(checks=safety_checks, intent=intent)
 
             if not safety_result.ok:
@@ -267,11 +313,35 @@ class StrategyOrchestrator:
             if execution_result.accepted:
                 self.trade_history.add_trade(symbol, datetime.now(timezone.utc))
                 self._update_position(symbol, intent)
+
+                # Update drawdown with new balance
+                self.drawdown_monitor.update_balance(self.current_balance)
+
+                # Log trade with rich context if PaperExecutor
+                audit_context: dict[str, Any] = {"dry_run": self.config.dry_run}
+                fill_price: Decimal | None = None
+                fees: Decimal | None = None
+                slippage_bps: int | None = None
+                fill_status: str | None = None
+
+                if isinstance(self.executor, PaperExecutor):
+                    fees = self.executor.get_fees_by_symbol(symbol)
+                    audit_context["fees_this_symbol"] = str(fees)
+                    audit_context["total_fees"] = str(self.executor.get_total_fees())
+                    audit_context["fee_model"] = {
+                        "maker": str(self.executor.get_fee_model().breakdown.maker_fee_rate),
+                        "taker": str(self.executor.get_fee_model().breakdown.taker_fee_rate),
+                    }
+
                 self.audit_logger.log_trade_executed(
                     symbol=symbol,
                     side=signal.side,
                     amount=str(intent.amount),
-                    context={"dry_run": self.config.dry_run},
+                    context=audit_context,
+                    fill_price=fill_price,
+                    fees=fees,
+                    slippage_bps=slippage_bps,
+                    fill_status=fill_status,
                 )
                 logger.info(f"Trade executed: {signal.side} {intent.amount} {symbol}")
             else:

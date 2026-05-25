@@ -56,30 +56,34 @@ class KillSwitchCheck:
 
 @dataclass
 class PositionSizeCheck:
-    """Check if position size is within limits."""
+    """Check if position size is within limits.
+
+    Position values are in quote currency (e.g., USDT).
+    The notional value of an order is amount * current_price.
+    """
 
     config: AutomationConfig
-    current_position_value: Decimal = Decimal("0")  # Current position value for this symbol
+    current_position_value: Decimal = Decimal("0")  # Current position value in quote currency for this symbol
+    current_price: Decimal = Decimal("1")  # Current market price in quote currency per unit
 
     def check(self, *, intent: OrderIntent) -> SafetyResult:
         symbol_config = self.config.get_symbol_config(intent.symbol)
 
         # Check symbol-specific max position size
         if symbol_config.max_position_size is not None:
-            # TODO: Implement proper position value calculation with current market price
-            # For now, simplified implementation assumes amount is in quote currency
-            position_value = intent.amount
+            # Compute notional value of this order in quote currency
+            order_notional = intent.amount * self.current_price
 
             # BUY orders increase position value, SELL orders decrease it
             if intent.side == "SELL":
-                total_position = self.current_position_value - position_value
+                total_position = self.current_position_value - order_notional
             else:
-                total_position = self.current_position_value + position_value
+                total_position = self.current_position_value + order_notional
 
             if total_position > symbol_config.max_position_size:
                 return SafetyResult(
                     ok=False,
-                    reason=f"Position size limit exceeded: {total_position} > {symbol_config.max_position_size}",
+                    reason=f"Position size limit exceeded: {total_position:.2f} > {symbol_config.max_position_size:.2f} (order notional: {order_notional:.2f})",
                 )
 
         return SafetyResult(ok=True, reason="Position size within limits")
@@ -150,12 +154,14 @@ class DailyTradeCountCheck:
 class BalanceCheck:
     """Check if balance meets minimum requirements.
 
-    Note: This is a simplified check. In production, balance verification should be
-    currency-aware (quote currency for BUY, base currency for SELL).
+    Compares notional value (amount * current_price) against balance
+    for BUY orders, and amount (base currency units) against balance
+    for SELL orders.
     """
 
     config: AutomationConfig
     current_balance: Decimal
+    current_price: Decimal = Decimal("1")  # Current market price in quote currency per unit
 
     def check(self, *, intent: OrderIntent) -> SafetyResult:
         if self.config.min_balance_required is None:
@@ -167,14 +173,12 @@ class BalanceCheck:
                 reason=f"Insufficient balance: {self.current_balance} < {self.config.min_balance_required}",
             )
 
-        # Check if we have enough to execute this order
-        # Note: For BUY orders, amount should be in quote currency (e.g., USDT)
-        # For SELL orders, amount should be in base currency (e.g., BTC)
-        # This simplified check assumes the balance is in the appropriate currency
-        if self.current_balance < intent.amount:
+        # Compare notional value (amount * price) against balance
+        notional = intent.amount * self.current_price
+        if self.current_balance < notional:
             return SafetyResult(
                 ok=False,
-                reason=f"Insufficient balance for order: {self.current_balance} < {intent.amount}",
+                reason=f"Insufficient balance for order: {self.current_balance} < {notional:.2f} (notional: {intent.amount} units * {self.current_price} price)",
             )
 
         return SafetyResult(ok=True, reason="Balance sufficient")
@@ -219,3 +223,38 @@ class SlippageCheck:
             )
 
         return SafetyResult(ok=True, reason="Slippage within acceptable limits")
+
+
+@dataclass
+class DrawdownCheck:
+    """Check if drawdown is within limits before executing a trade."""
+
+    trading_paused: bool = False
+    daily_drawdown_pct: Decimal = Decimal("0")
+    total_drawdown_pct: Decimal = Decimal("0")
+    max_daily_drawdown: Decimal | None = None
+    max_total_drawdown: Decimal | None = None
+
+    def check(self, *, intent: OrderIntent) -> SafetyResult:
+        if self.trading_paused:
+            return SafetyResult(
+                ok=False,
+                reason=f"Trading paused: daily DD {self.daily_drawdown_pct:.2%}, total DD {self.total_drawdown_pct:.2%}",
+            )
+
+        if self.max_daily_drawdown is not None and self.daily_drawdown_pct > self.max_daily_drawdown:
+            return SafetyResult(
+                ok=False,
+                reason=f"Daily drawdown limit: {self.daily_drawdown_pct:.2%} > {self.max_daily_drawdown:.2%}",
+            )
+
+        if self.max_total_drawdown is not None and self.total_drawdown_pct > self.max_total_drawdown:
+            return SafetyResult(
+                ok=False,
+                reason=f"Total drawdown limit: {self.total_drawdown_pct:.2%} > {self.max_total_drawdown:.2%}",
+            )
+
+        return SafetyResult(
+            ok=True,
+            reason=f"Drawdown OK: daily {self.daily_drawdown_pct:.2%}, total {self.total_drawdown_pct:.2%}",
+        )

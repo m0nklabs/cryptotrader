@@ -7,17 +7,27 @@ from core.types import CostEstimate, FeeBreakdown
 
 BPS_IN_PERCENT = Decimal(10_000)
 
+# Default Bitfinex-like fee schedule for paper trading
+DEFAULT_FEE_BREAKDOWN = FeeBreakdown(
+    currency="USD",
+    maker_fee_rate=Decimal("0.001"),  # 0.10% maker (limit)
+    taker_fee_rate=Decimal("0.002"),  # 0.20% taker (market)
+    assumed_spread_bps=10,  # 10 bps assumed spread
+    assumed_slippage_bps=5,  # 5 bps assumed slippage
+)
+
 
 @dataclass(frozen=True)
 class FeeModel:
-    """Fee/cost model.
+    """Fee/cost model for paper and live trading.
 
-    This is intentionally minimal scaffolding.
+    Models the full cost of a trade: taker/maker fees, assumed spread,
+    and assumed slippage. Used by PaperExecutor to compute realistic P&L.
 
     Authoritative specs live in `docs/` (see `docs/ARCHITECTURE.md` and `docs/TODO.md`).
     """
 
-    breakdown: FeeBreakdown
+    breakdown: FeeBreakdown = DEFAULT_FEE_BREAKDOWN
 
     def estimate_cost(self, *, gross_notional: Decimal, taker: bool = True) -> CostEstimate:
         """Estimate trading costs for a positive gross notional amount."""

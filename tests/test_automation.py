@@ -18,9 +18,12 @@ from core.automation import (
     SlippageCheck,
     SymbolConfig,
     TradeHistory,
+    TradeRecord,
     run_safety_checks,
 )
 from core.automation.orchestrator import OrchestratorConfig, StrategyOrchestrator
+from core.automation.policy import Policy
+from core.types import Candle, CostEstimate, OrderIntent, Opportunity
 from typing import Literal
 
 from core.backtest.strategy import Signal
@@ -900,3 +903,327 @@ class TestExecutorSelection:
         assert result.dry_run is False
         assert result.accepted is True
         assert result.reason == "submitted"
+
+
+# ========== New Bug Fix Tests ==========
+
+
+class TestPositionSizeCheckNotional:
+    """Tests for PositionSizeCheck notional value calculation (bug fix)."""
+
+    def test_notional_with_high_price(self) -> None:
+        """Test that high-price assets get correct notional value.
+
+        BTC at $50,000: amount=0.1 units should be $5,000 notional,
+        not $0.1 as the old buggy code would compute.
+        """
+        symbol_config = SymbolConfig(symbol="BTCUSD", max_position_size=Decimal("10000"))
+        config = AutomationConfig(enabled=True, symbol_configs={"BTCUSD": symbol_config})
+        check = PositionSizeCheck(
+            config=config,
+            current_position_value=Decimal("0"),
+            current_price=Decimal("50000"),
+        )
+        intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="BUY", amount=Decimal("0.1"))
+
+        result = check.check(intent=intent)
+        assert result.ok is True  # 5000 < 10000
+        assert "within limits" in result.reason
+
+    def test_notional_exceeds_limit_with_high_price(self) -> None:
+        """Test position limit exceeded with high-price asset."""
+        symbol_config = SymbolConfig(symbol="BTCUSD", max_position_size=Decimal("10000"))
+        config = AutomationConfig(enabled=True, symbol_configs={"BTCUSD": symbol_config})
+        check = PositionSizeCheck(
+            config=config,
+            current_position_value=Decimal("6000"),
+            current_price=Decimal("50000"),
+        )
+        intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="BUY", amount=Decimal("0.1"))
+
+        result = check.check(intent=intent)
+        assert result.ok is False  # 6000 + 5000 = 11000 > 10000
+        assert "11000.00" in result.reason
+
+    def test_sell_reduces_notional_position(self) -> None:
+        """Test SELL reduces position by notional amount."""
+        symbol_config = SymbolConfig(symbol="BTCUSD", max_position_size=Decimal("20000"))
+        config = AutomationConfig(enabled=True, symbol_configs={"BTCUSD": symbol_config})
+        check = PositionSizeCheck(
+            config=config,
+            current_position_value=Decimal("10000"),
+            current_price=Decimal("50000"),
+        )
+        intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="SELL", amount=Decimal("0.1"))
+
+        result = check.check(intent=intent)
+        assert result.ok is True  # 10000 - 5000 = 5000 < 20000
+
+    def test_default_price_of_one(self) -> None:
+        """Test that default current_price=1 still works."""
+        symbol_config = SymbolConfig(symbol="ETHUSD", max_position_size=Decimal("5000"))
+        config = AutomationConfig(enabled=True, symbol_configs={"ETHUSD": symbol_config})
+        check = PositionSizeCheck(
+            config=config,
+            current_position_value=Decimal("3000"),
+            current_price=Decimal("1"),
+        )
+        intent = OrderIntent(exchange="binance", symbol="ETHUSD", side="BUY", amount=Decimal("2000"))
+
+        result = check.check(intent=intent)
+        assert result.ok is True  # 3000 + 2000 = 5000 <= 5000
+
+
+class TestBalanceCheckNotional:
+    """Tests for BalanceCheck notional value calculation (bug fix)."""
+
+    def test_notional_balance_comparison(self) -> None:
+        """Test balance compared against notional, not raw amount."""
+        config = AutomationConfig(enabled=True, min_balance_required=Decimal("100"))
+        check = BalanceCheck(
+            config=config,
+            current_balance=Decimal("6000"),
+            current_price=Decimal("50000"),
+        )
+        intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="BUY", amount=Decimal("0.1"))
+
+        result = check.check(intent=intent)
+        assert result.ok is True  # 6000 >= 5000 (notional)
+
+    def test_insufficient_notional_balance(self) -> None:
+        """Test insufficient balance for notional value."""
+        config = AutomationConfig(enabled=True, min_balance_required=Decimal("100"))
+        check = BalanceCheck(
+            config=config,
+            current_balance=Decimal("4000"),
+            current_price=Decimal("50000"),
+        )
+        intent = OrderIntent(exchange="bitfinex", symbol="BTCUSD", side="BUY", amount=Decimal("0.1"))
+
+        result = check.check(intent=intent)
+        assert result.ok is False  # 4000 < 5000 (notional)
+        assert "5000.00" in result.reason
+
+    def test_default_price_one(self) -> None:
+        """Test default current_price=1 still works."""
+        config = AutomationConfig(enabled=True, min_balance_required=Decimal("100"))
+        check = BalanceCheck(
+            config=config,
+            current_balance=Decimal("500"),
+            current_price=Decimal("1"),
+        )
+        intent = OrderIntent(exchange="binance", symbol="ETHUSD", side="BUY", amount=Decimal("200"))
+
+        result = check.check(intent=intent)
+        assert result.ok is True  # 500 >= 200
+
+
+class TestTradeHistoryPruning:
+    """Tests for TradeHistory pruning (bug fix)."""
+
+    def test_add_trade_auto_prunes(self) -> None:
+        """Test that trades are auto-pruned when exceeding max_entries."""
+        history = TradeHistory(max_entries=5)
+        now = datetime.now(timezone.utc)
+
+        for i in range(7):
+            history.add_trade("BTC/USDT", now - timedelta(days=i))
+
+        # Should have at most max_entries
+        assert len(history.trades) <= 5
+
+    def test_prune_old_trades(self) -> None:
+        """Test that old trades are pruned."""
+        history = TradeHistory(max_entries=100, max_age_days=7)
+        now = datetime.now(timezone.utc)
+
+        # Add trades from 10 days ago
+        for i in range(10):
+            history.trades.append(TradeRecord(symbol="BTC/USDT", timestamp=now - timedelta(days=10)))
+
+        pruned = history.prune()
+        assert pruned == 10
+        assert len(history.trades) == 0
+
+    def test_prune_keeps_recent_trades(self) -> None:
+        """Test that prune keeps recent trades."""
+        history = TradeHistory(max_entries=100, max_age_days=7)
+        now = datetime.now(timezone.utc)
+
+        # Add 5 recent trades
+        for i in range(5):
+            history.trades.append(TradeRecord(symbol="BTC/USDT", timestamp=now - timedelta(days=i)))
+
+        pruned = history.prune()
+        assert pruned == 0
+        assert len(history.trades) == 5
+
+    def test_prune_returns_count(self) -> None:
+        """Test that prune returns the number of pruned trades."""
+        history = TradeHistory(max_entries=100, max_age_days=30)
+        now = datetime.now(timezone.utc)
+
+        for i in range(3):
+            history.trades.append(TradeRecord(symbol="BTC/USDT", timestamp=now - timedelta(days=60)))
+
+        pruned = history.prune()
+        assert pruned == 3
+
+
+class TestPolicyDecide:
+    """Tests for Policy.decide() implementation (bug fix)."""
+
+    def test_policy_allows_with_fee_model(self) -> None:
+        """Test that policy allows opportunities with sufficient edge."""
+        from core.fees.model import FeeModel
+        from core.types import FeeBreakdown, CostEstimate
+        from core.automation.policy import Policy
+
+        fee_model = FeeModel(
+            breakdown=FeeBreakdown(
+                currency="USD",
+                maker_fee_rate=Decimal("0.001"),
+                taker_fee_rate=Decimal("0.002"),
+                assumed_spread_bps=10,
+                assumed_slippage_bps=5,
+            )
+        )
+
+        policy = Policy(fee_model=fee_model)
+        opportunity = Opportunity(
+            symbol="BTC/USDT",
+            timeframe="1h",
+            score=50,  # 50 bps edge
+            side="BUY",
+            signals=(),
+        )
+        cost = CostEstimate(
+            fee_currency="USD",
+            gross_notional=Decimal("1000"),
+            estimated_fees=Decimal("2"),
+            estimated_spread_cost=Decimal("1"),
+            estimated_slippage_cost=Decimal("0.5"),
+            estimated_total_cost=Decimal("3.5"),
+            minimum_edge_rate=Decimal("0.0035"),
+            minimum_edge_bps=Decimal("35.00"),
+        )
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("10"))
+
+        result = policy.decide(opportunity=opportunity, cost=cost, proposed_intent=intent)
+        assert result.decision == "allow"
+
+    def test_policy_denies_low_edge(self) -> None:
+        """Test that policy denies opportunities with insufficient edge."""
+        from core.fees.model import FeeModel
+        from core.types import FeeBreakdown, CostEstimate
+        from core.automation.policy import Policy
+
+        fee_model = FeeModel(
+            breakdown=FeeBreakdown(
+                currency="USD",
+                maker_fee_rate=Decimal("0.001"),
+                taker_fee_rate=Decimal("0.002"),
+                assumed_spread_bps=10,
+                assumed_slippage_bps=5,
+            )
+        )
+
+        policy = Policy(fee_model=fee_model, min_edge_bps=Decimal("50"))
+        opportunity = Opportunity(
+            symbol="BTC/USDT",
+            timeframe="1h",
+            score=5,  # 5 bps edge (low)
+            side="BUY",
+            signals=(),
+        )
+        cost = CostEstimate(
+            fee_currency="USD",
+            gross_notional=Decimal("1000"),
+            estimated_fees=Decimal("2"),
+            estimated_spread_cost=Decimal("1"),
+            estimated_slippage_cost=Decimal("0.5"),
+            estimated_total_cost=Decimal("3.5"),
+            minimum_edge_rate=Decimal("0.0035"),
+            minimum_edge_bps=Decimal("35.00"),
+        )
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("10"))
+
+        result = policy.decide(opportunity=opportunity, cost=cost, proposed_intent=intent)
+        assert result.decision == "deny"
+
+    def test_policy_denies_small_notional(self) -> None:
+        """Test that policy denies opportunities with too small notional."""
+        policy = Policy(min_notional=Decimal("100"))
+        opportunity = Opportunity(
+            symbol="BTC/USDT",
+            timeframe="1h",
+            score=50,
+            side="BUY",
+            signals=(),
+        )
+        cost = CostEstimate(
+            fee_currency="USD",
+            gross_notional=Decimal("50"),
+            estimated_fees=Decimal("1"),
+            estimated_spread_cost=Decimal("0.5"),
+            estimated_slippage_cost=Decimal("0.25"),
+            estimated_total_cost=Decimal("1.75"),
+            minimum_edge_rate=Decimal("0.0350"),
+            minimum_edge_bps=Decimal("35.00"),
+        )
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("10"))
+
+        result = policy.decide(opportunity=opportunity, cost=cost, proposed_intent=intent)
+        assert result.decision == "deny"
+        assert "too small" in result.reason
+
+    def test_policy_denies_large_notional(self) -> None:
+        """Test that policy denies opportunities with too large notional."""
+        policy = Policy(max_notional=Decimal("500"))
+        opportunity = Opportunity(
+            symbol="BTC/USDT",
+            timeframe="1h",
+            score=50,
+            side="BUY",
+            signals=(),
+        )
+        cost = CostEstimate(
+            fee_currency="USD",
+            gross_notional=Decimal("1000"),
+            estimated_fees=Decimal("2"),
+            estimated_spread_cost=Decimal("1"),
+            estimated_slippage_cost=Decimal("0.5"),
+            estimated_total_cost=Decimal("3.5"),
+            minimum_edge_rate=Decimal("0.0035"),
+            minimum_edge_bps=Decimal("35.00"),
+        )
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("10"))
+
+        result = policy.decide(opportunity=opportunity, cost=cost, proposed_intent=intent)
+        assert result.decision == "deny"
+        assert "too large" in result.reason
+
+    def test_policy_allows_without_fee_model(self) -> None:
+        """Test that policy allows when no fee model is set (skip edge check)."""
+        policy = Policy()
+        opportunity = Opportunity(
+            symbol="BTC/USDT",
+            timeframe="1h",
+            score=50,
+            side="BUY",
+            signals=(),
+        )
+        cost = CostEstimate(
+            fee_currency="USD",
+            gross_notional=Decimal("1000"),
+            estimated_fees=Decimal("2"),
+            estimated_spread_cost=Decimal("1"),
+            estimated_slippage_cost=Decimal("0.5"),
+            estimated_total_cost=Decimal("3.5"),
+            minimum_edge_rate=Decimal("0.0035"),
+            minimum_edge_bps=Decimal("35.00"),
+        )
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("10"))
+
+        result = policy.decide(opportunity=opportunity, cost=cost, proposed_intent=intent)
+        assert result.decision == "allow"

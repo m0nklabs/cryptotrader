@@ -9,7 +9,7 @@ All timestamps use timezone-aware UTC datetimes for consistency.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -74,13 +74,42 @@ class AutomationConfig:
 
 @dataclass
 class TradeHistory:
-    """Track trade history for cooldown and limit enforcement."""
+    """Track trade history for cooldown and limit enforcement.
+
+    Supports pruning of old trades to prevent unbounded memory growth.
+    Default: prunes trades older than 30 days, keeps max 10000 entries.
+    """
 
     trades: list[TradeRecord] = field(default_factory=list)
+    max_entries: int = 10000  # Max number of trades to keep
+    max_age_days: int = 30  # Prune trades older than this
 
     def add_trade(self, symbol: str, timestamp: datetime) -> None:
         """Record a new trade."""
         self.trades.append(TradeRecord(symbol=symbol, timestamp=timestamp))
+        # Auto-prune when exceeding max entries
+        if len(self.trades) > self.max_entries:
+            self.prune()
+
+    def prune(self, before: datetime | None = None) -> int:
+        """Remove old trades. Returns number of trades pruned.
+
+        Args:
+            before: Only keep trades at or after this time. Defaults to 30 days ago.
+        """
+        if before is None:
+            before = datetime.now(timezone.utc) - timedelta(days=self.max_age_days)
+
+        before_ts = before.replace(hour=0, minute=0, second=0, microsecond=0)
+        original_len = len(self.trades)
+        self.trades = [t for t in self.trades if t.timestamp >= before_ts]
+        pruned = original_len - len(self.trades)
+
+        # If still over max, trim from the oldest
+        while len(self.trades) > self.max_entries:
+            self.trades.pop(0)
+
+        return pruned
 
     def get_trades_since(self, since: datetime) -> list[TradeRecord]:
         """Get all trades since a specific time."""

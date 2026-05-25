@@ -164,6 +164,30 @@ class MultiAgentPredictionService:
         _debug(f"📋 Config: primary={self.primary_model}, strategist={self.strategist_model}")
 
     # ------------------------------------------------------------------
+    # Availability check
+    # ------------------------------------------------------------------
+
+    async def is_available(self) -> bool:
+        """Check if Guardian proxy is available.
+
+        Short-circuits when GUARDIAN_API_KEY is absent.
+        """
+        if not self.api_key:
+            logger.debug(
+                "MultiBrain is_available: short-circuit — " "GUARDIAN_API_KEY not set",
+            )
+            return False
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.guardian_host,
+                timeout=httpx.Timeout(5.0),
+                headers=self._headers,
+            ) as client:
+                resp = await client.get("/v1/models", timeout=5.0)
+                return resp.status_code == 200
+        except Exception:
+            return False
+
     # Public API
     # ------------------------------------------------------------------
 
@@ -557,7 +581,17 @@ class MultiAgentPredictionService:
         user_prompt: str,
         max_tokens: int = 512,
     ) -> dict[str, Any]:
-        """Query the Guardian proxy with OpenAI-compat format."""
+        """Query the Guardian proxy with OpenAI-compat format.
+
+        Raises:
+            GuardianUnauthenticated: If GUARDIAN_API_KEY is not set.
+        """
+        from core.signals.llm import GuardianUnauthenticated
+
+        if not self.api_key:
+            raise GuardianUnauthenticated(
+                "GUARDIAN_API_KEY is not set. " "Cannot query Guardian without authentication."
+            )
         async with httpx.AsyncClient(
             base_url=self.guardian_host,
             timeout=httpx.Timeout(180.0),

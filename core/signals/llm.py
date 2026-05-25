@@ -31,6 +31,12 @@ from core.signals.reasoning import TechnicalAnalysis, Recommendation
 logger = logging.getLogger(__name__)
 
 
+class GuardianUnauthenticated(Exception):
+    """Raised when Guardian requires an API key but none is configured."""
+
+    pass
+
+
 @dataclass
 class LLMResponse:
     """Response from LLM analysis."""
@@ -85,14 +91,20 @@ CONFIDENCE: (your confidence in the analysis)"""
             timeout: Request timeout in seconds
 
         Environment variables:
-            GUARDIAN_API_KEY: Bearer token for Guardian proxy
+            GUARDIAN_API_KEY: Bearer token for Guardian proxy (REQUIRED for /v1/models)
             GUARDIAN_HOST: Guardian proxy URL
             GUARDIAN_MODEL: Override default model
+
+        Raises:
+            GuardianUnauthenticated: If GUARDIAN_API_KEY is absent and
+                is_available() is called — short-circuits instead of
+                hammering the proxy without auth.
         """
         self.model = model or os.environ.get("GUARDIAN_MODEL", self.DEFAULT_MODEL)
         self.host = host or os.environ.get("GUARDIAN_HOST", self.DEFAULT_HOST)
         self.timeout = timeout
         api_key = os.environ.get("GUARDIAN_API_KEY", "")
+        self._api_key = api_key  # stored for short-circuit checks
         self._headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_key:
             self._headers["Authorization"] = f"Bearer {api_key}"
@@ -267,9 +279,17 @@ CONFIDENCE: (your confidence in the analysis)"""
     ) -> dict:
         """Query Guardian proxy via OpenAI-compatible /v1/chat/completions.
 
+        Raises:
+            GuardianUnauthenticated: If GUARDIAN_API_KEY is not set.
+
         Returns a dict with a "response" key containing the text, and
         "eval_count" with the token count — matching the shape callers expect.
         """
+        if not self._api_key:
+            raise GuardianUnauthenticated(
+                "GUARDIAN_API_KEY is not set. " "Cannot query Guardian without authentication."
+            )
+
         url = f"{self.host}/v1/chat/completions"
 
         payload = {
@@ -404,7 +424,19 @@ Note: LLM analysis unavailable ({error}). This is rule-based analysis only."""
         )
 
     async def is_available(self) -> bool:
-        """Check if Guardian proxy is available."""
+        """Check if Guardian proxy is available.
+
+        Short-circuits with GuardianUnauthenticated when GUARDIAN_API_KEY
+        is absent, preventing unauthenticated polling of /v1/models.
+        """
+        if not self._api_key:
+            logger.debug(
+                "Guardian is_available: short-circuit — " "GUARDIAN_API_KEY not set (value=%r)",
+                self._api_key,
+            )
+            raise GuardianUnauthenticated(
+                "GUARDIAN_API_KEY is not set. " "Set the env var or skip Guardian LLM features."
+            )
         try:
             async with httpx.AsyncClient(headers=self._headers) as client:
                 response = await client.get(f"{self.host}/v1/models", timeout=5.0)
@@ -413,7 +445,15 @@ Note: LLM analysis unavailable ({error}). This is rule-based analysis only."""
             return False
 
     async def list_models(self) -> list[str]:
-        """List models available on the Guardian proxy."""
+        """List models available on the Guardian proxy.
+
+        Short-circuits when GUARDIAN_API_KEY is absent.
+        """
+        if not self._api_key:
+            logger.debug(
+                "Guardian list_models: short-circuit — " "GUARDIAN_API_KEY not set",
+            )
+            return []
         try:
             async with httpx.AsyncClient(headers=self._headers) as client:
                 response = await client.get(f"{self.host}/v1/models", timeout=5.0)
@@ -460,7 +500,17 @@ async def check_guardian() -> dict:
         Dict with status and available models
     """
     analyst = GuardianAnalyst()
-    available = await analyst.is_available()
+    try:
+        available = await analyst.is_available()
+    except GuardianUnauthenticated:
+        # Short-circuit: no API key, no polling
+        return {
+            "available": False,
+            "host": analyst.host,
+            "default_model": analyst.model,
+            "available_models": [],
+            "reason": "GUARDIAN_API_KEY not set",
+        }
     models = await analyst.list_models() if available else []
 
     return {

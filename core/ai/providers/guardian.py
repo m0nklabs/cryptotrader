@@ -137,7 +137,16 @@ class GuardianProvider(LLMProvider):
         )
 
     async def health_check(self) -> bool:
-        """Check if the Guardian proxy is reachable."""
+        """Check if the Guardian proxy is reachable.
+
+        Short-circuits when GUARDIAN_API_KEY is absent.
+        """
+        api_key = os.environ.get(self.config.api_key_env, "")
+        if not api_key:
+            logger.debug(
+                "GuardianProvider.health_check: short-circuit — " "GUARDIAN_API_KEY not set",
+            )
+            return False
         try:
             client = await self._get_client()
             await self._make_request(client, "GET", "/health")

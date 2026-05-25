@@ -229,6 +229,7 @@ This repo includes a minimal read-only API for candles, health checks, and inges
 Prereqs:
 
 - `DATABASE_URL` set (see `.env.example`)
+- `GUARDIAN_API_KEY` set (see `.env.example`) — required for Guardian-backed LLM features
 - Install dependencies: `pip install -r requirements.txt`
 
 Run the API server:

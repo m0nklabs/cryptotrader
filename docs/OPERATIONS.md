@@ -97,7 +97,21 @@ Quickstart (examples use instance format `@SYMBOL-TIMEFRAME`, e.g. `@BTCUSD-1m`)
 
 ## AI System Initialization
 
-The Multi-Brain AI system requires database initialization to function properly.
+### Guardian API Key Requirement
+
+Guardian-backed LLM features require `GUARDIAN_API_KEY` to be set in the environment.
+When absent, Guardian features short-circuit rather than polling the proxy unauthenticated:
+
+- `GuardianAnalyst.is_available()` raises `GuardianUnauthenticated`
+- `GuardianProvider.health_check()` returns `False`
+- `MultiBrain.is_available()` returns `False`
+- `GuardianAnalyst.list_models()` returns `[]`
+
+Set it to any non-empty string (the value is used as a Bearer token):
+
+```bash
+export GUARDIAN_API_KEY="your-key-here"
+```
 
 ### Automatic Seeding on Startup
 

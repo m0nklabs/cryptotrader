@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Literal, Optional
 
 
@@ -134,13 +135,44 @@ class AuditLogger:
         side: str,
         amount: str,
         context: Optional[dict[str, Any]] = None,
+        *,
+        fill_price: Decimal | None = None,
+        fees: Decimal | None = None,
+        slippage_bps: int | None = None,
+        fill_status: str | None = None,
     ) -> None:
-        """Log a trade execution (dry-run or live)."""
+        """Log a trade execution (dry-run or live).
+
+        Args:
+            symbol: Trading symbol
+            side: BUY or SELL
+            amount: Trade amount
+            context: Additional context
+            fill_price: Actual fill price
+            fees: Fees paid on this trade
+            slippage_bps: Slippage in basis points
+            fill_status: Fill status (FILLED, PARTIAL, MISSED)
+        """
+        enriched_context = {
+            "symbol": symbol,
+            "side": side,
+            "amount": amount,
+            **(context or {}),
+        }
+        if fill_price is not None:
+            enriched_context["fill_price"] = str(fill_price)
+        if fees is not None:
+            enriched_context["fees"] = str(fees)
+        if slippage_bps is not None:
+            enriched_context["slippage_bps"] = str(slippage_bps)
+        if fill_status is not None:
+            enriched_context["fill_status"] = fill_status
+
         event = AuditEvent(
             event_type="trade_executed",
             message=f"Trade executed: {side} {amount} {symbol}",
             severity="info",
-            context={"symbol": symbol, "side": side, "amount": amount, **(context or {})},
+            context=enriched_context,
         )
         self.log(event)
 

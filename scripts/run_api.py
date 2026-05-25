@@ -7,7 +7,9 @@ Usage:
     python scripts/run_api.py [--host HOST] [--port PORT]
 
 Environment:
-    DATABASE_URL - Required. PostgreSQL connection string.
+    DATABASE_URL   - Required. PostgreSQL connection string.
+    GUARDIAN_API_KEY - Required for Guardian-backed LLM features.
+                       When absent, Guardian features short-circuit.
 
 Examples:
     python scripts/run_api.py

@@ -18,13 +18,15 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-cryptotrader}:${POSTGRES_PASSWORD:-cryptotrader}@postgres:5432/${POSTGRES_DB:-cryptotrader}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:***@postgres:5432/${POSTGRES_DB:-cryptotrader}
       - BITFINEX_API_KEY=${BITFINEX_API_KEY:-}
       - BITFINEX_API_SECRET=${BITFINEX_API_SECRET:-}
       - BITFINEX_TIMEOUT=${BITFINEX_TIMEOUT:-30}
       - BITFINEX_RATE_LIMIT=${BITFINEX_RATE_LIMIT:-90}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - GUARDIAN_API_KEY=${GUARDIAN_API_KEY:-}
+      - GUARDIAN_HOST=${GUARDIAN_HOST:-http://localhost:11434}
     ports:
       - "8000:8000"
     volumes:

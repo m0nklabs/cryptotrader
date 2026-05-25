@@ -130,7 +130,7 @@ def _calculate_kelly(
         raise ValueError("win_rate, avg_win, and avg_loss are required for 'kelly' method")
 
     if config.kelly_fraction is None:
-        config.kelly_fraction = Decimal("1.0")  # Full Kelly by default
+        config.kelly_fraction = Decimal("0.5")  # Half-Kelly by default (full Kelly is aggressive)
 
     # Kelly formula: f* = (p * b - q) / b
     # where p = win rate, q = loss rate, b = avg_win / avg_loss
