@@ -176,8 +176,8 @@ When implementing features, use these technologies:
 - **Safety**: Budget caps (daily/monthly), cost tracking per evaluation (~$0.034/eval), fallback chains, VETO logic in Strategist role
 
 ### Sibling Microservices
-- **market-data** (`/home/flip/market-data`): Standalone OHLCV ingestion daemon (Bitfinex REST). Port 8100. Systemd system service.
-- **wallets-data** (`/home/flip/wallets-data`): Wallet/credentials management. Port 8101. Exchange balance queries via ccxt/exchange APIs.
+- **market-data** (`/home/flip/cryptotrader/related-repos/market-data`): Standalone OHLCV ingestion daemon (Bitfinex REST). Port 8100. Systemd system service.
+- **wallets-data** (`/home/flip/cryptotrader/related-repos/wallets-data`): Wallet/credentials management. Port 8101. Exchange balance queries via ccxt/exchange APIs.
 
 ## Code Patterns
 

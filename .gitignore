@@ -41,6 +41,9 @@ data/*.db
 # Editor workspace files
 *.code-workspace
 
+# Nested related repos kept under the cryptotrader umbrella
+related-repos/
+
 # OS/Editor
 .DS_Store
 .vscode/

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-05-25
+### Copilot Agent Centralization
+- Remove repo-local `.github/agents/` copies (`MARK1`, `monks`, `spock`, `trader`) and point the repo documentation at the canonical agents in `/home/flip/github-copilot-config/.github/agents/`.
+- Move the support repos under `related-repos/`, ignore that parent directory in the main repo, and treat `market-data` plus `wallets-data` as cryptotrader-owned sibling repos instead of loose home-root projects.
+
 ## 2026-02-05
 ### Multi-Brain AI Architecture (Epic 3 — #205)
 - Add `core/ai/` module skeleton — Role-Based Mixture of Agents architecture

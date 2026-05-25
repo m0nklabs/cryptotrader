@@ -109,15 +109,17 @@ One-sentence goal.
 
 ### Agent Configuration Files
 
-This repo keeps agent definitions in `.github/agents/`.
+This repo no longer keeps active Copilot agent definitions in `.github/agents/`.
 
-To avoid drift, we treat `../github-copilot-config/agents/MARK1.md` (sibling repo in the same workspace) as the single source of truth for MARK1, and sync it into this repo as `.github/agents/MARK1.agent.md`.
+The single source of truth for MARK1 is `/home/flip/github-copilot-config/.github/agents/MARK1.md`.
 
-Sync command:
+Legacy sync script:
 
 ```bash
 ./scripts/sync_agents_from_central.sh
 ```
+
+The script is intentionally deprecated and must not recreate local agent copies.
 
 ## Automated Copilot Assignment
 
