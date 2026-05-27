@@ -2046,10 +2046,10 @@ async def post_research(request: ResearchRequest) -> ResearchResponse:
 
 @app.get("/research/llm/status")
 async def get_llm_status() -> dict[str, Any]:
-    """Check LLM (Ollama) availability and list models.
+    """Check Guardian-backed LLM availability and list models.
 
     Returns:
-        Status of Ollama service and available models.
+        Status of Guardian service and available models.
     """
     try:
         from core.signals.llm import check_ollama

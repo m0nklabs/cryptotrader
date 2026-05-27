@@ -272,6 +272,29 @@ CONFIDENCE: (your confidence in the analysis)"""
 
         return prompt
 
+    async def _fetch_model_ids(self) -> list[str]:
+        """Fetch Guardian model ids with a single authenticated request."""
+        if not self._api_key:
+            raise GuardianUnauthenticated(
+                "GUARDIAN_API_KEY is not set. " "Set the env var or skip Guardian LLM features."
+            )
+
+        async with httpx.AsyncClient(headers=self._headers) as client:
+            response = await client.get(f"{self.host}/v1/models", timeout=5.0)
+            response.raise_for_status()
+            data = response.json()
+        return [model["id"] for model in data.get("data", [])]
+
+    async def get_models_status(self) -> tuple[bool, list[str]]:
+        """Fetch Guardian availability and model ids in a single request."""
+        try:
+            return True, await self._fetch_model_ids()
+        except GuardianUnauthenticated:
+            raise
+        except Exception as e:
+            logger.warning(f"Failed to fetch Guardian models: {e}")
+            return False, []
+
     async def _query_guardian(
         self,
         prompt: str,
@@ -437,12 +460,8 @@ Note: LLM analysis unavailable ({error}). This is rule-based analysis only."""
             raise GuardianUnauthenticated(
                 "GUARDIAN_API_KEY is not set. " "Set the env var or skip Guardian LLM features."
             )
-        try:
-            async with httpx.AsyncClient(headers=self._headers) as client:
-                response = await client.get(f"{self.host}/v1/models", timeout=5.0)
-                return response.status_code == 200
-        except Exception:
-            return False
+        available, _ = await self.get_models_status()
+        return available
 
     async def list_models(self) -> list[str]:
         """List models available on the Guardian proxy.
@@ -454,15 +473,8 @@ Note: LLM analysis unavailable ({error}). This is rule-based analysis only."""
                 "Guardian list_models: short-circuit — " "GUARDIAN_API_KEY not set",
             )
             return []
-        try:
-            async with httpx.AsyncClient(headers=self._headers) as client:
-                response = await client.get(f"{self.host}/v1/models", timeout=5.0)
-                response.raise_for_status()
-                data = response.json()
-                return [m["id"] for m in data.get("data", [])]
-        except Exception as e:
-            logger.warning(f"Failed to list models: {e}")
-            return []
+        _, models = await self.get_models_status()
+        return models
 
 
 # Backward-compat alias — callers using OllamaAnalyst still work
@@ -501,7 +513,7 @@ async def check_guardian() -> dict:
     """
     analyst = GuardianAnalyst()
     try:
-        available = await analyst.is_available()
+        available, models = await analyst.get_models_status()
     except GuardianUnauthenticated:
         # Short-circuit: no API key, no polling
         return {
@@ -511,7 +523,6 @@ async def check_guardian() -> dict:
             "available_models": [],
             "reason": "GUARDIAN_API_KEY not set",
         }
-    models = await analyst.list_models() if available else []
 
     return {
         "available": available,

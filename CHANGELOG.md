@@ -1,6 +1,11 @@
 # Changelog
 
 ## 2026-05-25
+### Guardian Status Probe Hardening
+- Collapse `check_guardian()` to a single authenticated `/v1/models` request per `/research/llm/status` probe instead of issuing separate availability and model-list calls from the same endpoint.
+- Keep the no-key short-circuit path intact so cryptotrader still avoids unauthenticated Guardian polling when `GUARDIAN_API_KEY` is absent.
+
+## 2026-05-25
 ### Research Script Cleanup
 - Add ad-hoc Bitfinex market research scripts at the repo root and align them with the current `cex.bitfinex.api.bitfinex_client_v2.BitfinexClient` surface so they lint and compile cleanly before being committed.
 - Keep the archived public-safe MARK1 agent snapshot under `scratch/copilot-agent-archive/` for reference alongside the repo-local agent centralization work.
