@@ -35,6 +35,9 @@ ignore = ["E501"]
 "scripts/*.py" = ["E402"]
 "tests/**" = ["E402"]
 
+[project.dependencies]
+pytest = ">=9.0.3"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
