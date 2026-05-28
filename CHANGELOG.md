@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-05-28
+### Frontend Build Repair
+- Fix the portfolio positions React Query call so the optional symbol argument is not mistaken for the query context under React Query v5.
+- Add explicit leveraged-position result narrowing in the risk calculator so TypeScript can safely render effective size and margin requirements.
+
 ## 2026-05-25
 ### Guardian Status Probe Hardening
 - Collapse `check_guardian()` to a single authenticated `/v1/models` request per `/research/llm/status` probe instead of issuing separate availability and model-list calls from the same endpoint.

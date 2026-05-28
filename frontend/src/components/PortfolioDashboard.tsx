@@ -19,9 +19,9 @@ export function PortfolioDashboard() {
   const { timeRange, setTimeRange } = usePortfolioStore();
 
   // Fetch current positions
-  const { data: positionsData, isLoading: positionsLoading } = useQuery({
+  const { data: positionsData, isLoading: positionsLoading } = useQuery<Position[]>({
     queryKey: ['positions'],
-    queryFn: listPositions,
+    queryFn: () => listPositions(),
     refetchInterval: 10000,
   });
 

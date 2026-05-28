@@ -19,6 +19,12 @@ import {
   formatPercentage,
 } from '../lib/risk';
 
+type PositionResult = ReturnType<typeof calculatePositionSize> | ReturnType<typeof calculateLeveragedPosition>;
+
+function isLeveragedPositionResult(result: PositionResult): result is ReturnType<typeof calculateLeveragedPosition> {
+  return 'effectiveSize' in result && 'marginRequired' in result;
+}
+
 export function RiskCalculator() {
   const {
     accountSize,
@@ -44,6 +50,7 @@ export function RiskCalculator() {
   const positionResult = leverage > 1
     ? calculateLeveragedPosition(accountSize, riskPercentage, entryPrice, stopLossPrice, leverage)
     : calculatePositionSize(accountSize, riskPercentage, entryPrice, stopLossPrice);
+  const leveragedPositionResult = isLeveragedPositionResult(positionResult) ? positionResult : null;
 
   // Calculate take profit if target R:R is set
   const suggestedTP = calculateTakeProfit(entryPrice, stopLossPrice, targetRR, isLong);
@@ -205,18 +212,18 @@ export function RiskCalculator() {
             </div>
           </div>
 
-          {leverage > 1 && 'marginRequired' in positionResult && (
+          {leveragedPositionResult && (
             <>
               <div>
                 <div className="text-xs text-zinc-400 mb-1">Effective Size (with leverage)</div>
                 <div className="text-lg font-bold text-purple-400">
-                  {'effectiveSize' in positionResult && positionResult.effectiveSize.toFixed(4)}
+                  {leveragedPositionResult.effectiveSize.toFixed(4)}
                 </div>
               </div>
               <div>
                 <div className="text-xs text-zinc-400 mb-1">Margin Required</div>
                 <div className="text-lg font-bold text-purple-400">
-                  ${formatCurrency(positionResult.marginRequired)}
+                  ${formatCurrency(leveragedPositionResult.marginRequired)}
                 </div>
               </div>
             </>
