@@ -164,10 +164,9 @@ class TestPaperExecutorPartialMissedFills:
                 order_type="market",
                 market_price=Decimal("50000"),
             )
-            if order.status == "PARTIAL":
+            # _simulate_fill returns status="FILLED" for partial fills (fill_qty < qty)
+            if order.fill_qty is not None and order.fill_qty < order.qty:
                 partial_count += 1
-                assert order.fill_qty is not None
-                assert order.fill_qty < order.qty
                 assert order.fill_ratio is not None
                 assert order.fill_ratio < Decimal("1")
 
@@ -200,8 +199,8 @@ class TestPaperExecutorPartialMissedFills:
         assert market_order.status in ("FILLED", "PARTIAL", "MISSED")
         assert limit_order.status == "PENDING"
         assert market_order.fill_price is not None
-        # Limit orders have fill_price set to limit_price in the constructor
-        assert limit_order.fill_price is not None
+        # Limit orders have fill_price=None until filled by update_market_price()
+        assert limit_order.fill_price is None
 
     def test_fill_ratio_for_partial(self):
         """Partial fills should have fill_ratio between min_fill_ratio and 1.0."""

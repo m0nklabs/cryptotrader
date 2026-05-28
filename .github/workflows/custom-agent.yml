@@ -33,8 +33,10 @@ jobs:
 
       - name: Parse arguments
         id: args
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          BODY="${{ github.event.comment.body }}"
+          BODY="$COMMENT_BODY"
           # Default model
           MODEL="anthropic/claude-3.5-sonnet"
 
@@ -47,7 +49,7 @@ jobs:
             MODEL="meta-llama/llama-3.1-405b-instruct"
           fi
 
-          echo "model=$MODEL" >> $GITHUB_OUTPUT
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
 
       - name: Run Agent
         env:

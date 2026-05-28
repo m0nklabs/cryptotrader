@@ -47,11 +47,11 @@ Notes:
 
 4. **AI / Multi-Brain Analysis** (optional, configurable)
    - Route signals through specialized LLM agents (Screener → Tactical → Fundamental → Strategist)
-   - Each role runs on its own provider (DeepSeek R1, Grok 4, o3-mini, Ollama, etc.)
+   - Each role runs on a configured provider (Guardian/local, OpenRouter, OpenAI, xAI, DeepSeek, etc.)
    - Consensus engine aggregates verdicts via weighted voting + VETO
    - Versioned system prompts per role, stored in DB
    - Full cost/token tracking per request
-   - See `core/ai/` module and [issue #205](https://github.com/m0nklabs/cryptotrader/issues/205)
+   - See `core/ai/` and the current roadmap in `docs/ROADMAP_V2.md`
 
 5. **Execution (paper by default)**
    - Convert signals into orders
@@ -229,17 +229,17 @@ See:
 
 ## Frontend dashboard
 
-This repo includes a minimal dashboard UI under `frontend/`:
+This repo includes a real local dashboard under `frontend/`:
 
-- Sticky header/footer, MT4/5-inspired dock layout
-- Dark mode + collapsible panels
-- Minimal settings popup in the header
+- Charts, market watch, signals, opportunities, paper orders, positions, portfolio views, watchlist, trade history, risk calculator, alerts, AI panels, and backtesting views.
+- Dark mode, collapsible panels, keyboard shortcuts, and an MT4/5-inspired dock layout.
+- Remaining gap: production-grade frontend resilience, explicit backend-offline states, and clear handling of disabled wallet/balance integrations.
 
 Operational notes (ports + service wiring) live in `docs/OPERATIONS.md`.
 
-## Core module skeleton (implementation targets)
+## Core module map
 
-The v2 core is being built as a set of small, delegatable modules:
+The v2 core is organized as a set of small, delegatable modules. Many of these are implemented beyond skeleton stage, but profitability validation and live-execution safety remain intentionally gated:
 
 - `core/ai/`: Multi-Brain LLM orchestration (providers, roles, prompts, router, consensus)
 - `core/market_data/`: OHLCV ingestion + normalization (provider interfaces)
@@ -250,9 +250,9 @@ The v2 core is being built as a set of small, delegatable modules:
 - `core/risk/`: risk limits models
 - `core/portfolio/`: positions/balances interfaces
 - `core/persistence/`: persistence boundary (interfaces)
-- `core/storage/`: reserved for concrete persistence implementations
+- `core/storage/`: concrete PostgreSQL stores plus legacy/delegation scaffolding
 
-Each module should be implemented against the requirements described in this document and in `docs/TODO.md`.
+Each module should be maintained against the requirements described in this document, `docs/TODO.md`, and the current audit in `docs/ROADMAP_V2.md`.
 
 ## Feature set (complete list)
 
@@ -306,11 +306,13 @@ This is the complete intended feature scope for v2 (DEX/swaps/bridges/tokenomics
 
 ### Multi-exchange
 
-- Additional CEX integrations (planned)
+- Additional CEX integrations beyond Bitfinex are partial/planned, not production trading paths
 - Common interfaces for market data and execution adapters
 
 ### Operations
 
-- Operational runbook basics (service wiring later)
+- Current live mode is Docker PostgreSQL plus native user systemd API/frontend
+- Full Compose remains a development option
+- Operational runbook basics live in `docs/OPERATIONS.md`
 
 For actionable work packages, see `docs/TODO.md`.

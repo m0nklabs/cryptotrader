@@ -2,7 +2,13 @@
 
 This document tracks implemented features, their current status, and detailed documentation.
 
-**Last updated**: February 2026
+**Last updated**: May 2026
+
+## Reality Check
+
+The repository is past skeleton stage in several areas. Market data, indicators, paper trading, portfolio/trade APIs, AI evaluation plumbing, and the frontend dashboard all have real implementations. The project is still not a proven autonomous trading system: strategy validation, AI-to-paper execution, Postgres integration coverage, and production-grade frontend resilience remain incomplete.
+
+When this document says "working", it means code exists and can be exercised locally. It does not mean profitable, production-ready, or safe for live-money automation.
 
 ---
 
@@ -121,7 +127,7 @@ Candles → [RSI, MACD, Stochastic, Bollinger, ATR] → IndicatorSignals[]
 
 ---
 
-### Coin Dossier (LLM summaries)
+### Coin Dossier (Guardian-backed LLM summaries)
 
 The dossier service generates per-coin summaries and is exposed via the API:
 
@@ -131,10 +137,9 @@ The dossier service generates per-coin summaries and is exposed via the API:
 
 Required environment variables (see `.env.example`):
 
-- `OLLAMA_HOST`
-- `OLLAMA_MODEL`
-- `OLLAMA_USER` (optional; only if proxy auth is enabled—no default auth header is sent)
-- `OLLAMA_PASSWORD` (optional; used with OLLAMA_USER when BasicAuth is required)
+- `GUARDIAN_HOST`
+- `GUARDIAN_API_KEY`
+- `GUARDIAN_MODEL` or `GUARDIAN_DEFAULT_MODEL` where supported
 - `DOSSIER_DEBUG` (optional; enable debug logging)
 ```
 
@@ -372,58 +377,24 @@ npm run dev
 
 ---
 
-## 🚧 In Progress
+## 🚧 In Progress / Not Proven
 
-| Feature | Issue | Status |
-|---------|-------|--------|
-| Multi-exchange (Binance) | #131 | Copilot assigned |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Backtesting validation | Engine exists; validation incomplete | Add walk-forward, out-of-sample, lookahead-bias, and cost-aware replay before trusting strategy output. |
+| AI/Multi-Brain | Analysis layer exists; execution integration incomplete | Providers, roles, router, consensus, API and UI exist. Next step is paper-only audited execution intent generation. |
+| Live Bitfinex execution | Adapter exists; live mode must stay gated | Dry-run/paper mode remains the supported default. |
+| Multi-exchange trading | Partial | Bitfinex is real. Binance/KuCoin are not production trading paths. |
+| Frontend resilience | Partial | Dashboard is broad, but error boundaries, offline states, and complete wallet/balance integration are missing. |
+| Infrastructure | Mixed live model | Current live stack is Docker PostgreSQL plus native systemd API/frontend; Compose remains a dev option. |
 
 ---
 
-## 📋 Planned (Open Issues)
+## 📋 Current Backlog
 
-See [GitHub Issues](https://github.com/m0nklabs/cryptotrader/issues) for the full backlog.
+See [ROADMAP_V2.md](ROADMAP_V2.md) for the audited P0-P3 roadmap and [GitHub Issues](https://github.com/m0nklabs/cryptotrader/issues) for the live tracker.
 
-### AI & Multi-Brain (#205)
-- #205 - Multi-Brain AI Architecture (skeleton committed, 7 phases planned)
-  - Provider adapters: DeepSeek, OpenAI, xAI, Ollama (skeleton ✅)
-  - Agent roles: Screener, Tactical, Fundamental, Strategist (skeleton ✅)
-  - Consensus engine with weighted voting + VETO (skeleton ✅)
-  - Versioned prompt registry with DB backend (skeleton ✅)
-  - AI API endpoints (planned)
-  - AI frontend config panel (skeleton ✅)
-  - Signal pipeline integration (planned)
-  - Testing + observability (planned)
-
-### High Priority
-- #108 - Automated tests + CI pipeline
-- #107 - Technical indicators on chart
-- #106 - System health panel
-- #137 - Docker Compose setup
-
-### Trading Features
-- #133 - Price and indicator alerts
-- #134 - Paper trading engine improvements
-- #135 - Backtesting framework
-- #136 - Portfolio tracker
-- #141 - Risk calculator
-
-### Market Data
-- #132 - WebSocket real-time prices
-- #139 - Order book depth chart
-- #143 - Cross-exchange arbitrage
-
-### UI/UX
-- #138 - Multi-timeframe view
-- #140 - Watchlist with favorites
-- #142 - Keyboard shortcuts
-- #145 - Data export CSV/JSON
-- #148 - Drawing tools
-
-### Infrastructure
-- #144 - Telegram/Discord notifications
-- #146 - Correlation matrix
-- #147 - Rate limit monitor
+Do not use old closed issue references as the active backlog. Most old AI/backtest/portfolio umbrella issues were completed or superseded. Remaining work should be tracked as small, testable issues.
 
 ---
 

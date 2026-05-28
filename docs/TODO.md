@@ -36,40 +36,44 @@ The primary metric of success is **profitability**, not just features or code qu
 
 ## 🎯 Strategic Priorities (Ordered by Impact)
 
-### Priority 1: Prove Profitability (Backtesting)
-> Issue #135 — **CRITICAL**
+This list reflects the May 2026 code audit. It deliberately does not call implemented systems "planned" just because old issues still say so.
 
-Before going live, we must validate that strategies can generate profit:
-- ⏳ Backtesting framework with historical data replay
-- ⏳ Strategy performance metrics (Sharpe, max drawdown, win rate)
-- ⏳ Walk-forward analysis support
+### Priority 0: Security and Trustworthiness
 
-### Priority 2: Live Execution
+- 🔴 Fix #284: `.github/workflows/custom-agent.yml` still interpolates issue comment text inside shell.
+- 🔴 Keep all live-money paths dry-run/paper by default until strategy validation is proven.
 
-Enable real trading (with human oversight):
-- ⏳ Bitfinex live adapter (schema ready, implementation pending)
-- ⏳ Multi-exchange support (Issue #131 — Binance/KuCoin adapters)
-- ⏳ Trade confirmation flow (human approval for large trades)
+### Priority 1: Prove Profitability (Backtesting Validation)
 
-### Priority 3: AI Multi-Brain Consensus (#205)
+The backtest engine and metrics exist. The missing piece is robust validation:
 
-Multi-Brain agent architecture for trading analysis:
-- ⏳ Provider adapters: DeepSeek R1/V3.2, OpenAI o3-mini, xAI Grok 4, Ollama, OpenRouter, Google Gemini (skeleton committed)
-- ⏳ Agent roles: Screener, Tactical, Fundamental, Strategist (skeleton committed)
-- ⏳ Consensus engine: weighted voting + VETO support (skeleton committed)
-- ⏳ AI API endpoints (PR #223)
-- ⏳ AI frontend config panel (skeleton committed)
-- ⏳ Signal pipeline integration (planned)
-- ⏳ Budget caps, cost tracking, observability (planned)
+- ⏳ Walk-forward and out-of-sample validation.
+- ⏳ Lookahead-bias tests for indicators, signals, and candle loading.
+- ⏳ Cost-aware replay using fees, spread, slippage, and realistic fills.
+- ⏳ Persisted backtest run metadata for comparison over time.
 
-### Priority 4: Frontend Observability
+### Priority 2: AI to Paper Execution
 
-Real-time transparency into the trading system:
-- ⏳ Wallet/Portfolio overview (balances, positions, PnL)
-- ⏳ Opportunity Explorer (sorted by quality, click to visualize)
-- ⏳ Multi-timeframe visualization on charts
-- ⏳ Indicator overlays (RSI, MACD, Bollinger on price chart)
-- ⏳ Visual price projections/forecasts
+Multi-Brain AI is no longer just a skeleton; providers, roles, router, consensus, API, budget checks, and frontend panels exist. The next useful step is controlled integration:
+
+- ⏳ Convert AI consensus into paper-order intents only.
+- ⏳ Apply risk gates, VETO state, budget state, and audit logging before any paper order.
+- ⏳ Keep live exchange execution explicitly opt-in and operator-approved.
+
+### Priority 3: Database and Runtime Reliability
+
+- ⏳ Disposable PostgreSQL migration/integration tests.
+- ⏳ Better coverage for portfolio, trades, AI usage, alert persistence, and candle upserts.
+- ⏳ Document the current live stack clearly: Docker PostgreSQL plus native systemd API/frontend.
+
+### Priority 4: Frontend Observability Hardening
+
+The frontend is a broad local dashboard, not a skeleton. The gaps are trust and resilience:
+
+- ⏳ Error boundaries and explicit backend-unavailable states.
+- ⏳ Empty/filter states for data-heavy views.
+- ⏳ Clear labeling/removal of sample performance data.
+- ⏳ Wallet/balance UI stays disabled or explicit until `wallets-data` is deployed.
 
 ---
 
@@ -158,30 +162,9 @@ Real-time transparency into the trading system:
 
 ### 📋 Planned (By Priority)
 
-See [ROADMAP_V2.md](ROADMAP_V2.md) for the full epic-based roadmap.
+See [ROADMAP_V2.md](ROADMAP_V2.md) for the audited roadmap and the corrected issue mapping.
 
-**Critical Path (Profitability)**:
-- #135: Backtesting framework (**CRITICAL**)
-- Live execution adapters (Bitfinex, then Binance)
-
-**AI & LLM**:
-- LLM integration (Ollama + API providers)
-- AI-based opportunity scoring
-
-**Frontend & Observability**:
-- #136: Portfolio tracker
-- #107: Technical indicators on chart
-- Opportunity Explorer
-- Multi-timeframe visualization
-- Visual price projections
-
-**Infrastructure**:
-- #132: WebSocket real-time prices
-- #133: Price and indicator alerts
-- #137: Docker Compose setup
-- Scheduled jobs for backfill/gap repair
-
-See [GitHub Issues](https://github.com/m0nklabs/cryptotrader/issues) for the full backlog.
+The old issue numbers for AI, backtesting, portfolio, and several frontend features are mostly closed. Do not recreate work from old closed issue lists; open small issues for the remaining concrete gaps instead.
 
 ## Work packages (completion status)
 

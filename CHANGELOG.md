@@ -1,9 +1,24 @@
 # Changelog
 
 ## 2026-05-28
+### Paper Trading Hardening
+- Store orchestrator position exposure as quote-currency market value after fills so position-size checks compare against the configured quote-denominated limits.
+- Add causal timestamps to paper limit orders and market price updates so orders created after a price update cannot be filled by that earlier price.
+- Keep pending limit orders without a fill price until `update_market_price()` fills them, and add lookahead-bias regression tests for order-book and paper-executor fills.
+
+### Devcontainer
+- Add the generated devcontainer feature lockfile to pin resolved Docker-in-Docker and Node devcontainer feature versions.
+
 ### Frontend Build Repair
 - Fix the portfolio positions React Query call so the optional symbol argument is not mistaken for the query context under React Query v5.
 - Add explicit leveraged-position result narrowing in the risk calculator so TypeScript can safely render effective size and margin requirements.
+
+### Workflow Hardening
+- Route `/agent` issue-comment parsing through a `COMMENT_BODY` environment variable in `.github/workflows/custom-agent.yml` so untrusted comment text is no longer interpolated directly into the shell script.
+
+### Roadmap Audit
+- Rewrite `docs/ROADMAP_V2.md` around the current implemented codebase, replacing stale skeleton/planned claims with a realistic P0-P3 roadmap.
+- Update `docs/TODO.md`, `docs/FEATURES.md`, and `docs/ARCHITECTURE.md` to stop referencing closed umbrella issues as active backlog and to separate implemented local features from unproven production/live-trading maturity.
 
 ## 2026-05-25
 ### Guardian Status Probe Hardening

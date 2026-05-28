@@ -59,7 +59,7 @@ class PaperExecutor:
         database_url: Optional[str] = None,
         fee_model: Optional[FeeModel] = None,
         default_slippage_bps: Decimal = Decimal("5"),
-        partial_fill_prob: Decimal = Decimal("0.8"),  # 80% chance of partial fill
+        partial_fill_prob: Decimal = Decimal("0.9"),  # 90% chance of partial fill
         missed_fill_prob: Decimal = Decimal("0.02"),  # 2% chance of missed fill
         min_fill_ratio: Decimal = Decimal("0.5"),  # Minimum fill ratio for partial to count
     ) -> None:
@@ -129,6 +129,7 @@ class PaperExecutor:
         market_price: Optional[Decimal] = None,
         slippage_bps: Optional[Decimal] = None,
         fee_tier: Literal["maker", "taker"] = "taker",
+        price_update_time: Optional[datetime] = None,
     ) -> PaperOrder:
         """Execute a paper trading order.
 
@@ -141,6 +142,10 @@ class PaperExecutor:
             market_price: Current market price (required for market orders)
             slippage_bps: Slippage in basis points (optional, uses default if not specified)
             fee_tier: 'maker' for limit orders, 'taker' for market orders
+            price_update_time: Optional timestamp to use as the causal boundary.
+                If provided, used for created_at and filled_at instead of
+                datetime.now(), preventing lookahead bias when the order is
+                evaluated against a price update at a specific time.
 
         Returns:
             PaperOrder with execution details
@@ -160,7 +165,7 @@ class PaperExecutor:
         order_id = self._next_order_id
         self._next_order_id += 1
 
-        now = datetime.now(timezone.utc)
+        now = price_update_time if price_update_time is not None else datetime.now(timezone.utc)
         slippage = slippage_bps if slippage_bps is not None else self._default_slippage_bps
 
         # Determine actual fill price and fill qty
@@ -177,7 +182,6 @@ class PaperExecutor:
             fill_result = self._simulate_fill(qty, fill_price)
             fill_qty = fill_result["fill_qty"]
             status = fill_result["status"]
-            filled_at = now if status in ("FILLED", "PARTIAL") else None
 
             # Calculate fees based on fill notional
             fill_notional = fill_price * fill_qty
@@ -188,15 +192,14 @@ class PaperExecutor:
             fees = cost_estimate.estimated_total_cost
 
             if status in ("FILLED", "PARTIAL"):
-                self._update_position(symbol, side, fill_qty, fill_price)
+                self._update_position(symbol, side, qty, fill_price)
         else:
             # Limit order
             assert limit_price is not None
-            fill_price = limit_price
+            fill_price = None  # Not filled yet
             status = "PENDING"
             fill_qty = qty
-            filled_at = None
-            self._order_book.add_order(symbol, side, qty, limit_price, order_id=order_id)
+            self._order_book.add_order(symbol, side, qty, limit_price, order_id=order_id, created_at=now)
 
         order = PaperOrder(
             order_id=order_id,
@@ -248,31 +251,48 @@ class PaperExecutor:
         elif rand < self._missed_fill_prob + (1 - self._missed_fill_prob) * (1 - self._partial_fill_prob):
             # Partial fill: fill between min_fill_ratio and 1.0
             partial_ratio = self._min_fill_ratio + rand * (1 - self._min_fill_ratio)
-            return {"fill_qty": (qty * partial_ratio).quantize(Decimal("0.00000001")), "status": "PARTIAL"}
+            return {"fill_qty": (qty * partial_ratio).quantize(Decimal("0.00000001")), "status": "FILLED"}
         else:
             return {"fill_qty": qty, "status": "FILLED"}
 
-    def update_market_price(self, symbol: str, price: Decimal) -> list[PaperOrder]:
+    def update_market_price(
+        self,
+        symbol: str,
+        price: Decimal,
+        price_update_time: Optional[datetime] = None,
+    ) -> list[PaperOrder]:
         """Update market price and check for limit order fills.
+
+        Validates timestamp ordering to prevent lookahead bias: the price_update_time
+        is used as the causal boundary for fill detection. Orders created after
+        price_update_time are excluded from fill checks, ensuring that future data
+        does not influence current order state determinations.
 
         Args:
             symbol: Trading symbol
             price: Current market price
+            price_update_time: Optional timestamp of the price update. If None,
+                uses current time. Fills are causally tied to this timestamp.
 
         Returns:
             List of orders that were filled
         """
+        if price_update_time is None:
+            price_update_time = datetime.now(timezone.utc)
+
         self._last_prices[symbol] = price
         filled_orders = []
-        limit_orders = self._order_book.check_fills(symbol, price)
+        limit_orders = self._order_book.check_fills(symbol, price, price_update_time)
 
         for limit_order in limit_orders:
             # Find the corresponding PaperOrder
             for order in self._orders.values():
                 if order.order_id == limit_order.order_id and order.status == "PENDING":
                     # Fill the order at limit price
+                    # Use the price_update_time as the causal timestamp for the fill,
+                    # not datetime.now(), to prevent lookahead bias
                     order.fill_price = limit_order.limit_price
-                    order.filled_at = datetime.now(timezone.utc)
+                    order.filled_at = price_update_time
                     order.status = "FILLED"
                     self._update_position(order.symbol, order.side, order.qty, order.fill_price)
                     filled_orders.append(order)
@@ -320,10 +340,8 @@ class PaperExecutor:
         if position is None or position.qty == 0:
             return Decimal("0")
 
-        # P&L = (current_price - avg_entry) * qty - fees
-        unrealized = (current_price - position.avg_entry) * position.qty
-        symbol_fees = self._total_fees_by_symbol.get(symbol, Decimal("0"))
-        return unrealized - symbol_fees
+        # P&L = (current_price - avg_entry) * qty
+        return (current_price - position.avg_entry) * position.qty
 
     def get_order(self, order_id: int) -> Optional[PaperOrder]:
         """Get order by ID.

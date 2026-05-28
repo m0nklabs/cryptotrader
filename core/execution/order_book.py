@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal, Optional
 
@@ -14,12 +15,17 @@ class LimitOrder:
     side: Literal["BUY", "SELL"]
     qty: Decimal
     limit_price: Decimal
+    created_at: Optional[datetime] = None
+    filled_at: Optional[datetime] = None
 
 
 class OrderBook:
     """In-memory order book for paper trading limit orders.
 
     Manages pending limit orders and checks for fills when price updates occur.
+    Timestamps are evaluated in chronological order to prevent lookahead bias:
+    filled_at <= price_update_time, ensuring future data does not influence
+    current order state determinations.
     """
 
     def __init__(self) -> None:
@@ -33,6 +39,7 @@ class OrderBook:
         qty: Decimal,
         limit_price: Decimal,
         order_id: Optional[int] = None,
+        created_at: Optional[datetime] = None,
     ) -> int:
         """Add a limit order to the book.
 
@@ -42,6 +49,7 @@ class OrderBook:
             qty: Order quantity
             limit_price: Limit price for the order
             order_id: Optional order ID to use (if None, auto-generate)
+            created_at: Optional creation timestamp. Defaults to now in UTC.
 
         Returns:
             order_id: Unique order ID
@@ -54,12 +62,16 @@ class OrderBook:
             if order_id >= self._next_order_id:
                 self._next_order_id = order_id + 1
 
+        if created_at is None:
+            created_at = datetime.now(timezone.utc)
+
         order = LimitOrder(
             order_id=order_id,
             symbol=symbol,
             side=side,
             qty=qty,
             limit_price=limit_price,
+            created_at=created_at,
         )
         self._orders[order_id] = order
         return order_id
@@ -78,21 +90,40 @@ class OrderBook:
             return True
         return False
 
-    def check_fills(self, symbol: str, price: Decimal) -> list[LimitOrder]:
+    def check_fills(
+        self,
+        symbol: str,
+        price: Decimal,
+        price_update_time: Optional[datetime] = None,
+    ) -> list[LimitOrder]:
         """Check which limit orders should be filled at the given price.
+
+        Validates timestamp ordering to prevent lookahead bias: orders whose
+        filled_at timestamp would be later than the price_update_time are
+        considered to have their fill causally tied to the price update.
 
         Args:
             symbol: Trading symbol
             price: Current market price
+            price_update_time: Timestamp of the price update. If None, uses
+                current time. Orders are filled only if their created_at <=
+                price_update_time, ensuring chronological ordering.
 
         Returns:
             List of orders that should be filled
         """
+        if price_update_time is None:
+            price_update_time = datetime.now(timezone.utc)
+
         filled_orders = []
         orders_to_remove = []
 
         for order_id, order in self._orders.items():
             if order.symbol != symbol:
+                continue
+
+            # Skip orders created after the price update (lookahead bias guard)
+            if order.created_at is not None and order.created_at > price_update_time:
                 continue
 
             # BUY orders fill when price <= limit_price

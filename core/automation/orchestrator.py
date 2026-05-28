@@ -195,9 +195,6 @@ class StrategyOrchestrator:
         # Update drawdown with current balance
         self.drawdown_monitor.update_balance(self.current_balance)
 
-        # Calculate total exposure (sum of all position values)
-        total_exposure = sum(self.positions.get(s, Decimal("0")) * current_price for s in self.config.symbols)
-
         return [
             KillSwitchCheck(config=self.automation_config),
             PositionSizeCheck(
@@ -312,7 +309,7 @@ class StrategyOrchestrator:
             # 7. Update state
             if execution_result.accepted:
                 self.trade_history.add_trade(symbol, datetime.now(timezone.utc))
-                self._update_position(symbol, intent)
+                self._update_position(symbol, intent, price=current_price)
 
                 # Update drawdown with new balance
                 self.drawdown_monitor.update_balance(self.current_balance)
@@ -378,14 +375,25 @@ class StrategyOrchestrator:
 
         return indicators
 
-    def _update_position(self, symbol: str, intent: OrderIntent) -> None:
-        """Update position tracking after a trade."""
+    def _update_position(
+        self,
+        symbol: str,
+        intent: OrderIntent,
+        price: Decimal = Decimal("1"),
+    ) -> None:
+        """Update position tracking after a trade.
+
+        Stores market value (amount * price) in quote currency,
+        so position limits compare apples-to-apples with
+        max_position_size which is denominated in quote currency.
+        """
         current = self.positions.get(symbol, Decimal("0"))
+        market_value = intent.amount * price
 
         if intent.side == "BUY":
-            self.positions[symbol] = current + intent.amount
+            self.positions[symbol] = current + market_value
         else:
-            self.positions[symbol] = current - intent.amount
+            self.positions[symbol] = current - market_value
 
     async def run_once(self) -> list[TradeDecision]:
         """Run one iteration of the trading loop."""
