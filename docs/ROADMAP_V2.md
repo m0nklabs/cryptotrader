@@ -43,7 +43,7 @@ Operating rule: paper trading and dry-run remain the default until strategy vali
 1. Older roadmap text marked AI, backtesting, portfolio, and frontend as `Planned` or `Skeleton` even though substantial code now exists.
 2. Older issue references point to many closed issues: #205, #206-#211, #181, #184, #177, #182, #231, #229 and related follow-ups are no longer open tracker items.
 3. `FEATURES.md` still advertises old open issue numbers and old Ollama wording in places, while runtime work now routes local LLM calls through Guardian.
-4. The audit found the shell-injection pattern reported by #284 in `custom-agent.yml`; the local patch routes the comment body through `COMMENT_BODY`, and #284 should remain open until that patch is committed and pushed.
+4. The audit found and fixed the shell-injection pattern reported by #284 in `custom-agent.yml`; comment bodies now flow through `COMMENT_BODY` instead of direct shell interpolation.
 5. Docs mix three deployment modes without clearly naming the live one: Docker Postgres, native systemd API, and optional Compose API/frontend.
 6. Frontend docs understate the current UI as a skeleton, but the UI still lacks production-grade error boundaries, offline states, and complete wallet/balance integration.
 7. The AI docs overstate maturity when they imply automated trading decisions are ready for execution; AI is currently an analysis/decision layer, not a trusted execution authority.
@@ -54,9 +54,9 @@ Operating rule: paper trading and dry-run remain the default until strategy vali
 
 ### P0 - Must Fix Before Trusting Automation
 
-1. **Ship the CI comment-body command injection fix (#284).**
-   - The local workspace patch replaces shell interpolation with `COMMENT_BODY` env input that treats the comment body as data.
-   - Commit/push the fix, then add a regression check or workflow lint rule.
+1. **Keep the CI comment-body command injection fix covered (#284).**
+   - The shipped fix replaces shell interpolation with `COMMENT_BODY` env input that treats the comment body as data.
+   - Add a regression check or workflow lint rule if this workflow grows new parsing logic.
 
 2. **Prove strategy validity before live automation.**
    - Add walk-forward and out-of-sample validation.
@@ -113,7 +113,7 @@ Operating rule: paper trading and dry-run remain the default until strategy vali
 
 | Epic | Priority | Status | Concrete next deliverable |
 | --- | --- | --- | --- |
-| Security and CI safety | P0 | Local fix pending commit/push | Ship #284 and add workflow lint coverage. |
+| Security and CI safety | P0 | #284 fixed in 7ee5646 | Add workflow lint coverage if parsing expands. |
 | Backtesting and validation | P0 | Engine exists, validation incomplete | Walk-forward/out-of-sample validation plus lookahead-bias coverage. |
 | Execution and automation | P0/P1 | Paper trading solid, live gated | AI-to-paper execution with risk gates; no live default. |
 | AI/Multi-Brain | P1 | Implemented analysis layer, not execution authority | Paper-only decision integration, budget/usage observability, provider health hardening. |
@@ -130,7 +130,7 @@ Current open issues after audit:
 
 | Issue | Status after audit | Action |
 | --- | --- | --- |
-| #284 Security issue in workflow YAML | Valid P0 security issue with local fix applied | Keep open until committed/pushed, then close. |
+| #284 Security issue in workflow YAML | Fixed in 7ee5646 | Closed after push. |
 | #212 Project Roadmap Priority Matrix | Stale body, useful parent issue | Update body to this current-state roadmap and link new focused issues. |
 | #170 Frontend Observability | Still relevant but too broad | Keep as epic; split into focused issues for error states, chart alerts/projections, and poller/cache behavior. |
 | #179 Infrastructure & Operations | Still relevant but stale | Keep as epic; update to current mixed deployment and remaining ops work. |
@@ -148,11 +148,11 @@ New focused issues created from this audit:
 
 ## Recommended Next Development Steps
 
-1. Fix #284 before any more workflow automation depends on issue comments.
-2. Land the lookahead-bias and walk-forward validation work before adding new strategy logic.
-3. Make AI decisions produce paper-order intents only, behind explicit risk and budget gates.
-4. Add a real Postgres integration test path in CI or an explicitly documented local command.
-5. Update frontend status/error handling so operator screens are trustworthy under partial backend failure.
+1. Land the walk-forward validation work before adding new strategy logic.
+2. Make AI decisions produce paper-order intents only, behind explicit risk and budget gates.
+3. Add a real Postgres integration test path in CI or an explicitly documented local command.
+4. Update frontend status/error handling so operator screens are trustworthy under partial backend failure.
+5. Keep workflow issue-comment parsing covered if the custom agent grows new flags.
 
 ---
 
