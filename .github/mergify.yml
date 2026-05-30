@@ -156,7 +156,6 @@ pull_request_rules:
     actions:
       merge:
         method: squash
-      delete_head_branch:
 
   - name: auto-merge-copilot
     conditions:
@@ -185,7 +184,6 @@ pull_request_rules:
     actions:
       merge:
         method: squash
-      delete_head_branch:
 
   - name: auto-merge-approved
     conditions:
@@ -200,7 +198,6 @@ pull_request_rules:
     actions:
       merge:
         method: squash
-      delete_head_branch:
 
   - name: request-review-on-ready
     conditions:
