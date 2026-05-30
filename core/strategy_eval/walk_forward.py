@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Sequence
 
 from core.strategy_eval.types import (
@@ -41,8 +42,21 @@ def _split_candles(
     candles: Sequence[Candle],
     start: datetime,
     end: datetime,
+    end_exclusive: bool = False,
 ) -> list[Candle]:
-    """Filter candles to a date range."""
+    """Filter candles to a date range.
+
+    Args:
+        candles: All available candles.
+        start: Start of the range (inclusive).
+        end: End of the range.
+        end_exclusive: If True, end is exclusive (candle at exactly *end* goes to the next window).
+
+    Returns:
+        Candles whose open_time falls within [start, end) or [start, end] depending on end_exclusive.
+    """
+    if end_exclusive:
+        return [c for c in candles if start <= c.open_time < end]
     return [c for c in candles if start <= c.open_time <= end]
 
 
@@ -119,18 +133,33 @@ def run_walk_forward(
         if test_end > end_date:
             break  # Skip last incomplete fold
 
-        # Warm-up: include lookback candles before training
+        # Warm-up: include lookback candles before training for indicator state
         warmup_start = current - timedelta(days=config.lookback_candles // 24)
-        train_candles = _split_candles(candles, warmup_start, train_end)
+
+        # Strict split: train uses [warmup_start, train_end) (exclusive end),
+        # test uses [train_end, test_end] (inclusive end).
+        # This prevents the boundary candle at train_end from appearing in both sets.
+        warmup_candles = _split_candles(candles, warmup_start, current)
+        train_candles = _split_candles(candles, current, train_end, end_exclusive=True)
         test_candles = _split_candles(candles, train_end, test_end)
 
         if not train_candles or not test_candles:
             current = train_end + timedelta(days=config.step_size_days)
             continue
 
-        # Run training (simulate to build indicator state)
-        train_result = BacktestEngine(candle_store=None, initial_capital=10000.0).run(strategy, train_candles)
-        train_return = train_result.total_return
+        # Warm-up phase: run through warmup candles to build indicator state
+        # but exclude them from the training return calculation.
+        warmup_result = BacktestEngine(candle_store=None, initial_capital=10000.0).run(strategy, warmup_candles)
+
+        # Full training run (warmup + training candles)
+        full_train_candles = warmup_candles + train_candles
+        full_train_result = BacktestEngine(candle_store=None, initial_capital=10000.0).run(strategy, full_train_candles)
+
+        # Compute training return excluding warmup PnL to avoid inflating
+        # training performance with warmup-period trades.
+        warmup_pnl = warmup_result.total_pnl
+        full_train_pnl = full_train_result.total_pnl
+        train_return = (full_train_pnl - warmup_pnl) / 10000.0
 
         # Run testing (fresh start for OOS evaluation)
         test_result = BacktestEngine(candle_store=None, initial_capital=10000.0).run(strategy, test_candles)
@@ -146,7 +175,7 @@ def run_walk_forward(
             test_max_dd=test_result.max_drawdown,
             test_win_rate=test_result.win_rate,
             test_trades=len(test_result.trades),
-            oos_decay=test_result.total_return / train_return if abs(train_return) > 1e-9 else 0.0,
+            oos_decay=(test_result.total_return / train_return if abs(train_return) > 1e-9 else 0.0),
         )
         folds.append(fold)
 
