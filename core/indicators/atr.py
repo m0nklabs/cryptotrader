@@ -150,28 +150,55 @@ def generate_atr_signal(
     # Calculate volatility ratio
     volatility_ratio = current_atr / avg_atr
 
-    # Determine signal based on volatility level
+    # Determine signal based on volatility level and price direction
+    closes = [float(c.close) for c in candles]
+    price_direction = closes[-1] - closes[-(period + 1)] if len(closes) >= period + 1 else 0.0
+
     if volatility_ratio >= high_volatility_threshold:
-        # High volatility
-        strength = min(100, int((volatility_ratio - high_volatility_threshold) * 100))
-        side = "HOLD"  # ATR doesn't indicate direction, just volatility
+        # High volatility - direction depends on recent price movement
+        if price_direction > 0:
+            side = "BUY"
+            strength = min(100, int((volatility_ratio - high_volatility_threshold) * 100))
+        elif price_direction < 0:
+            side = "SELL"
+            strength = min(100, int((volatility_ratio - high_volatility_threshold) * 100))
+        else:
+            side = "CONFIRM"
+            strength = min(100, int((volatility_ratio - high_volatility_threshold) * 80))
+
         reason = (
-            f"ATR({period}) high volatility: {current_atr:.4f} "
+            f"ATR({period}) high volatility ({side}): {current_atr:.4f} "
             f"({volatility_ratio:.2f}x average, threshold {high_volatility_threshold}x)"
         )
     elif volatility_ratio <= low_volatility_threshold:
-        # Low volatility
-        strength = min(100, int((low_volatility_threshold - volatility_ratio) * 100))
-        side = "HOLD"
+        # Low volatility - consolidation, direction from recent trend
+        if price_direction > 0:
+            side = "BUY"
+            strength = min(60, int((low_volatility_threshold - volatility_ratio) * 80))
+        elif price_direction < 0:
+            side = "SELL"
+            strength = min(60, int((low_volatility_threshold - volatility_ratio) * 80))
+        else:
+            side = "HOLD"
+            strength = min(50, int((low_volatility_threshold - volatility_ratio) * 80))
+
         reason = (
-            f"ATR({period}) low volatility: {current_atr:.4f} "
+            f"ATR({period}) low volatility ({side}): {current_atr:.4f} "
             f"({volatility_ratio:.2f}x average, threshold {low_volatility_threshold}x)"
         )
     else:
-        # Normal volatility
-        strength = 0
-        side = "HOLD"
-        reason = f"ATR({period}) normal volatility: {current_atr:.4f} ({volatility_ratio:.2f}x average)"
+        # Normal volatility - directional based on price trend
+        if price_direction > 0:
+            side = "BUY"
+            strength = 30
+        elif price_direction < 0:
+            side = "SELL"
+            strength = 30
+        else:
+            side = "HOLD"
+            strength = 0
+
+        reason = f"ATR({period}) normal volatility ({side}): {current_atr:.4f} ({volatility_ratio:.2f}x average)"
 
     return IndicatorSignal(
         code="ATR",

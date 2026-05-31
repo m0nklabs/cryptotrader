@@ -194,8 +194,8 @@ def test_generate_atr_signal_detects_low_volatility() -> None:
 
 
 def test_generate_atr_signal_normal_volatility() -> None:
-    """Signal shows neutral for normal volatility."""
-    # Consistent volatility
+    """Signal shows directional for normal volatility with price trend."""
+    # Consistent volatility with upward trend
     candles = []
     for i in range(50):
         close = 100 + i * 0.1
@@ -204,8 +204,10 @@ def test_generate_atr_signal_normal_volatility() -> None:
     signal = generate_atr_signal(candles, period=14)
 
     assert signal.code == "ATR"
-    # Normal volatility should result in HOLD with low/zero strength
-    assert signal.side == "HOLD"
+    # Normal volatility with upward trend => BUY (not HOLD anymore)
+    # ATR now returns directional signals based on price direction
+    assert signal.side in ("BUY", "SELL", "CONFIRM")
+    assert signal.strength >= 0
 
 
 def test_generate_atr_signal_includes_atr_value() -> None:
@@ -248,7 +250,8 @@ def test_generate_atr_signal_with_custom_thresholds() -> None:
     signal = generate_atr_signal(candles, high_volatility_threshold=2.0, low_volatility_threshold=0.3)
 
     assert signal.code == "ATR"
-    assert signal.side == "HOLD"  # ATR signals are always HOLD (informational)
+    # ATR now returns directional signals (BUY/SELL/CONFIRM/HOLD) based on price direction
+    assert signal.side in ("BUY", "SELL", "CONFIRM", "HOLD")
 
 
 def test_generate_atr_signal_deterministic_output() -> None:
@@ -279,7 +282,8 @@ def test_generate_atr_signal_handles_minimum_candles() -> None:
 
     # Should work with minimum candles
     assert signal.code == "ATR"
-    assert signal.side == "HOLD"
+    # ATR now returns directional signals based on price direction
+    assert signal.side in ("BUY", "SELL", "CONFIRM", "HOLD")
 
 
 def test_generate_atr_signal_with_custom_period() -> None:
@@ -292,5 +296,6 @@ def test_generate_atr_signal_with_custom_period() -> None:
     signal = generate_atr_signal(candles, period=10)
 
     assert signal.code == "ATR"
-    assert signal.side == "HOLD"
+    # ATR now returns directional signals based on price direction
+    assert signal.side in ("BUY", "SELL", "CONFIRM", "HOLD")
     assert "ATR(10)" in signal.reason

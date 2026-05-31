@@ -1,0 +1,2272 @@
+
+# 2026-05-31 20:24:19.260771
++You are Tier1 Reviewer for a GitHub pull request.
++Mission: detect concrete bugs and behavior regressions before merge.
++Treat this as production review, not code style feedback.
++
++Review standards:
++1) Focus on correctness, data leakage, boundary conditions, off-by-one errors, and broken assumptions.
++2) Prioritize issues by severity (critical, high, medium) but only report high-signal findings.
++3) Every finding must be GitHub-aware: include exact repository path and 1-based line number.
++4) Tie each finding to user-visible impact, correctness risk, or metric distortion.
++5) Flag missing tests when a risky code path changed and current tests would not catch it.
++6) Ignore pure style and naming nits unless they hide a real defect.
++
++Evidence rules:
++- Do not speculate. If uncertain, skip the finding.
++- Use language like: 'can cause', 'will duplicate', 'can leak', with concrete mechanism.
++- Prefer one strong finding over many weak ones.
++
++Output rules:
++- Return strict JSON only.
++- Schema: {"summary":"...","findings":[{"path":"...","line":123,"issue":"...","suggestion":"...","replacement":"optional code"}]}
++- Findings must be actionable and patch-oriented.
++- Max 5 findings.
++Return ONLY JSON in this schema: {"summary":"...","findings":[{"path":"...","line":123,"issue":"...","suggestion":"...","replacement":"optional code"}]}. Limit findings to high-signal issues only (max 5).
++PR #310: Recover Hermes local pipeline work
++Local checks: ["python: pytest -q tests/test_api_health.py PASS", "frontend: npm run build PASS"]
++Diff follows:
++diff --git a/.gitignore b/.gitignore
++index 5399953b..ad6e7627 100644
++--- a/.gitignore
+++++ b/.gitignore
++@@ -48,3 +48,4 @@ related-repos/
++ .DS_Store
++ .vscode/
++ .workflow-approver-state.json
+++.aider*
++
++diff --git a/ROLLOUT_CHECKLIST.md b/ROLLOUT_CHECKLIST.md
++new file mode 100644
++index 00000000..01ff3d7a
++--- /dev/null
+++++ b/ROLLOUT_CHECKLIST.md
++@@ -0,0 +1,93 @@
+++# Rollout Gate — Limited-Live Criteria Checklist
+++
+++> Last updated: 2026-05-30
+++> Task: t_a2b8bd31 (Rollout-gate review)
+++
+++## Status: READY FOR LIMITED-LIVE PAPER TRADING
+++
+++---
+++
+++## 1. Fee Model — PASS (gate t_78b975b5)
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| Maker/taker fees correct | ✅ | 0.1% / 0.2% Bitfinex standard |
+++| Spread cost | ✅ | 10 bps assumed |
+++| Slippage cost | ✅ | 5 bps assumed |
+++| Transfer fees | ✅ | 6 currencies (BTC, ETH, USDT, USD, LTC, XMR) |
+++| Funding rate | ✅ | 5% annualized, verified positive |
+++| Backtest consistency | ✅ | Fees consistent between backtest and paper |
+++| Limit order fees | ✅ | Calculated at placement time |
+++| Partial fill fees | ✅ | Proportional to fill_qty |
+++| Fee model score | ✅ | 100% (22/22 checks, 102 tests pass) |
+++
+++## 2. Paper Trading Execution — PASS
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| PaperExecutor wired | ✅ | FeeModel in constructor, fallback default |
+++| Market orders | ✅ | Instant fill with slippage |
+++| Limit orders | ✅ | Order book simulation |
+++| Position tracking | ✅ | Long/short with avg entry |
+++| P&L calculation | ✅ | Realized + unrealized including fees |
+++| Partial fills | ✅ | 90% fill probability |
+++| Missed fills | ✅ | 2% miss probability |
+++| Database persistence | ✅ | paper_orders, paper_positions tables |
+++
+++## 3. Missing Safeguards — ACKNOWLEDGED (non-blocking)
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| Kelly default full (1.0) | ⚠️ | Aggressive sizing — acceptable for paper |
+++| Live drawdown signal | ⚠️ | Tracked but not actively used as signal |
+++| Circuit breaker state | ⚠️ | Ephemeral (in-memory) |
+++| Minimum edge filter | ✅ | 35 bps taker, 25 bps maker |
+++| Depth simulation | ⚠️ | Fixed slippage, no depth — OK for paper |
+++| Partial fill quality | ⚠️ | Simulated, no real partial fills |
+++
+++## 4. Backtest Quality — PASS
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| Gross PnL | ✅ | 2352 (23.5%) |
+++| Net PnL | ✅ | 1524 after 35.2% cost ratio |
+++| Net Sharpe | ✅ | 2.05 — solid |
+++| Net max drawdown | ⚠️ | 1.57 (157%) — aggressive but acceptable for paper |
+++| Walk-forward | ✅ | Done |
+++| OOS train/test split | ✅ | Strict split with end_exclusive (PR #309) |
+++| Single BTC period | ⚠️ | Transition regime only, 5 trades over 20 candles |
+++
+++## 5. Infrastructure — PASS
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| API health | ✅ | http://localhost:8000/health → ok |
+++| Database | ✅ | 391881 candles loaded |
+++| Postgres | ✅ | Connected (127.0.0.1:5432) |
+++| Candle provider | ✅ | Bitfinex REST, lazy init |
+++| Price provider | ✅ | Bitfinex current price |
+++| Orchestrator | ✅ | Paper mode (dry_run=True) |
+++
+++## 6. Known Gaps (non-blocking for limited-live)
+++
+++1. **Kelly full (1.0)** — aggressive but fine for paper. Monitor in first 48h.
+++2. **No live data latency validation** — paper uses cached candles, not real-time latency.
+++3. **No depth simulation** — fixed 5bps slippage regardless of order size.
+++4. **Circuit breaker ephemeral** — restart loses state. Acceptable for paper.
+++5. **TradeHistory unbounded** — memory leak potential in long runs. Monitor.
+++6. **No gap detection** — candle gaps between updates not detected.
+++
+++## 7. Go/No-Go Decision
+++
+++**GO for limited-live paper trading with monitoring.**
+++
+++Conditions:
+++- Start with small position size (default 100 USD)
+++- Monitor first 48 hours for Kelly sizing impact
+++- Watch for TradeHistory growth
+++- Fee model already proven at 100% score
+++- Paper trading uses same fee model as backtest — consistent
+++
+++---
+++
+++*This checklist supersedes previous rollout assessments. Fee gate t_78b975b5 unblocked.*
++
++diff --git a/api/main.py b/api/main.py
++index 9de05f5e..d81a86d0 100644
++--- a/api/main.py
+++++ b/api/main.py
++@@ -38,7 +38,13 @@
++ from core.market_cap.coingecko import CoinGeckoClient
++ from core.storage.postgres.config import PostgresConfig
++ from core.storage.postgres.stores import PostgresStores
++-from core.types import FeeBreakdown
+++from core.types import FeeBreakdown, OrderIntent
+++from core.automation.rules import AutomationConfig, TradeHistory
+++from core.automation.safety import (
+++    CooldownCheck,
+++    SafetyResult,
+++    SignalDeduplication,
+++)
++
++ # Import new route modules with aliases to avoid conflicts
++ from api.routes import (
++@@ -55,6 +61,7 @@
++     trade_history,
++     alerts as alerts_routes,
++     backtest as backtest_routes,
+++    smoke as smoke_routes,
++ )
++
++ # Import middleware for rate limit tracking
++@@ -99,6 +106,14 @@ async def lifespan(app: FastAPI):
++ # Global paper executor instance (in-memory, no DB persistence)
++ _paper_executor: PaperExecutor | None = None
++
+++# Shared automation config and trade history for cooldown/dedup
+++_automation_config: AutomationConfig | None = None
+++_trade_history: TradeHistory | None = None
+++
+++# Cooldown dedup state (shared between API and orchestrator)
+++_cooldown_check: CooldownCheck | None = None
+++_signal_dedup: SignalDeduplication | None = None
+++
++ # Global CoinGecko client (singleton)
++ _coingecko_client: CoinGeckoClient | None = None
++
++@@ -159,6 +174,80 @@ def _get_paper_executor() -> PaperExecutor:
++     return _paper_executor
++
++
+++def _get_automation_config() -> AutomationConfig:
+++    """Get or initialize the shared automation config."""
+++    global _automation_config
+++    if _automation_config is None:
+++        _automation_config = AutomationConfig()
+++    return _automation_config
+++
+++
+++def _get_trade_history() -> TradeHistory:
+++    """Get or initialize the shared trade history."""
+++    global _trade_history
+++    if _trade_history is None:
+++        _trade_history = TradeHistory()
+++    return _trade_history
+++
+++
+++def _get_cooldown_check() -> CooldownCheck:
+++    """Get or initialize the shared cooldown check."""
+++    global _cooldown_check
+++    if _cooldown_check is None:
+++        _cooldown_check = CooldownCheck(
+++            config=_get_automation_config(),
+++            trade_history=_get_trade_history(),
+++        )
+++    return _cooldown_check
+++
+++
+++def _get_signal_dedup() -> SignalDeduplication:
+++    """Get or initialize the shared signal deduplication."""
+++    global _signal_dedup
+++    if _signal_dedup is None:
+++        _signal_dedup = SignalDeduplication(
+++            config=_get_automation_config(),
+++            trade_history=_get_trade_history(),
+++        )
+++    return _signal_dedup
+++
+++
+++def _run_cooldown_and_dedup(symbol: str, side: Literal["BUY", "SELL"]) -> SafetyResult | None:
+++    """Run cooldown and signal dedup checks for an order.
+++
+++    Returns:
+++        SafetyResult with ok=False if order should be rejected,
+++        or None if no cooldown/dedup is configured (skip the check).
+++    """
+++    # Build a minimal OrderIntent for the checks
+++    intent = OrderIntent(
+++        exchange="paper",
+++        symbol=symbol,
+++        side=side,
+++        amount=Decimal("1"),  # Notional amount doesn't matter for cooldown/dedup
+++    )
+++
+++    # Run cooldown check
+++    cooldown = _get_cooldown_check()
+++    cooldown_result = cooldown.check(intent=intent)
+++
+++    # Run signal deduplication
+++    dedup = _get_signal_dedup()
+++    dedup_result = dedup.check(intent=intent)
+++
+++    # If cooldown is active but dedup allows this signal (different side),
+++    # allow the order. Only reject if both checks fail.
+++    if not cooldown_result.ok and not dedup_result.ok:
+++        return cooldown_result
+++    if not cooldown_result.ok:
+++        # Cooldown active but dedup says OK (different side) — allow
+++        return None
+++    if not dedup_result.ok:
+++        return dedup_result
+++
+++    return None
+++
+++
++ _stores: PostgresStores | None = None
++
++
++@@ -807,6 +896,9 @@ def _position_to_response(position: PaperPosition, current_price: Decimal) -> di
++ async def place_order(request: OrderRequest) -> dict[str, Any]:
++     """Place a paper trading order.
++
+++    Runs cooldown and signal deduplication checks before execution.
+++    Duplicate signals during cooldown are rejected to prevent overtrading.
+++
++     Args:
++         request: Order details including symbol, side, type, qty, and price.
++
++@@ -814,10 +906,23 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
++         The created order details.
++
++     Raises:
++-        HTTPException: If order validation fails.
+++        HTTPException: If order validation or safety checks fail.
++     """
++     executor = _get_paper_executor()
++
+++    # Run cooldown and signal dedup checks before executing
+++    safety = _run_cooldown_and_dedup(request.symbol, request.side)
+++    if safety is not None and not safety.ok:
+++        trade_history = _get_trade_history()
+++        trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
+++        raise HTTPException(
+++            status_code=409,
+++            detail={
+++                "error": "safety_check_failed",
+++                "message": safety.reason,
+++            },
+++        )
+++
++     try:
++         if request.order_type == "market":
++             if request.market_price is None:
++@@ -846,6 +951,10 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
++                 limit_price=request.limit_price,
++             )
++
+++        # Record the trade in shared history for cooldown/dedup tracking
+++        trade_history = _get_trade_history()
+++        trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
+++
++         return {"success": True, "order": _order_to_response(order)}
++
++     except ValueError as e:
++@@ -997,6 +1106,204 @@ async def close_position(
++     return {"success": True, "message": "Position closed", "close_order": _order_to_response(order)}
++
++
+++# =============================================================================
+++# Paper Trading Monitoring
+++# =============================================================================
+++
+++
+++class PaperSummaryResponse(BaseModel):
+++    """Response for paper trading summary."""
+++
+++    total_fees: str
+++    total_unrealized_pnl: str
+++    positions: dict[str, dict[str, str]]
+++    orders: dict[str, str]
+++    fee_model: dict[str, str]
+++    drawdown: dict[str, str] | None = None
+++    kelly: dict[str, str] | None = None
+++
+++
+++class KellyInfoResponse(BaseModel):
+++    """Response for Kelly sizing details."""
+++
+++    kelly_fraction: str
+++    win_rate: str
+++    avg_win: str
+++    avg_loss: str
+++    position_size: str
+++    portfolio_value: str
+++    kelly_percent: str
+++    fractional_kelly: str
+++    method: str
+++
+++
+++@app.get("/paper/summary")
+++async def get_paper_summary() -> dict[str, Any]:
+++    """Get comprehensive paper trading summary.
+++
+++    Returns:
+++        JSON with paper trading state including positions, orders, fees,
+++        drawdown, and Kelly sizing information.
+++    """
+++    executor = _get_paper_executor()
+++    summary = executor.get_paper_summary()
+++
+++    # Add drawdown info if available
+++    drawdown_info = None
+++    if hasattr(executor, "_drawdown_monitor") and executor._drawdown_monitor is not None:
+++        dd = executor._drawdown_monitor
+++        drawdown_info = {
+++            "daily_drawdown_pct": str(dd.get_daily_drawdown()),
+++            "total_drawdown_pct": str(dd.get_total_drawdown()),
+++            "trading_paused": str(dd.state.trading_paused),
+++            "trading_allowed": str(dd.is_trading_allowed()),
+++        }
+++        summary["drawdown"] = drawdown_info
+++
+++    # Add Kelly sizing info
+++    kelly_info = None
+++    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+++        kc = executor._kelly_config
+++        kelly_info = {
+++            "kelly_fraction": str(kc.kelly_fraction),
+++            "win_rate": str(kc.win_rate),
+++            "avg_win": str(kc.avg_win),
+++            "avg_loss": str(kc.avg_loss),
+++            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+++            "position_size": str(getattr(kc, "position_size", None) or "0"),
+++        }
+++        summary["kelly"] = kelly_info
+++
+++    return summary
+++
+++
+++@app.get("/paper/kelly")
+++async def get_kelly_info() -> dict[str, Any]:
+++    """Get Kelly sizing details for paper trading.
+++
+++    Returns:
+++        JSON with Kelly criterion details including fraction, win rate,
+++        avg win/loss, and current position sizing.
+++    """
+++    executor = _get_paper_executor()
+++
+++    # Get Kelly config from executor or create default
+++    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+++        kc = executor._kelly_config
+++    else:
+++        # Create default Kelly config
+++        from core.risk.sizing import PositionSize
+++
+++        kc = PositionSize(
+++            method="kelly",
+++            kelly_fraction=Decimal("1.0"),  # Default full Kelly for paper
+++            win_rate=Decimal("0.5"),
+++            avg_win=Decimal("100"),
+++            avg_loss=Decimal("50"),
+++        )
+++        executor._kelly_config = kc
+++
+++    # Calculate Kelly metrics
+++    from core.risk.sizing import calculate_position_size
+++
+++    # Calculate kelly_percent: f* = (p * b - q) / b
+++    p = kc.win_rate
+++    q = Decimal("1") - p
+++    b = kc.avg_win / kc.avg_loss if kc.avg_loss > 0 else Decimal("0")
+++    kelly_percent = (p * b - q) / b if b > 0 else Decimal("0")
+++
+++    # Calculate fractional Kelly
+++    fractional_kelly = kelly_percent * (kc.kelly_fraction or Decimal("1"))
+++    fractional_kelly = max(fractional_kelly, Decimal("0"))
+++
+++    # Calculate position size
+++    portfolio_value = getattr(kc, "portfolio_value", None) or Decimal("10000")
+++    avg_w = getattr(kc, "avg_win", None) or Decimal("100")
+++    avg_l = getattr(kc, "avg_loss", None) or Decimal("50")
+++    entry_price = avg_w + avg_l  # Simplified entry price
+++    stop_loss_price = entry_price * Decimal("0.95")  # 5% stop loss
+++
+++    position_size = calculate_position_size(
+++        config=kc,
+++        portfolio_value=portfolio_value,
+++        entry_price=entry_price,
+++        stop_loss_price=stop_loss_price,
+++    )
+++
+++    return {
+++        "kelly_fraction": str(kc.kelly_fraction),
+++        "win_rate": str(kc.win_rate),
+++        "avg_win": str(kc.avg_win),
+++        "avg_loss": str(kc.avg_loss),
+++        "portfolio_value": str(portfolio_value),
+++        "position_size": str(position_size),
+++        "kelly_percent": str(kelly_percent),
+++        "fractional_kelly": str(fractional_kelly),
+++        "method": kc.method,
+++        "b_ratio": str(b),  # avg_win / avg_loss
+++        "p": str(p),  # win rate
+++        "q": str(q),  # loss rate
+++    }
+++
+++
+++@app.post("/paper/kelly/update")
+++async def update_kelly_config(
+++    kelly_fraction: str | None = None,
+++    win_rate: str | None = None,
+++    avg_win: str | None = None,
+++    avg_loss: str | None = None,
+++    portfolio_value: str | None = None,
+++) -> dict[str, Any]:
+++    """Update Kelly sizing configuration for paper trading.
+++
+++    Args:
+++        kelly_fraction: Fraction of Kelly to use (0.5 = half-Kelly, 1.0 = full-Kelly)
+++        win_rate: Historical win rate (0-1)
+++        avg_win: Average win amount
+++        avg_loss: Average loss amount
+++        portfolio_value: Total portfolio value
+++
+++    Returns:
+++        Updated Kelly configuration.
+++    """
+++    executor = _get_paper_executor()
+++
+++    if not hasattr(executor, "_kelly_config") or executor._kelly_config is None:
+++        from core.risk.sizing import PositionSize
+++
+++        executor._kelly_config = PositionSize(
+++            method="kelly",
+++            kelly_fraction=Decimal("1.0"),
+++            win_rate=Decimal("0.5"),
+++            avg_win=Decimal("100"),
+++            avg_loss=Decimal("50"),
+++        )
+++
+++    kc = executor._kelly_config
+++
+++    if kelly_fraction is not None:
+++        kc.kelly_fraction = Decimal(kelly_fraction)
+++    if win_rate is not None:
+++        kc.win_rate = Decimal(win_rate)
+++    if avg_win is not None:
+++        kc.avg_win = Decimal(avg_win)
+++    if avg_loss is not None:
+++        kc.avg_loss = Decimal(avg_loss)
+++    if portfolio_value is not None:
+++        setattr(kc, "portfolio_value", Decimal(portfolio_value))
+++
+++    return {
+++        "success": True,
+++        "kelly_config": {
+++            "kelly_fraction": str(kc.kelly_fraction),
+++            "win_rate": str(kc.win_rate),
+++            "avg_win": str(kc.avg_win),
+++            "avg_loss": str(kc.avg_loss),
+++            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+++        },
+++    }
+++
+++
++ # =============================================================================
++ # Market Cap Rankings
++ # =============================================================================
++@@ -2077,3 +2384,4 @@ async def get_llm_status() -> dict[str, Any]:
++ app.include_router(trade_history.router)
++ app.include_router(alerts_routes.router)
++ app.include_router(backtest_routes.router)
+++app.include_router(smoke_routes.router)
++
++diff --git a/api/routes/backtest.py b/api/routes/backtest.py
++index 78d98636..45fc7da7 100644
++--- a/api/routes/backtest.py
+++++ b/api/routes/backtest.py
++@@ -2,16 +2,27 @@
++
++ from __future__ import annotations
++
+++import json
+++import logging
+++import os
++ from datetime import datetime, timedelta, timezone
+++from pathlib import Path
++ from typing import Any, Literal, Optional
++
++ from fastapi import APIRouter, HTTPException
++ from pydantic import BaseModel, Field
++
++ from core.backtest.engine import BacktestEngine
+++from core.fees.model import FeeModel
+++from core.strategy_eval.walk_forward import (
+++    WalkForwardConfig,
+++    run_walk_forward,
+++)
++ from core.storage.postgres.config import PostgresConfig
++ from core.storage.postgres.stores import PostgresStores
++
+++logger = logging.getLogger(__name__)
+++
++ router = APIRouter(prefix="/backtest", tags=["backtest"])
++
++ # Global stores instance (lazy init)
++@@ -32,6 +43,31 @@ def _get_stores() -> PostgresStores:
++     return _stores
++
++
+++def _write_comparison_json(data: dict[str, Any]) -> None:
+++    """Write combined backtest + walk-forward results to backtest_comparison.json."""
+++    output_dir = Path(os.getenv("BACKTEST_OUTPUT_DIR", "/tmp"))
+++    output_dir.mkdir(parents=True, exist_ok=True)
+++    output_path = output_dir / "backtest_comparison.json"
+++
+++    # Append to file if it exists (preserve history)
+++    existing = []
+++    if output_path.exists():
+++        try:
+++            with open(output_path, "r") as f:
+++                existing = json.load(f)
+++            if not isinstance(existing, list):
+++                existing = [existing]
+++        except (json.JSONDecodeError, OSError):
+++            existing = []
+++
+++    existing.append(data)
+++
+++    with open(output_path, "w") as f:
+++        json.dump(existing, f, indent=2, default=str)
+++
+++    logger.info("Wrote comparison results to %s (total entries: %d)", output_path, len(existing))
+++
+++
++ # ============ Request/Response Models ============
++
++
++@@ -97,18 +133,75 @@ class StrategyInfo(BaseModel):
++     parameters: dict[str, Any]
++
++
+++class WalkForwardFoldResponse(BaseModel):
+++    """One fold in the walk-forward evaluation."""
+++
+++    train_start: str
+++    train_end: str
+++    test_start: str
+++    test_end: str
+++    train_return: float
+++    test_return: float
+++    test_sharpe: float
+++    test_max_dd: float
+++    test_win_rate: float
+++    test_trades: int
+++    oos_decay: float
+++
+++
+++class WalkForwardResponse(BaseModel):
+++    """Aggregated walk-forward results."""
+++
+++    n_folds: int
+++    mean_train_return: float
+++    mean_test_return: float
+++    mean_oos_decay: float
+++    in_sample_consistency: float
+++    oos_significant: bool
+++    oos_sharpe: float
+++    oos_max_dd: float
+++    oos_win_rate: float
+++    overfitting_risk: str
+++    folds: list[WalkForwardFoldResponse]
+++
+++
+++class BacktestComparisonResponse(BaseModel):
+++    """Combined backtest + walk-forward results."""
+++
+++    # Standard backtest
+++    exchange: str
+++    symbol: str
+++    timeframe: str
+++    strategy: str
+++    start_date: str
+++    end_date: str
+++    initial_capital: float
+++    total_pnl: float
+++    total_return: float
+++    sharpe_ratio: float
+++    max_drawdown: float
+++    win_rate: float
+++    profit_factor: float
+++    num_trades: int
+++    trades: list[TradeResponse]
+++    equity_curve: list[float]
+++
+++    # Walk-forward results
+++    walk_forward: WalkForwardResponse
+++
+++
++ # ============ Endpoints ============
++
++
++-@router.post("/run", response_model=BacktestResponse)
+++@router.post("/run", response_model=BacktestComparisonResponse)
++ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
++-    """Run a backtest on historical data.
+++    """Run a backtest on historical data with walk-forward validation.
++
++     Args:
++         request: Backtest configuration including symbol, strategy, and date range.
++
++     Returns:
++-        Backtest results with performance metrics and trade history.
+++        Combined backtest results with standard metrics and walk-forward validation.
++
++     Raises:
++         HTTPException: If insufficient data or invalid parameters.
++@@ -169,7 +262,7 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
++                 detail={"error": "invalid_strategy", "message": f"Unknown strategy: {request.strategy}"},
++             )
++
++-        # Run backtest
+++        # Run standard backtest
++         result = engine.run(strategy=strategy, candles=candles)
++
++         # Generate comprehensive report
++@@ -190,7 +283,70 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
++         response_dict = report_to_dict(report)
++         response_dict["strategy"] = response_dict.pop("strategy_name")
++
++-        return response_dict
+++        # Run walk-forward validation
+++        fee_model = FeeModel()
+++        wf_config = WalkForwardConfig(
+++            train_size_days=90,
+++            test_size_days=30,
+++            step_size_days=15,
+++            lookback_candles=200,
+++        )
+++        wf_result = run_walk_forward(
+++            strategy=strategy,
+++            candles=candles,
+++            config=wf_config,
+++            fee_model=fee_model,
+++        )
+++
+++        # Convert walk-forward result for response
+++        wf_response = WalkForwardResponse(
+++            n_folds=wf_result.n_folds,
+++            mean_train_return=wf_result.mean_train_return,
+++            mean_test_return=wf_result.mean_test_return,
+++            mean_oos_decay=wf_result.mean_oos_decay,
+++            in_sample_consistency=wf_result.in_sample_consistency,
+++            oos_significant=wf_result.oos_significant,
+++            oos_sharpe=wf_result.oos_sharpe,
+++            oos_max_dd=wf_result.oos_max_dd,
+++            oos_win_rate=wf_result.oos_win_rate,
+++            overfitting_risk=wf_result.overfitting_risk,
+++            folds=[
+++                WalkForwardFoldResponse(
+++                    train_start=f.train_start.isoformat(),
+++                    train_end=f.train_end.isoformat(),
+++                    test_start=f.test_start.isoformat(),
+++                    test_end=f.test_end.isoformat(),
+++                    train_return=f.train_return,
+++                    test_return=f.test_return,
+++                    test_sharpe=f.test_sharpe,
+++                    test_max_dd=f.test_max_dd,
+++                    test_win_rate=f.test_win_rate,
+++                    test_trades=f.test_trades,
+++                    oos_decay=f.oos_decay,
+++                )
+++                for f in wf_result.folds
+++            ],
+++        )
+++
+++        # Combine results
+++        combined = {**response_dict, "walk_forward": wf_response.model_dump()}
+++
+++        # Write to backtest_comparison.json
+++        _write_comparison_json(combined)
+++
+++        # Log walk-forward results
+++        logger.info(
+++            "Walk-forward: %d folds, mean train=%.4f, mean test=%.4f, "
+++            "OOS decay=%.4f, overfitting=%s, significant=%s",
+++            wf_result.n_folds,
+++            wf_result.mean_train_return,
+++            wf_result.mean_test_return,
+++            wf_result.mean_oos_decay,
+++            wf_result.overfitting_risk,
+++            wf_result.oos_significant,
+++        )
+++
+++        return combined
++
++     except HTTPException:
++         raise
++
++diff --git a/api/routes/smoke.py b/api/routes/smoke.py
++new file mode 100644
++index 00000000..172c2501
++--- /dev/null
+++++ b/api/routes/smoke.py
++@@ -0,0 +1,9 @@
+++from fastapi import APIRouter
+++
+++router = APIRouter()
+++
+++
+++@router.get("/smoke", tags=["Smoke Test"])
+++async def smoke_test() -> dict[str, bool | str]:
+++    """Simple smoke test endpoint."""
+++    return {"ok": True, "mode": "tier1-smoke"}
++
+
+# 2026-05-31 20:24:19.262665
++You are Tier1 Reviewer for a GitHub pull request.
++Mission: detect concrete bugs and behavior regressions before merge.
++Treat this as production review, not code style feedback.
++
++Review standards:
++1) Focus on correctness, data leakage, boundary conditions, off-by-one errors, and broken assumptions.
++2) Prioritize issues by severity (critical, high, medium) but only report high-signal findings.
++3) Every finding must be GitHub-aware: include exact repository path and 1-based line number.
++4) Tie each finding to user-visible impact, correctness risk, or metric distortion.
++5) Flag missing tests when a risky code path changed and current tests would not catch it.
++6) Ignore pure style and naming nits unless they hide a real defect.
++
++Evidence rules:
++- Do not speculate. If uncertain, skip the finding.
++- Use language like: 'can cause', 'will duplicate', 'can leak', with concrete mechanism.
++- Prefer one strong finding over many weak ones.
++
++Output rules:
++- Return strict JSON only.
++- Schema: {"summary":"...","findings":[{"path":"...","line":123,"issue":"...","suggestion":"...","replacement":"optional code"}]}
++- Findings must be actionable and patch-oriented.
++- Max 5 findings.
++Return ONLY JSON in this schema: {"summary":"...","findings":[{"path":"...","line":123,"issue":"...","suggestion":"...","replacement":"optional code"}]}. Limit findings to high-signal issues only (max 5).
++PR #310: Recover Hermes local pipeline work
++Local checks: ["python: pytest -q tests/test_api_health.py PASS", "frontend: npm run build PASS"]
++Diff follows:
++diff --git a/.gitignore b/.gitignore
++index 5399953b..ad6e7627 100644
++--- a/.gitignore
+++++ b/.gitignore
++@@ -48,3 +48,4 @@ related-repos/
++ .DS_Store
++ .vscode/
++ .workflow-approver-state.json
+++.aider*
++
++diff --git a/ROLLOUT_CHECKLIST.md b/ROLLOUT_CHECKLIST.md
++new file mode 100644
++index 00000000..01ff3d7a
++--- /dev/null
+++++ b/ROLLOUT_CHECKLIST.md
++@@ -0,0 +1,93 @@
+++# Rollout Gate — Limited-Live Criteria Checklist
+++
+++> Last updated: 2026-05-30
+++> Task: t_a2b8bd31 (Rollout-gate review)
+++
+++## Status: READY FOR LIMITED-LIVE PAPER TRADING
+++
+++---
+++
+++## 1. Fee Model — PASS (gate t_78b975b5)
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| Maker/taker fees correct | ✅ | 0.1% / 0.2% Bitfinex standard |
+++| Spread cost | ✅ | 10 bps assumed |
+++| Slippage cost | ✅ | 5 bps assumed |
+++| Transfer fees | ✅ | 6 currencies (BTC, ETH, USDT, USD, LTC, XMR) |
+++| Funding rate | ✅ | 5% annualized, verified positive |
+++| Backtest consistency | ✅ | Fees consistent between backtest and paper |
+++| Limit order fees | ✅ | Calculated at placement time |
+++| Partial fill fees | ✅ | Proportional to fill_qty |
+++| Fee model score | ✅ | 100% (22/22 checks, 102 tests pass) |
+++
+++## 2. Paper Trading Execution — PASS
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| PaperExecutor wired | ✅ | FeeModel in constructor, fallback default |
+++| Market orders | ✅ | Instant fill with slippage |
+++| Limit orders | ✅ | Order book simulation |
+++| Position tracking | ✅ | Long/short with avg entry |
+++| P&L calculation | ✅ | Realized + unrealized including fees |
+++| Partial fills | ✅ | 90% fill probability |
+++| Missed fills | ✅ | 2% miss probability |
+++| Database persistence | ✅ | paper_orders, paper_positions tables |
+++
+++## 3. Missing Safeguards — ACKNOWLEDGED (non-blocking)
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| Kelly default full (1.0) | ⚠️ | Aggressive sizing — acceptable for paper |
+++| Live drawdown signal | ⚠️ | Tracked but not actively used as signal |
+++| Circuit breaker state | ⚠️ | Ephemeral (in-memory) |
+++| Minimum edge filter | ✅ | 35 bps taker, 25 bps maker |
+++| Depth simulation | ⚠️ | Fixed slippage, no depth — OK for paper |
+++| Partial fill quality | ⚠️ | Simulated, no real partial fills |
+++
+++## 4. Backtest Quality — PASS
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| Gross PnL | ✅ | 2352 (23.5%) |
+++| Net PnL | ✅ | 1524 after 35.2% cost ratio |
+++| Net Sharpe | ✅ | 2.05 — solid |
+++| Net max drawdown | ⚠️ | 1.57 (157%) — aggressive but acceptable for paper |
+++| Walk-forward | ✅ | Done |
+++| OOS train/test split | ✅ | Strict split with end_exclusive (PR #309) |
+++| Single BTC period | ⚠️ | Transition regime only, 5 trades over 20 candles |
+++
+++## 5. Infrastructure — PASS
+++
+++| Check | Status | Details |
+++|-------|--------|---------|
+++| API health | ✅ | http://localhost:8000/health → ok |
+++| Database | ✅ | 391881 candles loaded |
+++| Postgres | ✅ | Connected (127.0.0.1:5432) |
+++| Candle provider | ✅ | Bitfinex REST, lazy init |
+++| Price provider | ✅ | Bitfinex current price |
+++| Orchestrator | ✅ | Paper mode (dry_run=True) |
+++
+++## 6. Known Gaps (non-blocking for limited-live)
+++
+++1. **Kelly full (1.0)** — aggressive but fine for paper. Monitor in first 48h.
+++2. **No live data latency validation** — paper uses cached candles, not real-time latency.
+++3. **No depth simulation** — fixed 5bps slippage regardless of order size.
+++4. **Circuit breaker ephemeral** — restart loses state. Acceptable for paper.
+++5. **TradeHistory unbounded** — memory leak potential in long runs. Monitor.
+++6. **No gap detection** — candle gaps between updates not detected.
+++
+++## 7. Go/No-Go Decision
+++
+++**GO for limited-live paper trading with monitoring.**
+++
+++Conditions:
+++- Start with small position size (default 100 USD)
+++- Monitor first 48 hours for Kelly sizing impact
+++- Watch for TradeHistory growth
+++- Fee model already proven at 100% score
+++- Paper trading uses same fee model as backtest — consistent
+++
+++---
+++
+++*This checklist supersedes previous rollout assessments. Fee gate t_78b975b5 unblocked.*
++
++diff --git a/api/main.py b/api/main.py
++index 9de05f5e..d81a86d0 100644
++--- a/api/main.py
+++++ b/api/main.py
++@@ -38,7 +38,13 @@
++ from core.market_cap.coingecko import CoinGeckoClient
++ from core.storage.postgres.config import PostgresConfig
++ from core.storage.postgres.stores import PostgresStores
++-from core.types import FeeBreakdown
+++from core.types import FeeBreakdown, OrderIntent
+++from core.automation.rules import AutomationConfig, TradeHistory
+++from core.automation.safety import (
+++    CooldownCheck,
+++    SafetyResult,
+++    SignalDeduplication,
+++)
++
++ # Import new route modules with aliases to avoid conflicts
++ from api.routes import (
++@@ -55,6 +61,7 @@
++     trade_history,
++     alerts as alerts_routes,
++     backtest as backtest_routes,
+++    smoke as smoke_routes,
++ )
++
++ # Import middleware for rate limit tracking
++@@ -99,6 +106,14 @@ async def lifespan(app: FastAPI):
++ # Global paper executor instance (in-memory, no DB persistence)
++ _paper_executor: PaperExecutor | None = None
++
+++# Shared automation config and trade history for cooldown/dedup
+++_automation_config: AutomationConfig | None = None
+++_trade_history: TradeHistory | None = None
+++
+++# Cooldown dedup state (shared between API and orchestrator)
+++_cooldown_check: CooldownCheck | None = None
+++_signal_dedup: SignalDeduplication | None = None
+++
++ # Global CoinGecko client (singleton)
++ _coingecko_client: CoinGeckoClient | None = None
++
++@@ -159,6 +174,80 @@ def _get_paper_executor() -> PaperExecutor:
++     return _paper_executor
++
++
+++def _get_automation_config() -> AutomationConfig:
+++    """Get or initialize the shared automation config."""
+++    global _automation_config
+++    if _automation_config is None:
+++        _automation_config = AutomationConfig()
+++    return _automation_config
+++
+++
+++def _get_trade_history() -> TradeHistory:
+++    """Get or initialize the shared trade history."""
+++    global _trade_history
+++    if _trade_history is None:
+++        _trade_history = TradeHistory()
+++    return _trade_history
+++
+++
+++def _get_cooldown_check() -> CooldownCheck:
+++    """Get or initialize the shared cooldown check."""
+++    global _cooldown_check
+++    if _cooldown_check is None:
+++        _cooldown_check = CooldownCheck(
+++            config=_get_automation_config(),
+++            trade_history=_get_trade_history(),
+++        )
+++    return _cooldown_check
+++
+++
+++def _get_signal_dedup() -> SignalDeduplication:
+++    """Get or initialize the shared signal deduplication."""
+++    global _signal_dedup
+++    if _signal_dedup is None:
+++        _signal_dedup = SignalDeduplication(
+++            config=_get_automation_config(),
+++            trade_history=_get_trade_history(),
+++        )
+++    return _signal_dedup
+++
+++
+++def _run_cooldown_and_dedup(symbol: str, side: Literal["BUY", "SELL"]) -> SafetyResult | None:
+++    """Run cooldown and signal dedup checks for an order.
+++
+++    Returns:
+++        SafetyResult with ok=False if order should be rejected,
+++        or None if no cooldown/dedup is configured (skip the check).
+++    """
+++    # Build a minimal OrderIntent for the checks
+++    intent = OrderIntent(
+++        exchange="paper",
+++        symbol=symbol,
+++        side=side,
+++        amount=Decimal("1"),  # Notional amount doesn't matter for cooldown/dedup
+++    )
+++
+++    # Run cooldown check
+++    cooldown = _get_cooldown_check()
+++    cooldown_result = cooldown.check(intent=intent)
+++
+++    # Run signal deduplication
+++    dedup = _get_signal_dedup()
+++    dedup_result = dedup.check(intent=intent)
+++
+++    # If cooldown is active but dedup allows this signal (different side),
+++    # allow the order. Only reject if both checks fail.
+++    if not cooldown_result.ok and not dedup_result.ok:
+++        return cooldown_result
+++    if not cooldown_result.ok:
+++        # Cooldown active but dedup says OK (different side) — allow
+++        return None
+++    if not dedup_result.ok:
+++        return dedup_result
+++
+++    return None
+++
+++
++ _stores: PostgresStores | None = None
++
++
++@@ -807,6 +896,9 @@ def _position_to_response(position: PaperPosition, current_price: Decimal) -> di
++ async def place_order(request: OrderRequest) -> dict[str, Any]:
++     """Place a paper trading order.
++
+++    Runs cooldown and signal deduplication checks before execution.
+++    Duplicate signals during cooldown are rejected to prevent overtrading.
+++
++     Args:
++         request: Order details including symbol, side, type, qty, and price.
++
++@@ -814,10 +906,23 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
++         The created order details.
++
++     Raises:
++-        HTTPException: If order validation fails.
+++        HTTPException: If order validation or safety checks fail.
++     """
++     executor = _get_paper_executor()
++
+++    # Run cooldown and signal dedup checks before executing
+++    safety = _run_cooldown_and_dedup(request.symbol, request.side)
+++    if safety is not None and not safety.ok:
+++        trade_history = _get_trade_history()
+++        trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
+++        raise HTTPException(
+++            status_code=409,
+++            detail={
+++                "error": "safety_check_failed",
+++                "message": safety.reason,
+++            },
+++        )
+++
++     try:
++         if request.order_type == "market":
++             if request.market_price is None:
++@@ -846,6 +951,10 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
++                 limit_price=request.limit_price,
++             )
++
+++        # Record the trade in shared history for cooldown/dedup tracking
+++        trade_history = _get_trade_history()
+++        trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
+++
++         return {"success": True, "order": _order_to_response(order)}
++
++     except ValueError as e:
++@@ -997,6 +1106,204 @@ async def close_position(
++     return {"success": True, "message": "Position closed", "close_order": _order_to_response(order)}
++
++
+++# =============================================================================
+++# Paper Trading Monitoring
+++# =============================================================================
+++
+++
+++class PaperSummaryResponse(BaseModel):
+++    """Response for paper trading summary."""
+++
+++    total_fees: str
+++    total_unrealized_pnl: str
+++    positions: dict[str, dict[str, str]]
+++    orders: dict[str, str]
+++    fee_model: dict[str, str]
+++    drawdown: dict[str, str] | None = None
+++    kelly: dict[str, str] | None = None
+++
+++
+++class KellyInfoResponse(BaseModel):
+++    """Response for Kelly sizing details."""
+++
+++    kelly_fraction: str
+++    win_rate: str
+++    avg_win: str
+++    avg_loss: str
+++    position_size: str
+++    portfolio_value: str
+++    kelly_percent: str
+++    fractional_kelly: str
+++    method: str
+++
+++
+++@app.get("/paper/summary")
+++async def get_paper_summary() -> dict[str, Any]:
+++    """Get comprehensive paper trading summary.
+++
+++    Returns:
+++        JSON with paper trading state including positions, orders, fees,
+++        drawdown, and Kelly sizing information.
+++    """
+++    executor = _get_paper_executor()
+++    summary = executor.get_paper_summary()
+++
+++    # Add drawdown info if available
+++    drawdown_info = None
+++    if hasattr(executor, "_drawdown_monitor") and executor._drawdown_monitor is not None:
+++        dd = executor._drawdown_monitor
+++        drawdown_info = {
+++            "daily_drawdown_pct": str(dd.get_daily_drawdown()),
+++            "total_drawdown_pct": str(dd.get_total_drawdown()),
+++            "trading_paused": str(dd.state.trading_paused),
+++            "trading_allowed": str(dd.is_trading_allowed()),
+++        }
+++        summary["drawdown"] = drawdown_info
+++
+++    # Add Kelly sizing info
+++    kelly_info = None
+++    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+++        kc = executor._kelly_config
+++        kelly_info = {
+++            "kelly_fraction": str(kc.kelly_fraction),
+++            "win_rate": str(kc.win_rate),
+++            "avg_win": str(kc.avg_win),
+++            "avg_loss": str(kc.avg_loss),
+++            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+++            "position_size": str(getattr(kc, "position_size", None) or "0"),
+++        }
+++        summary["kelly"] = kelly_info
+++
+++    return summary
+++
+++
+++@app.get("/paper/kelly")
+++async def get_kelly_info() -> dict[str, Any]:
+++    """Get Kelly sizing details for paper trading.
+++
+++    Returns:
+++        JSON with Kelly criterion details including fraction, win rate,
+++        avg win/loss, and current position sizing.
+++    """
+++    executor = _get_paper_executor()
+++
+++    # Get Kelly config from executor or create default
+++    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+++        kc = executor._kelly_config
+++    else:
+++        # Create default Kelly config
+++        from core.risk.sizing import PositionSize
+++
+++        kc = PositionSize(
+++            method="kelly",
+++            kelly_fraction=Decimal("1.0"),  # Default full Kelly for paper
+++            win_rate=Decimal("0.5"),
+++            avg_win=Decimal("100"),
+++            avg_loss=Decimal("50"),
+++        )
+++        executor._kelly_config = kc
+++
+++    # Calculate Kelly metrics
+++    from core.risk.sizing import calculate_position_size
+++
+++    # Calculate kelly_percent: f* = (p * b - q) / b
+++    p = kc.win_rate
+++    q = Decimal("1") - p
+++    b = kc.avg_win / kc.avg_loss if kc.avg_loss > 0 else Decimal("0")
+++    kelly_percent = (p * b - q) / b if b > 0 else Decimal("0")
+++
+++    # Calculate fractional Kelly
+++    fractional_kelly = kelly_percent * (kc.kelly_fraction or Decimal("1"))
+++    fractional_kelly = max(fractional_kelly, Decimal("0"))
+++
+++    # Calculate position size
+++    portfolio_value = getattr(kc, "portfolio_value", None) or Decimal("10000")
+++    avg_w = getattr(kc, "avg_win", None) or Decimal("100")
+++    avg_l = getattr(kc, "avg_loss", None) or Decimal("50")
+++    entry_price = avg_w + avg_l  # Simplified entry price
+++    stop_loss_price = entry_price * Decimal("0.95")  # 5% stop loss
+++
+++    position_size = calculate_position_size(
+++        config=kc,
+++        portfolio_value=portfolio_value,
+++        entry_price=entry_price,
+++        stop_loss_price=stop_loss_price,
+++    )
+++
+++    return {
+++        "kelly_fraction": str(kc.kelly_fraction),
+++        "win_rate": str(kc.win_rate),
+++        "avg_win": str(kc.avg_win),
+++        "avg_loss": str(kc.avg_loss),
+++        "portfolio_value": str(portfolio_value),
+++        "position_size": str(position_size),
+++        "kelly_percent": str(kelly_percent),
+++        "fractional_kelly": str(fractional_kelly),
+++        "method": kc.method,
+++        "b_ratio": str(b),  # avg_win / avg_loss
+++        "p": str(p),  # win rate
+++        "q": str(q),  # loss rate
+++    }
+++
+++
+++@app.post("/paper/kelly/update")
+++async def update_kelly_config(
+++    kelly_fraction: str | None = None,
+++    win_rate: str | None = None,
+++    avg_win: str | None = None,
+++    avg_loss: str | None = None,
+++    portfolio_value: str | None = None,
+++) -> dict[str, Any]:
+++    """Update Kelly sizing configuration for paper trading.
+++
+++    Args:
+++        kelly_fraction: Fraction of Kelly to use (0.5 = half-Kelly, 1.0 = full-Kelly)
+++        win_rate: Historical win rate (0-1)
+++        avg_win: Average win amount
+++        avg_loss: Average loss amount
+++        portfolio_value: Total portfolio value
+++
+++    Returns:
+++        Updated Kelly configuration.
+++    """
+++    executor = _get_paper_executor()
+++
+++    if not hasattr(executor, "_kelly_config") or executor._kelly_config is None:
+++        from core.risk.sizing import PositionSize
+++
+++        executor._kelly_config = PositionSize(
+++            method="kelly",
+++            kelly_fraction=Decimal("1.0"),
+++            win_rate=Decimal("0.5"),
+++            avg_win=Decimal("100"),
+++            avg_loss=Decimal("50"),
+++        )
+++
+++    kc = executor._kelly_config
+++
+++    if kelly_fraction is not None:
+++        kc.kelly_fraction = Decimal(kelly_fraction)
+++    if win_rate is not None:
+++        kc.win_rate = Decimal(win_rate)
+++    if avg_win is not None:
+++        kc.avg_win = Decimal(avg_win)
+++    if avg_loss is not None:
+++        kc.avg_loss = Decimal(avg_loss)
+++    if portfolio_value is not None:
+++        setattr(kc, "portfolio_value", Decimal(portfolio_value))
+++
+++    return {
+++        "success": True,
+++        "kelly_config": {
+++            "kelly_fraction": str(kc.kelly_fraction),
+++            "win_rate": str(kc.win_rate),
+++            "avg_win": str(kc.avg_win),
+++            "avg_loss": str(kc.avg_loss),
+++            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+++        },
+++    }
+++
+++
++ # =============================================================================
++ # Market Cap Rankings
++ # =============================================================================
++@@ -2077,3 +2384,4 @@ async def get_llm_status() -> dict[str, Any]:
++ app.include_router(trade_history.router)
++ app.include_router(alerts_routes.router)
++ app.include_router(backtest_routes.router)
+++app.include_router(smoke_routes.router)
++
++diff --git a/api/routes/backtest.py b/api/routes/backtest.py
++index 78d98636..45fc7da7 100644
++--- a/api/routes/backtest.py
+++++ b/api/routes/backtest.py
++@@ -2,16 +2,27 @@
++
++ from __future__ import annotations
++
+++import json
+++import logging
+++import os
++ from datetime import datetime, timedelta, timezone
+++from pathlib import Path
++ from typing import Any, Literal, Optional
++
++ from fastapi import APIRouter, HTTPException
++ from pydantic import BaseModel, Field
++
++ from core.backtest.engine import BacktestEngine
+++from core.fees.model import FeeModel
+++from core.strategy_eval.walk_forward import (
+++    WalkForwardConfig,
+++    run_walk_forward,
+++)
++ from core.storage.postgres.config import PostgresConfig
++ from core.storage.postgres.stores import PostgresStores
++
+++logger = logging.getLogger(__name__)
+++
++ router = APIRouter(prefix="/backtest", tags=["backtest"])
++
++ # Global stores instance (lazy init)
++@@ -32,6 +43,31 @@ def _get_stores() -> PostgresStores:
++     return _stores
++
++
+++def _write_comparison_json(data: dict[str, Any]) -> None:
+++    """Write combined backtest + walk-forward results to backtest_comparison.json."""
+++    output_dir = Path(os.getenv("BACKTEST_OUTPUT_DIR", "/tmp"))
+++    output_dir.mkdir(parents=True, exist_ok=True)
+++    output_path = output_dir / "backtest_comparison.json"
+++
+++    # Append to file if it exists (preserve history)
+++    existing = []
+++    if output_path.exists():
+++        try:
+++            with open(output_path, "r") as f:
+++                existing = json.load(f)
+++            if not isinstance(existing, list):
+++                existing = [existing]
+++        except (json.JSONDecodeError, OSError):
+++            existing = []
+++
+++    existing.append(data)
+++
+++    with open(output_path, "w") as f:
+++        json.dump(existing, f, indent=2, default=str)
+++
+++    logger.info("Wrote comparison results to %s (total entries: %d)", output_path, len(existing))
+++
+++
++ # ============ Request/Response Models ============
++
++
++@@ -97,18 +133,75 @@ class StrategyInfo(BaseModel):
++     parameters: dict[str, Any]
++
++
+++class WalkForwardFoldResponse(BaseModel):
+++    """One fold in the walk-forward evaluation."""
+++
+++    train_start: str
+++    train_end: str
+++    test_start: str
+++    test_end: str
+++    train_return: float
+++    test_return: float
+++    test_sharpe: float
+++    test_max_dd: float
+++    test_win_rate: float
+++    test_trades: int
+++    oos_decay: float
+++
+++
+++class WalkForwardResponse(BaseModel):
+++    """Aggregated walk-forward results."""
+++
+++    n_folds: int
+++    mean_train_return: float
+++    mean_test_return: float
+++    mean_oos_decay: float
+++    in_sample_consistency: float
+++    oos_significant: bool
+++    oos_sharpe: float
+++    oos_max_dd: float
+++    oos_win_rate: float
+++    overfitting_risk: str
+++    folds: list[WalkForwardFoldResponse]
+++
+++
+++class BacktestComparisonResponse(BaseModel):
+++    """Combined backtest + walk-forward results."""
+++
+++    # Standard backtest
+++    exchange: str
+++    symbol: str
+++    timeframe: str
+++    strategy: str
+++    start_date: str
+++    end_date: str
+++    initial_capital: float
+++    total_pnl: float
+++    total_return: float
+++    sharpe_ratio: float
+++    max_drawdown: float
+++    win_rate: float
+++    profit_factor: float
+++    num_trades: int
+++    trades: list[TradeResponse]
+++    equity_curve: list[float]
+++
+++    # Walk-forward results
+++    walk_forward: WalkForwardResponse
+++
+++
++ # ============ Endpoints ============
++
++
++-@router.post("/run", response_model=BacktestResponse)
+++@router.post("/run", response_model=BacktestComparisonResponse)
++ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
++-    """Run a backtest on historical data.
+++    """Run a backtest on historical data with walk-forward validation.
++
++     Args:
++         request: Backtest configuration including symbol, strategy, and date range.
++
++     Returns:
++-        Backtest results with performance metrics and trade history.
+++        Combined backtest results with standard metrics and walk-forward validation.
++
++     Raises:
++         HTTPException: If insufficient data or invalid parameters.
++@@ -169,7 +262,7 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
++                 detail={"error": "invalid_strategy", "message": f"Unknown strategy: {request.strategy}"},
++             )
++
++-        # Run backtest
+++        # Run standard backtest
++         result = engine.run(strategy=strategy, candles=candles)
++
++         # Generate comprehensive report
++@@ -190,7 +283,70 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
++         response_dict = report_to_dict(report)
++         response_dict["strategy"] = response_dict.pop("strategy_name")
++
++-        return response_dict
+++        # Run walk-forward validation
+++        fee_model = FeeModel()
+++        wf_config = WalkForwardConfig(
+++            train_size_days=90,
+++            test_size_days=30,
+++            step_size_days=15,
+++            lookback_candles=200,
+++        )
+++        wf_result = run_walk_forward(
+++            strategy=strategy,
+++            candles=candles,
+++            config=wf_config,
+++            fee_model=fee_model,
+++        )
+++
+++        # Convert walk-forward result for response
+++        wf_response = WalkForwardResponse(
+++            n_folds=wf_result.n_folds,
+++            mean_train_return=wf_result.mean_train_return,
+++            mean_test_return=wf_result.mean_test_return,
+++            mean_oos_decay=wf_result.mean_oos_decay,
+++            in_sample_consistency=wf_result.in_sample_consistency,
+++            oos_significant=wf_result.oos_significant,
+++            oos_sharpe=wf_result.oos_sharpe,
+++            oos_max_dd=wf_result.oos_max_dd,
+++            oos_win_rate=wf_result.oos_win_rate,
+++            overfitting_risk=wf_result.overfitting_risk,
+++            folds=[
+++                WalkForwardFoldResponse(
+++                    train_start=f.train_start.isoformat(),
+++                    train_end=f.train_end.isoformat(),
+++                    test_start=f.test_start.isoformat(),
+++                    test_end=f.test_end.isoformat(),
+++                    train_return=f.train_return,
+++                    test_return=f.test_return,
+++                    test_sharpe=f.test_sharpe,
+++                    test_max_dd=f.test_max_dd,
+++                    test_win_rate=f.test_win_rate,
+++                    test_trades=f.test_trades,
+++                    oos_decay=f.oos_decay,
+++                )
+++                for f in wf_result.folds
+++            ],
+++        )
+++
+++        # Combine results
+++        combined = {**response_dict, "walk_forward": wf_response.model_dump()}
+++
+++        # Write to backtest_comparison.json
+++        _write_comparison_json(combined)
+++
+++        # Log walk-forward results
+++        logger.info(
+++            "Walk-forward: %d folds, mean train=%.4f, mean test=%.4f, "
+++            "OOS decay=%.4f, overfitting=%s, significant=%s",
+++            wf_result.n_folds,
+++            wf_result.mean_train_return,
+++            wf_result.mean_test_return,
+++            wf_result.mean_oos_decay,
+++            wf_result.overfitting_risk,
+++            wf_result.oos_significant,
+++        )
+++
+++        return combined
++
++     except HTTPException:
++         raise
++
++diff --git a/api/routes/smoke.py b/api/routes/smoke.py
++new file mode 100644
++index 00000000..172c2501
++--- /dev/null
+++++ b/api/routes/smoke.py
++@@ -0,0 +1,9 @@
+++from fastapi import APIRouter
+++
+++router = APIRouter()
+++
+++
+++@router.get("/smoke", tags=["Smoke Test"])
+++async def smoke_test() -> dict[str, bool | str]:
+++    """Simple smoke test endpoint."""
+++    return {"ok": True, "mode": "tier1-smoke"}
++
+
+# 2026-05-31 21:07:15.621245
++You are Tier1 Reviewer for a GitHub pull request.
++Mission: detect concrete bugs and behavior regressions before merge.
++Treat this as production review, not code style feedback.
++
++Review standards:
++1) Focus on correctness, data leakage, boundary conditions, off-by-one errors, and broken assumptions.
++2) Prioritize issues by severity (critical, high, medium) but only report high-signal findings.
++3) Every finding must be GitHub-aware: include exact repository path and 1-based line number.
++4) Tie each finding to user-visible impact, correctness risk, or metric distortion.
++5) Flag missing tests when a risky code path changed and current tests would not catch it.
++6) Ignore pure style and naming nits unless they hide a real defect.
++
++Evidence rules:
++- Do not speculate. If uncertain, skip the finding.
++- Use language like: 'can cause', 'will duplicate', 'can leak', with concrete mechanism.
++- Prefer one strong finding over many weak ones.
++
++Output rules:
++- Return strict JSON only.
++- Schema: {"summary":"...","findings":[{"path":"...","line":123,"issue":"...","suggestion":"...","replacement":"optional code"}]}
++- Findings must be actionable and patch-oriented.
++- Max 5 findings.
++Return ONLY JSON in this schema: {"summary":"...","findings":[{"path":"...","line":123,"issue":"...","suggestion":"...","replacement":"optional code"}]}. Limit findings to high-signal issues only (max 5).
++PR #311: Recover protected master drift
++Local checks: ["python: pytest -q tests/test_api_health.py PASS"]
++Diff follows:
++diff --git a/api/main.py b/api/main.py
++index 9de05f5..aaf2477 100644
++--- a/api/main.py
+++++ b/api/main.py
++@@ -38,7 +38,12 @@
++ from core.market_cap.coingecko import CoinGeckoClient
++ from core.storage.postgres.config import PostgresConfig
++ from core.storage.postgres.stores import PostgresStores
++-from core.types import FeeBreakdown
+++from core.types import FeeBreakdown, OrderIntent
+++from core.automation.rules import AutomationConfig, TradeHistory
+++from core.automation.safety import (
+++    CooldownCheck,
+++    SafetyResult,
+++)
++
++ # Import new route modules with aliases to avoid conflicts
++ from api.routes import (
++@@ -55,6 +60,7 @@
++     trade_history,
++     alerts as alerts_routes,
++     backtest as backtest_routes,
+++    smoke as smoke_routes,
++ )
++
++ # Import middleware for rate limit tracking
++@@ -99,6 +105,13 @@ async def lifespan(app: FastAPI):
++ # Global paper executor instance (in-memory, no DB persistence)
++ _paper_executor: PaperExecutor | None = None
++
+++# Shared automation config and trade history for cooldown/dedup
+++_automation_config: AutomationConfig | None = None
+++_trade_history: TradeHistory | None = None
+++
+++# Cooldown check (shared between API and orchestrator)
+++_cooldown_check: CooldownCheck | None = None
+++
++ # Global CoinGecko client (singleton)
++ _coingecko_client: CoinGeckoClient | None = None
++
++@@ -159,6 +172,53 @@ def _get_paper_executor() -> PaperExecutor:
++     return _paper_executor
++
++
+++def _get_automation_config() -> AutomationConfig:
+++    """Get or initialize the shared automation config."""
+++    global _automation_config
+++    if _automation_config is None:
+++        _automation_config = AutomationConfig()
+++    return _automation_config
+++
+++
+++def _get_trade_history() -> TradeHistory:
+++    """Get or initialize the shared trade history."""
+++    global _trade_history
+++    if _trade_history is None:
+++        _trade_history = TradeHistory()
+++    return _trade_history
+++
+++
+++def _get_cooldown_check() -> CooldownCheck:
+++    """Get or initialize the shared cooldown check."""
+++    global _cooldown_check
+++    if _cooldown_check is None:
+++        _cooldown_check = CooldownCheck(
+++            config=_get_automation_config(),
+++            trade_history=_get_trade_history(),
+++        )
+++    return _cooldown_check
+++
+++
+++def _run_cooldown_check(symbol: str, side: Literal["BUY", "SELL"]) -> SafetyResult | None:
+++    """Run cooldown check for an order.
+++
+++    Returns:
+++        SafetyResult with ok=False if order should be rejected,
+++        or None if no cooldown is configured (skip the check).
+++    """
+++    # Build a minimal OrderIntent for the check
+++    intent = OrderIntent(
+++        exchange="paper",
+++        symbol=symbol,
+++        side=side,
+++        amount=Decimal("1"),
+++    )
+++
+++    # Run cooldown check
+++    cooldown = _get_cooldown_check()
+++    return cooldown.check(intent=intent)
+++
+++
++ _stores: PostgresStores | None = None
++
++
++@@ -807,6 +867,9 @@ def _position_to_response(position: PaperPosition, current_price: Decimal) -> di
++ async def place_order(request: OrderRequest) -> dict[str, Any]:
++     """Place a paper trading order.
++
+++    Runs cooldown check before execution.
+++    Duplicate signals during cooldown are rejected to prevent overtrading.
+++
++     Args:
++         request: Order details including symbol, side, type, qty, and price.
++
++@@ -814,10 +877,21 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
++         The created order details.
++
++     Raises:
++-        HTTPException: If order validation fails.
+++        HTTPException: If order validation or safety checks fail.
++     """
++     executor = _get_paper_executor()
++
+++    # Run cooldown check before executing
+++    safety = _run_cooldown_check(request.symbol, request.side)
+++    if safety is not None and not safety.ok:
+++        raise HTTPException(
+++            status_code=409,
+++            detail={
+++                "error": "safety_check_failed",
+++                "message": safety.reason,
+++            },
+++        )
+++
++     try:
++         if request.order_type == "market":
++             if request.market_price is None:
++@@ -846,6 +920,10 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
++                 limit_price=request.limit_price,
++             )
++
+++        # Record the trade in shared history for cooldown tracking
+++        trade_history = _get_trade_history()
+++        trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
+++
++         return {"success": True, "order": _order_to_response(order)}
++
++     except ValueError as e:
++@@ -997,6 +1075,204 @@ async def close_position(
++     return {"success": True, "message": "Position closed", "close_order": _order_to_response(order)}
++
++
+++# =============================================================================
+++# Paper Trading Monitoring
+++# =============================================================================
+++
+++
+++class PaperSummaryResponse(BaseModel):
+++    """Response for paper trading summary."""
+++
+++    total_fees: str
+++    total_unrealized_pnl: str
+++    positions: dict[str, dict[str, str]]
+++    orders: dict[str, str]
+++    fee_model: dict[str, str]
+++    drawdown: dict[str, str] | None = None
+++    kelly: dict[str, str] | None = None
+++
+++
+++class KellyInfoResponse(BaseModel):
+++    """Response for Kelly sizing details."""
+++
+++    kelly_fraction: str
+++    win_rate: str
+++    avg_win: str
+++    avg_loss: str
+++    position_size: str
+++    portfolio_value: str
+++    kelly_percent: str
+++    fractional_kelly: str
+++    method: str
+++
+++
+++@app.get("/paper/summary")
+++async def get_paper_summary() -> dict[str, Any]:
+++    """Get comprehensive paper trading summary.
+++
+++    Returns:
+++        JSON with paper trading state including positions, orders, fees,
+++        drawdown, and Kelly sizing information.
+++    """
+++    executor = _get_paper_executor()
+++    summary = executor.get_paper_summary()
+++
+++    # Add drawdown info if available
+++    drawdown_info = None
+++    if hasattr(executor, "_drawdown_monitor") and executor._drawdown_monitor is not None:
+++        dd = executor._drawdown_monitor
+++        drawdown_info = {
+++            "daily_drawdown_pct": str(dd.get_daily_drawdown()),
+++            "total_drawdown_pct": str(dd.get_total_drawdown()),
+++            "trading_paused": str(dd.state.trading_paused),
+++            "trading_allowed": str(dd.is_trading_allowed()),
+++        }
+++        summary["drawdown"] = drawdown_info
+++
+++    # Add Kelly sizing info
+++    kelly_info = None
+++    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+++        kc = executor._kelly_config
+++        kelly_info = {
+++            "kelly_fraction": str(kc.kelly_fraction),
+++            "win_rate": str(kc.win_rate),
+++            "avg_win": str(kc.avg_win),
+++            "avg_loss": str(kc.avg_loss),
+++            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+++            "position_size": str(getattr(kc, "position_size", None) or "0"),
+++        }
+++        summary["kelly"] = kelly_info
+++
+++    return summary
+++
+++
+++@app.get("/paper/kelly")
+++async def get_kelly_info() -> dict[str, Any]:
+++    """Get Kelly sizing details for paper trading.
+++
+++    Returns:
+++        JSON with Kelly criterion details including fraction, win rate,
+++        avg win/loss, and current position sizing.
+++    """
+++    executor = _get_paper_executor()
+++
+++    # Get Kelly config from executor or create default
+++    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+++        kc = executor._kelly_config
+++    else:
+++        # Create default Kelly config
+++        from core.risk.sizing import PositionSize
+++
+++        kc = PositionSize(
+++            method="kelly",
+++            kelly_fraction=Decimal("1.0"),  # Default full Kelly for paper
+++            win_rate=Decimal("0.5"),
+++            avg_win=Decimal("100"),
+++            avg_loss=Decimal("50"),
+++        )
+++        executor._kelly_config = kc
+++
+++    # Calculate Kelly metrics
+++    from core.risk.sizing import calculate_position_size
+++
+++    # Calculate kelly_percent: f* = (p * b - q) / b
+++    p = kc.win_rate
+++    q = Decimal("1") - p
+++    b = kc.avg_win / kc.avg_loss if kc.avg_loss > 0 else Decimal("0")
+++    kelly_percent = (p * b - q) / b if b > 0 else Decimal("0")
+++
+++    # Calculate fractional Kelly
+++    fractional_kelly = kelly_percent * (kc.kelly_fraction or Decimal("1"))
+++    fractional_kelly = max(fractional_kelly, Decimal("0"))
+++
+++    # Calculate position size
+++    portfolio_value = getattr(kc, "portfolio_value", None) or Decimal("10000")
+++    avg_w = getattr(kc, "avg_win", None) or Decimal("100")
+++    avg_l = getattr(kc, "avg_loss", None) or Decimal("50")
+++    entry_price = avg_w + avg_l  # Simplified entry price
+++    stop_loss_price = entry_price * Decimal("0.95")  # 5% stop loss
+++
+++    position_size = calculate_position_size(
+++        config=kc,
+++        portfolio_value=portfolio_value,
+++        entry_price=entry_price,
+++        stop_loss_price=stop_loss_price,
+++    )
+++
+++    return {
+++        "kelly_fraction": str(kc.kelly_fraction),
+++        "win_rate": str(kc.win_rate),
+++        "avg_win": str(kc.avg_win),
+++        "avg_loss": str(kc.avg_loss),
+++        "portfolio_value": str(portfolio_value),
+++        "position_size": str(position_size),
+++        "kelly_percent": str(kelly_percent),
+++        "fractional_kelly": str(fractional_kelly),
+++        "method": kc.method,
+++        "b_ratio": str(b),  # avg_win / avg_loss
+++        "p": str(p),  # win rate
+++        "q": str(q),  # loss rate
+++    }
+++
+++
+++@app.post("/paper/kelly/update")
+++async def update_kelly_config(
+++    kelly_fraction: str | None = None,
+++    win_rate: str | None = None,
+++    avg_win: str | None = None,
+++    avg_loss: str | None = None,
+++    portfolio_value: str | None = None,
+++) -> dict[str, Any]:
+++    """Update Kelly sizing configuration for paper trading.
+++
+++    Args:
+++        kelly_fraction: Fraction of Kelly to use (0.5 = half-Kelly, 1.0 = full-Kelly)
+++        win_rate: Historical win rate (0-1)
+++        avg_win: Average win amount
+++        avg_loss: Average loss amount
+++        portfolio_value: Total portfolio value
+++
+++    Returns:
+++        Updated Kelly configuration.
+++    """
+++    executor = _get_paper_executor()
+++
+++    if not hasattr(executor, "_kelly_config") or executor._kelly_config is None:
+++        from core.risk.sizing import PositionSize
+++
+++        executor._kelly_config = PositionSize(
+++            method="kelly",
+++            kelly_fraction=Decimal("1.0"),
+++            win_rate=Decimal("0.5"),
+++            avg_win=Decimal("100"),
+++            avg_loss=Decimal("50"),
+++        )
+++
+++    kc = executor._kelly_config
+++
+++    if kelly_fraction is not None:
+++        kc.kelly_fraction = Decimal(kelly_fraction)
+++    if win_rate is not None:
+++        kc.win_rate = Decimal(win_rate)
+++    if avg_win is not None:
+++        kc.avg_win = Decimal(avg_win)
+++    if avg_loss is not None:
+++        kc.avg_loss = Decimal(avg_loss)
+++    if portfolio_value is not None:
+++        setattr(kc, "portfolio_value", Decimal(portfolio_value))
+++
+++    return {
+++        "success": True,
+++        "kelly_config": {
+++            "kelly_fraction": str(kc.kelly_fraction),
+++            "win_rate": str(kc.win_rate),
+++            "avg_win": str(kc.avg_win),
+++            "avg_loss": str(kc.avg_loss),
+++            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+++        },
+++    }
+++
+++
++ # =============================================================================
++ # Market Cap Rankings
++ # =============================================================================
++@@ -2077,3 +2353,4 @@ async def get_llm_status() -> dict[str, Any]:
++ app.include_router(trade_history.router)
++ app.include_router(alerts_routes.router)
++ app.include_router(backtest_routes.router)
+++app.include_router(smoke_routes.router)
++
+
+# 2026-05-31 21:07:15.622849
++You are Tier1 Reviewer for a GitHub pull request.
++Mission: detect concrete bugs and behavior regressions before merge.
++Treat this as production review, not code style feedback.
++
++Review standards:
++1) Focus on correctness, data leakage, boundary conditions, off-by-one errors, and broken assumptions.
++2) Prioritize issues by severity (critical, high, medium) but only report high-signal findings.
++3) Every finding must be GitHub-aware: include exact repository path and 1-based line number.
++4) Tie each finding to user-visible impact, correctness risk, or metric distortion.
++5) Flag missing tests when a risky code path changed and current tests would not catch it.
++6) Ignore pure style and naming nits unless they hide a real defect.
++
++Evidence rules:
++- Do not speculate. If uncertain, skip the finding.
++- Use language like: 'can cause', 'will duplicate', 'can leak', with concrete mechanism.
++- Prefer one strong finding over many weak ones.
++
++Output rules:
++- Return strict JSON only.
++- Schema: {"summary":"...","findings":[{"path":"...","line":123,"issue":"...","suggestion":"...","replacement":"optional code"}]}
++- Findings must be actionable and patch-oriented.
++- Max 5 findings.
++Return ONLY JSON in this schema: {"summary":"...","findings":[{"path":"...","line":123,"issue":"...","suggestion":"...","replacement":"optional code"}]}. Limit findings to high-signal issues only (max 5).
++PR #311: Recover protected master drift
++Local checks: ["python: pytest -q tests/test_api_health.py PASS"]
++Diff follows:
++diff --git a/api/main.py b/api/main.py
++index 9de05f5..aaf2477 100644
++--- a/api/main.py
+++++ b/api/main.py
++@@ -38,7 +38,12 @@
++ from core.market_cap.coingecko import CoinGeckoClient
++ from core.storage.postgres.config import PostgresConfig
++ from core.storage.postgres.stores import PostgresStores
++-from core.types import FeeBreakdown
+++from core.types import FeeBreakdown, OrderIntent
+++from core.automation.rules import AutomationConfig, TradeHistory
+++from core.automation.safety import (
+++    CooldownCheck,
+++    SafetyResult,
+++)
++
++ # Import new route modules with aliases to avoid conflicts
++ from api.routes import (
++@@ -55,6 +60,7 @@
++     trade_history,
++     alerts as alerts_routes,
++     backtest as backtest_routes,
+++    smoke as smoke_routes,
++ )
++
++ # Import middleware for rate limit tracking
++@@ -99,6 +105,13 @@ async def lifespan(app: FastAPI):
++ # Global paper executor instance (in-memory, no DB persistence)
++ _paper_executor: PaperExecutor | None = None
++
+++# Shared automation config and trade history for cooldown/dedup
+++_automation_config: AutomationConfig | None = None
+++_trade_history: TradeHistory | None = None
+++
+++# Cooldown check (shared between API and orchestrator)
+++_cooldown_check: CooldownCheck | None = None
+++
++ # Global CoinGecko client (singleton)
++ _coingecko_client: CoinGeckoClient | None = None
++
++@@ -159,6 +172,53 @@ def _get_paper_executor() -> PaperExecutor:
++     return _paper_executor
++
++
+++def _get_automation_config() -> AutomationConfig:
+++    """Get or initialize the shared automation config."""
+++    global _automation_config
+++    if _automation_config is None:
+++        _automation_config = AutomationConfig()
+++    return _automation_config
+++
+++
+++def _get_trade_history() -> TradeHistory:
+++    """Get or initialize the shared trade history."""
+++    global _trade_history
+++    if _trade_history is None:
+++        _trade_history = TradeHistory()
+++    return _trade_history
+++
+++
+++def _get_cooldown_check() -> CooldownCheck:
+++    """Get or initialize the shared cooldown check."""
+++    global _cooldown_check
+++    if _cooldown_check is None:
+++        _cooldown_check = CooldownCheck(
+++            config=_get_automation_config(),
+++            trade_history=_get_trade_history(),
+++        )
+++    return _cooldown_check
+++
+++
+++def _run_cooldown_check(symbol: str, side: Literal["BUY", "SELL"]) -> SafetyResult | None:
+++    """Run cooldown check for an order.
+++
+++    Returns:
+++        SafetyResult with ok=False if order should be rejected,
+++        or None if no cooldown is configured (skip the check).
+++    """
+++    # Build a minimal OrderIntent for the check
+++    intent = OrderIntent(
+++        exchange="paper",
+++        symbol=symbol,
+++        side=side,
+++        amount=Decimal("1"),
+++    )
+++
+++    # Run cooldown check
+++    cooldown = _get_cooldown_check()
+++    return cooldown.check(intent=intent)
+++
+++
++ _stores: PostgresStores | None = None
++
++
++@@ -807,6 +867,9 @@ def _position_to_response(position: PaperPosition, current_price: Decimal) -> di
++ async def place_order(request: OrderRequest) -> dict[str, Any]:
++     """Place a paper trading order.
++
+++    Runs cooldown check before execution.
+++    Duplicate signals during cooldown are rejected to prevent overtrading.
+++
++     Args:
++         request: Order details including symbol, side, type, qty, and price.
++
++@@ -814,10 +877,21 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
++         The created order details.
++
++     Raises:
++-        HTTPException: If order validation fails.
+++        HTTPException: If order validation or safety checks fail.
++     """
++     executor = _get_paper_executor()
++
+++    # Run cooldown check before executing
+++    safety = _run_cooldown_check(request.symbol, request.side)
+++    if safety is not None and not safety.ok:
+++        raise HTTPException(
+++            status_code=409,
+++            detail={
+++                "error": "safety_check_failed",
+++                "message": safety.reason,
+++            },
+++        )
+++
++     try:
++         if request.order_type == "market":
++             if request.market_price is None:
++@@ -846,6 +920,10 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
++                 limit_price=request.limit_price,
++             )
++
+++        # Record the trade in shared history for cooldown tracking
+++        trade_history = _get_trade_history()
+++        trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
+++
++         return {"success": True, "order": _order_to_response(order)}
++
++     except ValueError as e:
++@@ -997,6 +1075,204 @@ async def close_position(
++     return {"success": True, "message": "Position closed", "close_order": _order_to_response(order)}
++
++
+++# =============================================================================
+++# Paper Trading Monitoring
+++# =============================================================================
+++
+++
+++class PaperSummaryResponse(BaseModel):
+++    """Response for paper trading summary."""
+++
+++    total_fees: str
+++    total_unrealized_pnl: str
+++    positions: dict[str, dict[str, str]]
+++    orders: dict[str, str]
+++    fee_model: dict[str, str]
+++    drawdown: dict[str, str] | None = None
+++    kelly: dict[str, str] | None = None
+++
+++
+++class KellyInfoResponse(BaseModel):
+++    """Response for Kelly sizing details."""
+++
+++    kelly_fraction: str
+++    win_rate: str
+++    avg_win: str
+++    avg_loss: str
+++    position_size: str
+++    portfolio_value: str
+++    kelly_percent: str
+++    fractional_kelly: str
+++    method: str
+++
+++
+++@app.get("/paper/summary")
+++async def get_paper_summary() -> dict[str, Any]:
+++    """Get comprehensive paper trading summary.
+++
+++    Returns:
+++        JSON with paper trading state including positions, orders, fees,
+++        drawdown, and Kelly sizing information.
+++    """
+++    executor = _get_paper_executor()
+++    summary = executor.get_paper_summary()
+++
+++    # Add drawdown info if available
+++    drawdown_info = None
+++    if hasattr(executor, "_drawdown_monitor") and executor._drawdown_monitor is not None:
+++        dd = executor._drawdown_monitor
+++        drawdown_info = {
+++            "daily_drawdown_pct": str(dd.get_daily_drawdown()),
+++            "total_drawdown_pct": str(dd.get_total_drawdown()),
+++            "trading_paused": str(dd.state.trading_paused),
+++            "trading_allowed": str(dd.is_trading_allowed()),
+++        }
+++        summary["drawdown"] = drawdown_info
+++
+++    # Add Kelly sizing info
+++    kelly_info = None
+++    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+++        kc = executor._kelly_config
+++        kelly_info = {
+++            "kelly_fraction": str(kc.kelly_fraction),
+++            "win_rate": str(kc.win_rate),
+++            "avg_win": str(kc.avg_win),
+++            "avg_loss": str(kc.avg_loss),
+++            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+++            "position_size": str(getattr(kc, "position_size", None) or "0"),
+++        }
+++        summary["kelly"] = kelly_info
+++
+++    return summary
+++
+++
+++@app.get("/paper/kelly")
+++async def get_kelly_info() -> dict[str, Any]:
+++    """Get Kelly sizing details for paper trading.
+++
+++    Returns:
+++        JSON with Kelly criterion details including fraction, win rate,
+++        avg win/loss, and current position sizing.
+++    """
+++    executor = _get_paper_executor()
+++
+++    # Get Kelly config from executor or create default
+++    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+++        kc = executor._kelly_config
+++    else:
+++        # Create default Kelly config
+++        from core.risk.sizing import PositionSize
+++
+++        kc = PositionSize(
+++            method="kelly",
+++            kelly_fraction=Decimal("1.0"),  # Default full Kelly for paper
+++            win_rate=Decimal("0.5"),
+++            avg_win=Decimal("100"),
+++            avg_loss=Decimal("50"),
+++        )
+++        executor._kelly_config = kc
+++
+++    # Calculate Kelly metrics
+++    from core.risk.sizing import calculate_position_size
+++
+++    # Calculate kelly_percent: f* = (p * b - q) / b
+++    p = kc.win_rate
+++    q = Decimal("1") - p
+++    b = kc.avg_win / kc.avg_loss if kc.avg_loss > 0 else Decimal("0")
+++    kelly_percent = (p * b - q) / b if b > 0 else Decimal("0")
+++
+++    # Calculate fractional Kelly
+++    fractional_kelly = kelly_percent * (kc.kelly_fraction or Decimal("1"))
+++    fractional_kelly = max(fractional_kelly, Decimal("0"))
+++
+++    # Calculate position size
+++    portfolio_value = getattr(kc, "portfolio_value", None) or Decimal("10000")
+++    avg_w = getattr(kc, "avg_win", None) or Decimal("100")
+++    avg_l = getattr(kc, "avg_loss", None) or Decimal("50")
+++    entry_price = avg_w + avg_l  # Simplified entry price
+++    stop_loss_price = entry_price * Decimal("0.95")  # 5% stop loss
+++
+++    position_size = calculate_position_size(
+++        config=kc,
+++        portfolio_value=portfolio_value,
+++        entry_price=entry_price,
+++        stop_loss_price=stop_loss_price,
+++    )
+++
+++    return {
+++        "kelly_fraction": str(kc.kelly_fraction),
+++        "win_rate": str(kc.win_rate),
+++        "avg_win": str(kc.avg_win),
+++        "avg_loss": str(kc.avg_loss),
+++        "portfolio_value": str(portfolio_value),
+++        "position_size": str(position_size),
+++        "kelly_percent": str(kelly_percent),
+++        "fractional_kelly": str(fractional_kelly),
+++        "method": kc.method,
+++        "b_ratio": str(b),  # avg_win / avg_loss
+++        "p": str(p),  # win rate
+++        "q": str(q),  # loss rate
+++    }
+++
+++
+++@app.post("/paper/kelly/update")
+++async def update_kelly_config(
+++    kelly_fraction: str | None = None,
+++    win_rate: str | None = None,
+++    avg_win: str | None = None,
+++    avg_loss: str | None = None,
+++    portfolio_value: str | None = None,
+++) -> dict[str, Any]:
+++    """Update Kelly sizing configuration for paper trading.
+++
+++    Args:
+++        kelly_fraction: Fraction of Kelly to use (0.5 = half-Kelly, 1.0 = full-Kelly)
+++        win_rate: Historical win rate (0-1)
+++        avg_win: Average win amount
+++        avg_loss: Average loss amount
+++        portfolio_value: Total portfolio value
+++
+++    Returns:
+++        Updated Kelly configuration.
+++    """
+++    executor = _get_paper_executor()
+++
+++    if not hasattr(executor, "_kelly_config") or executor._kelly_config is None:
+++        from core.risk.sizing import PositionSize
+++
+++        executor._kelly_config = PositionSize(
+++            method="kelly",
+++            kelly_fraction=Decimal("1.0"),
+++            win_rate=Decimal("0.5"),
+++            avg_win=Decimal("100"),
+++            avg_loss=Decimal("50"),
+++        )
+++
+++    kc = executor._kelly_config
+++
+++    if kelly_fraction is not None:
+++        kc.kelly_fraction = Decimal(kelly_fraction)
+++    if win_rate is not None:
+++        kc.win_rate = Decimal(win_rate)
+++    if avg_win is not None:
+++        kc.avg_win = Decimal(avg_win)
+++    if avg_loss is not None:
+++        kc.avg_loss = Decimal(avg_loss)
+++    if portfolio_value is not None:
+++        setattr(kc, "portfolio_value", Decimal(portfolio_value))
+++
+++    return {
+++        "success": True,
+++        "kelly_config": {
+++            "kelly_fraction": str(kc.kelly_fraction),
+++            "win_rate": str(kc.win_rate),
+++            "avg_win": str(kc.avg_win),
+++            "avg_loss": str(kc.avg_loss),
+++            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+++        },
+++    }
+++
+++
++ # =============================================================================
++ # Market Cap Rankings
++ # =============================================================================
++@@ -2077,3 +2353,4 @@ async def get_llm_status() -> dict[str, Any]:
++ app.include_router(trade_history.router)
++ app.include_router(alerts_routes.router)
++ app.include_router(backtest_routes.router)
+++app.include_router(smoke_routes.router)
++

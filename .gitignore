@@ -48,3 +48,4 @@ related-repos/
 .DS_Store
 .vscode/
 .workflow-approver-state.json
+.aider*

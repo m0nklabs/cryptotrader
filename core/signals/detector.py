@@ -294,7 +294,11 @@ def detect_ma_crossover(
 def detect_volume_spike(
     candles: Sequence[Candle], *, period: int = 20, threshold: float = 2.0
 ) -> IndicatorSignal | None:
-    """Detect volume spike.
+    """Detect volume spike with directional context.
+
+    Volume spikes confirm the current price direction:
+    - Rising prices + volume spike => BUY (buying pressure)
+    - Falling prices + volume spike => SELL (selling pressure)
 
     Args:
         candles: Sequence of OHLCV candles
@@ -304,7 +308,7 @@ def detect_volume_spike(
     Returns:
         IndicatorSignal if volume spike detected, None otherwise
     """
-    if len(candles) < period + 1:
+    if len(candles) < period + 2:
         return None
 
     try:
@@ -318,14 +322,28 @@ def detect_volume_spike(
         ratio = current_volume / avg_volume
 
         if ratio >= threshold:
-            # Volume spike confirms current trend
+            # Determine directional context from recent price movement
+            recent_closes = [float(c.close) for c in candles[-(period + 1) :]]
+            price_trend = recent_closes[-1] - recent_closes[0]
+
+            # Directional volume: volume spike with rising/falling prices
+            if price_trend > 0:
+                side = "BUY"
+                direction = "bullish"
+            elif price_trend < 0:
+                side = "SELL"
+                direction = "bearish"
+            else:
+                side = "CONFIRM"
+                direction = "neutral"
+
             strength = min(100, int((ratio - threshold) * 50 + 50))
             return IndicatorSignal(
                 code="VOLUME_SPIKE",
-                side="CONFIRM",
+                side=side,
                 strength=strength,
                 value=f"{ratio:.2f}x avg",
-                reason=f"Volume spike: {ratio:.2f}x average (threshold: {threshold}x)",
+                reason=f"Volume spike ({direction}): {ratio:.2f}x average ({side}) (threshold: {threshold}x)",
             )
     except Exception:
         return None
@@ -428,14 +446,14 @@ def detect_high_low_signal(
     candles: Sequence[Candle],
     *,
     period: int = 20,
-    breakout_buffer_bps: float = 0.0,
+    breakout_buffer_bps: float = 5.0,
 ) -> IndicatorSignal | None:
     """Detect High/Low channel breakout/breakdown.
 
     Args:
         candles: Sequence of OHLCV candles.
         period: Lookback window for the channel.
-        breakout_buffer_bps: Optional buffer in bps to reduce noise.
+        breakout_buffer_bps: Optional buffer in bps to reduce noise (default: 5.0).
 
     Returns:
         IndicatorSignal for BUY/SELL, or None if neutral/insufficient data.
@@ -459,6 +477,7 @@ def detect_atr_signal(
     period: int = 14,
     high_volatility_threshold: float = 1.5,
     low_volatility_threshold: float = 0.5,
+    min_strength: float = 5.0,
 ) -> IndicatorSignal | None:
     """Detect ATR volatility signal.
 
@@ -467,9 +486,10 @@ def detect_atr_signal(
         period: ATR period (default: 14)
         high_volatility_threshold: High volatility threshold (default: 1.5)
         low_volatility_threshold: Low volatility threshold (default: 0.5)
+        min_strength: Minimum strength to return a signal (default: 5.0)
 
     Returns:
-        IndicatorSignal if extreme volatility detected, None if normal
+        IndicatorSignal if volatility signal exceeds minimum strength, None otherwise
     """
     if len(candles) < period + 1:
         return None
@@ -481,8 +501,8 @@ def detect_atr_signal(
             high_volatility_threshold=high_volatility_threshold,
             low_volatility_threshold=low_volatility_threshold,
         )
-        # ATR signals are informational (volatility), return if strength > 0
-        if signal.strength > 0:
+        # Return signals with strength above minimum threshold
+        if signal.strength >= min_strength:
             return signal
     except Exception:
         return None
@@ -491,7 +511,17 @@ def detect_atr_signal(
 
 
 def detect_signals(
-    *, candles: Sequence[Candle], symbol: str, timeframe: str, exchange: str = "bitfinex"
+    *,
+    candles: Sequence[Candle],
+    symbol: str,
+    timeframe: str,
+    exchange: str = "bitfinex",
+    # Configurable signal parameters
+    ma_fast_period: int = 50,
+    ma_slow_period: int = 200,
+    high_low_buffer_bps: float = 5.0,
+    # Minimum edge thresholds per signal (in bps)
+    min_edge_thresholds: dict[str, float] | None = None,
 ) -> Opportunity | None:
     """Detect all signals for a symbol/timeframe and create an Opportunity.
 
@@ -500,6 +530,12 @@ def detect_signals(
         symbol: Trading symbol (e.g., "BTCUSD")
         timeframe: Timeframe (e.g., "1h")
         exchange: Exchange name (default: "bitfinex")
+        ma_fast_period: Fast MA period for MA_CROSS (default: 50)
+        ma_slow_period: Slow MA period for MA_CROSS (default: 200)
+        high_low_buffer_bps: Breakout buffer in bps for HIGH_LOW (default: 5.0)
+        min_edge_thresholds: Per-signal minimum edge thresholds in bps.
+            Keys are signal codes, values are minimum edge in bps.
+            Signals below their threshold are filtered out.
 
     Returns:
         Opportunity with detected signals and score, or None if no signals
@@ -507,46 +543,59 @@ def detect_signals(
     if len(candles) < 15:
         return None
 
+    # Default per-signal minimum edge thresholds (in bps)
+    if min_edge_thresholds is None:
+        min_edge_thresholds = {
+            "RSI": 10,
+            "MACD": 15,
+            "STOCHASTIC": 10,
+            "BOLLINGER": 12,
+            "ATR": 8,
+            "MA_CROSS": 20,
+            "VOLUME_SPIKE": 10,
+            "HIGH_LOW": 10,
+        }
+
     signals: list[IndicatorSignal] = []
 
     # Detect RSI
     rsi_signal = detect_rsi_signal(candles)
-    if rsi_signal:
+    if rsi_signal and rsi_signal.strength >= min_edge_thresholds.get("RSI", 10):
         signals.append(rsi_signal)
 
     # Detect MACD
     macd_signal = detect_macd_signal(candles)
-    if macd_signal:
+    if macd_signal and macd_signal.strength >= min_edge_thresholds.get("MACD", 15):
         signals.append(macd_signal)
 
     # Detect Stochastic
     stoch_signal = detect_stochastic_signal(candles)
-    if stoch_signal:
+    if stoch_signal and stoch_signal.strength >= min_edge_thresholds.get("STOCHASTIC", 10):
         signals.append(stoch_signal)
 
     # Detect Bollinger Bands
     bb_signal = detect_bollinger_signal(candles)
-    if bb_signal:
+    if bb_signal and bb_signal.strength >= min_edge_thresholds.get("BOLLINGER", 12):
         signals.append(bb_signal)
 
-    # Detect High/Low channel breakout
-    hl_signal = detect_high_low_signal(candles)
-    if hl_signal:
+    # Detect High/Low channel breakout (with configurable buffer)
+    hl_signal = detect_high_low_signal(candles, breakout_buffer_bps=high_low_buffer_bps)
+    if hl_signal and hl_signal.strength >= min_edge_thresholds.get("HIGH_LOW", 10):
         signals.append(hl_signal)
 
     # Detect ATR (volatility)
     atr_signal = detect_atr_signal(candles)
-    if atr_signal:
+    if atr_signal and atr_signal.strength >= min_edge_thresholds.get("ATR", 8):
         signals.append(atr_signal)
 
-    # Detect MA crossover
-    ma_signal = detect_ma_crossover(candles)
-    if ma_signal:
+    # Detect MA crossover (with configurable periods)
+    ma_signal = detect_ma_crossover(candles, fast_period=ma_fast_period, slow_period=ma_slow_period)
+    if ma_signal and ma_signal.strength >= min_edge_thresholds.get("MA_CROSS", 20):
         signals.append(ma_signal)
 
     # Detect volume spike
     vol_signal = detect_volume_spike(candles)
-    if vol_signal:
+    if vol_signal and vol_signal.strength >= min_edge_thresholds.get("VOLUME_SPIKE", 10):
         signals.append(vol_signal)
 
     if not signals:

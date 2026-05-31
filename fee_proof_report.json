@@ -1,0 +1,208 @@
+{
+  "timestamp": "2026-05-31T05:08:36.191751+00:00",
+  "score": {
+    "total_checks": 22,
+    "passed_checks": 22,
+    "score_percent": 100.0,
+    "validated": true
+  },
+  "fee_model": {
+    "maker_fee": "0.001",
+    "taker_fee": "0.002",
+    "spread_bps": 10,
+    "slippage_bps": 5
+  },
+  "transfer_model": {
+    "currencies": [
+      "BTC",
+      "ETH",
+      "USDT",
+      "USD",
+      "LTC",
+      "XMR"
+    ],
+    "total_currencies": 6
+  },
+  "funding_model": {
+    "annual_rate": "0.05",
+    "days_per_year": 365
+  },
+  "details": [
+    {
+      "check_name": "market_buy_fees",
+      "expected": "175.00000000",
+      "actual": "175.08750000",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Expected 175.00000000, got 175.08750000"
+    },
+    {
+      "check_name": "market_buy_slippage",
+      "expected": "50025.0000",
+      "actual": "50025.0000",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Buy price 50025.0000 >= market 50000"
+    },
+    {
+      "check_name": "market_sell_fees",
+      "expected": "175.00000000",
+      "actual": "174.91254373",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Expected 175.00000000, got 174.91254373"
+    },
+    {
+      "check_name": "market_sell_slippage",
+      "expected": "50000",
+      "actual": "49975.01249375312343828085957",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Sell price 49975.01249375312343828085957 <= market 50000"
+    },
+    {
+      "check_name": "limit_order_fees",
+      "expected": "123.75000000",
+      "actual": "123.75000000",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Maker expected 123.75000000, got 123.75000000"
+    },
+    {
+      "check_name": "maker_fee_matches_exchange",
+      "expected": "0.001",
+      "actual": "0.001",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Expected 0.001, got 0.001"
+    },
+    {
+      "check_name": "taker_fee_matches_exchange",
+      "expected": "0.002",
+      "actual": "0.002",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Expected 0.002, got 0.002"
+    },
+    {
+      "check_name": "transfer_BTC_withdrawal",
+      "expected": "0",
+      "actual": "0.0004",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Withdrawal fee for BTC: 0.0004"
+    },
+    {
+      "check_name": "transfer_BTC_deposit",
+      "expected": "0",
+      "actual": "0",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Deposit fee for BTC: 0"
+    },
+    {
+      "check_name": "transfer_BTC_network",
+      "expected": "0",
+      "actual": "0.00001",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Network fee for BTC: 0.00001"
+    },
+    {
+      "check_name": "transfer_ETH_withdrawal",
+      "expected": "0",
+      "actual": "0.00135",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Withdrawal fee for ETH: 0.00135"
+    },
+    {
+      "check_name": "transfer_ETH_deposit",
+      "expected": "0",
+      "actual": "0",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Deposit fee for ETH: 0"
+    },
+    {
+      "check_name": "transfer_ETH_network",
+      "expected": "0",
+      "actual": "0.0021",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Network fee for ETH: 0.0021"
+    },
+    {
+      "check_name": "transfer_USDT_withdrawal",
+      "expected": "0",
+      "actual": "1.8",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Withdrawal fee for USDT: 1.8"
+    },
+    {
+      "check_name": "transfer_USDT_deposit",
+      "expected": "0",
+      "actual": "0",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Deposit fee for USDT: 0"
+    },
+    {
+      "check_name": "transfer_USDT_network",
+      "expected": "0",
+      "actual": "0.1",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Network fee for USDT: 0.1"
+    },
+    {
+      "check_name": "transfer_USD_withdrawal",
+      "expected": "0",
+      "actual": "0",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Withdrawal fee for USD: 0"
+    },
+    {
+      "check_name": "transfer_USD_deposit",
+      "expected": "0",
+      "actual": "0",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Deposit fee for USD: 0"
+    },
+    {
+      "check_name": "transfer_USD_network",
+      "expected": "0",
+      "actual": "0",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Network fee for USD: 0"
+    },
+    {
+      "check_name": "funding_rate_positive",
+      "expected": "0",
+      "actual": "0.00013699",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Funding rate: 0.00013699 (annualized: 0.05)"
+    },
+    {
+      "check_name": "funding_cost_reasonable",
+      "expected": "0",
+      "actual": "6.84950000",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "Funding cost on $50k: 6.84950000"
+    },
+    {
+      "check_name": "backtest_trades_have_fee_data",
+      "expected": "267.40700000",
+      "actual": "267.40700000",
+      "tolerance_bps": "5",
+      "passed": true,
+      "details": "First trade notional: 76402.0, expected fee: 267.40700000"
+    }
+  ]
+}

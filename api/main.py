@@ -38,7 +38,13 @@ from core.fees.model import FeeModel
 from core.market_cap.coingecko import CoinGeckoClient
 from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
-from core.types import FeeBreakdown
+from core.types import FeeBreakdown, OrderIntent
+from core.automation.rules import AutomationConfig, TradeHistory
+from core.automation.safety import (
+    CooldownCheck,
+    SafetyResult,
+    SignalDeduplication,
+)
 
 # Import new route modules with aliases to avoid conflicts
 from api.routes import (
@@ -55,6 +61,7 @@ from api.routes import (
     trade_history,
     alerts as alerts_routes,
     backtest as backtest_routes,
+    smoke as smoke_routes,
 )
 
 # Import middleware for rate limit tracking
@@ -98,6 +105,14 @@ _stores: PostgresStores | None = None
 
 # Global paper executor instance (in-memory, no DB persistence)
 _paper_executor: PaperExecutor | None = None
+
+# Shared automation config and trade history for cooldown/dedup
+_automation_config: AutomationConfig | None = None
+_trade_history: TradeHistory | None = None
+
+# Cooldown dedup state (shared between API and orchestrator)
+_cooldown_check: CooldownCheck | None = None
+_signal_dedup: SignalDeduplication | None = None
 
 # Global CoinGecko client (singleton)
 _coingecko_client: CoinGeckoClient | None = None
@@ -157,6 +172,80 @@ def _get_paper_executor() -> PaperExecutor:
     if _paper_executor is None:
         _paper_executor = PaperExecutor(default_slippage_bps=Decimal("5"))
     return _paper_executor
+
+
+def _get_automation_config() -> AutomationConfig:
+    """Get or initialize the shared automation config."""
+    global _automation_config
+    if _automation_config is None:
+        _automation_config = AutomationConfig()
+    return _automation_config
+
+
+def _get_trade_history() -> TradeHistory:
+    """Get or initialize the shared trade history."""
+    global _trade_history
+    if _trade_history is None:
+        _trade_history = TradeHistory()
+    return _trade_history
+
+
+def _get_cooldown_check() -> CooldownCheck:
+    """Get or initialize the shared cooldown check."""
+    global _cooldown_check
+    if _cooldown_check is None:
+        _cooldown_check = CooldownCheck(
+            config=_get_automation_config(),
+            trade_history=_get_trade_history(),
+        )
+    return _cooldown_check
+
+
+def _get_signal_dedup() -> SignalDeduplication:
+    """Get or initialize the shared signal deduplication."""
+    global _signal_dedup
+    if _signal_dedup is None:
+        _signal_dedup = SignalDeduplication(
+            config=_get_automation_config(),
+            trade_history=_get_trade_history(),
+        )
+    return _signal_dedup
+
+
+def _run_cooldown_and_dedup(symbol: str, side: Literal["BUY", "SELL"]) -> SafetyResult | None:
+    """Run cooldown and signal dedup checks for an order.
+
+    Returns:
+        SafetyResult with ok=False if order should be rejected,
+        or None if no cooldown/dedup is configured (skip the check).
+    """
+    # Build a minimal OrderIntent for the checks
+    intent = OrderIntent(
+        exchange="paper",
+        symbol=symbol,
+        side=side,
+        amount=Decimal("1"),  # Notional amount doesn't matter for cooldown/dedup
+    )
+
+    # Run cooldown check
+    cooldown = _get_cooldown_check()
+    cooldown_result = cooldown.check(intent=intent)
+
+    # Run signal deduplication
+    dedup = _get_signal_dedup()
+    dedup_result = dedup.check(intent=intent)
+
+    # If cooldown is active but dedup allows this signal (different side),
+    # allow the order. Only reject if both checks fail.
+    if not cooldown_result.ok and not dedup_result.ok:
+        return cooldown_result
+    if not cooldown_result.ok:
+        # Cooldown active but dedup says OK (different side) — allow
+        return None
+    if not dedup_result.ok:
+        return dedup_result
+
+    return None
 
 
 _stores: PostgresStores | None = None
@@ -807,6 +896,9 @@ def _position_to_response(position: PaperPosition, current_price: Decimal) -> di
 async def place_order(request: OrderRequest) -> dict[str, Any]:
     """Place a paper trading order.
 
+    Runs cooldown and signal deduplication checks before execution.
+    Duplicate signals during cooldown are rejected to prevent overtrading.
+
     Args:
         request: Order details including symbol, side, type, qty, and price.
 
@@ -814,9 +906,22 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
         The created order details.
 
     Raises:
-        HTTPException: If order validation fails.
+        HTTPException: If order validation or safety checks fail.
     """
     executor = _get_paper_executor()
+
+    # Run cooldown and signal dedup checks before executing
+    safety = _run_cooldown_and_dedup(request.symbol, request.side)
+    if safety is not None and not safety.ok:
+        trade_history = _get_trade_history()
+        trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "safety_check_failed",
+                "message": safety.reason,
+            },
+        )
 
     try:
         if request.order_type == "market":
@@ -845,6 +950,10 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
                 order_type="limit",
                 limit_price=request.limit_price,
             )
+
+        # Record the trade in shared history for cooldown/dedup tracking
+        trade_history = _get_trade_history()
+        trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
 
         return {"success": True, "order": _order_to_response(order)}
 
@@ -995,6 +1104,204 @@ async def close_position(
     )
 
     return {"success": True, "message": "Position closed", "close_order": _order_to_response(order)}
+
+
+# =============================================================================
+# Paper Trading Monitoring
+# =============================================================================
+
+
+class PaperSummaryResponse(BaseModel):
+    """Response for paper trading summary."""
+
+    total_fees: str
+    total_unrealized_pnl: str
+    positions: dict[str, dict[str, str]]
+    orders: dict[str, str]
+    fee_model: dict[str, str]
+    drawdown: dict[str, str] | None = None
+    kelly: dict[str, str] | None = None
+
+
+class KellyInfoResponse(BaseModel):
+    """Response for Kelly sizing details."""
+
+    kelly_fraction: str
+    win_rate: str
+    avg_win: str
+    avg_loss: str
+    position_size: str
+    portfolio_value: str
+    kelly_percent: str
+    fractional_kelly: str
+    method: str
+
+
+@app.get("/paper/summary")
+async def get_paper_summary() -> dict[str, Any]:
+    """Get comprehensive paper trading summary.
+
+    Returns:
+        JSON with paper trading state including positions, orders, fees,
+        drawdown, and Kelly sizing information.
+    """
+    executor = _get_paper_executor()
+    summary = executor.get_paper_summary()
+
+    # Add drawdown info if available
+    drawdown_info = None
+    if hasattr(executor, "_drawdown_monitor") and executor._drawdown_monitor is not None:
+        dd = executor._drawdown_monitor
+        drawdown_info = {
+            "daily_drawdown_pct": str(dd.get_daily_drawdown()),
+            "total_drawdown_pct": str(dd.get_total_drawdown()),
+            "trading_paused": str(dd.state.trading_paused),
+            "trading_allowed": str(dd.is_trading_allowed()),
+        }
+        summary["drawdown"] = drawdown_info
+
+    # Add Kelly sizing info
+    kelly_info = None
+    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+        kc = executor._kelly_config
+        kelly_info = {
+            "kelly_fraction": str(kc.kelly_fraction),
+            "win_rate": str(kc.win_rate),
+            "avg_win": str(kc.avg_win),
+            "avg_loss": str(kc.avg_loss),
+            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+            "position_size": str(getattr(kc, "position_size", None) or "0"),
+        }
+        summary["kelly"] = kelly_info
+
+    return summary
+
+
+@app.get("/paper/kelly")
+async def get_kelly_info() -> dict[str, Any]:
+    """Get Kelly sizing details for paper trading.
+
+    Returns:
+        JSON with Kelly criterion details including fraction, win rate,
+        avg win/loss, and current position sizing.
+    """
+    executor = _get_paper_executor()
+
+    # Get Kelly config from executor or create default
+    if hasattr(executor, "_kelly_config") and executor._kelly_config is not None:
+        kc = executor._kelly_config
+    else:
+        # Create default Kelly config
+        from core.risk.sizing import PositionSize
+
+        kc = PositionSize(
+            method="kelly",
+            kelly_fraction=Decimal("1.0"),  # Default full Kelly for paper
+            win_rate=Decimal("0.5"),
+            avg_win=Decimal("100"),
+            avg_loss=Decimal("50"),
+        )
+        executor._kelly_config = kc
+
+    # Calculate Kelly metrics
+    from core.risk.sizing import calculate_position_size
+
+    # Calculate kelly_percent: f* = (p * b - q) / b
+    p = kc.win_rate
+    q = Decimal("1") - p
+    b = kc.avg_win / kc.avg_loss if kc.avg_loss > 0 else Decimal("0")
+    kelly_percent = (p * b - q) / b if b > 0 else Decimal("0")
+
+    # Calculate fractional Kelly
+    fractional_kelly = kelly_percent * (kc.kelly_fraction or Decimal("1"))
+    fractional_kelly = max(fractional_kelly, Decimal("0"))
+
+    # Calculate position size
+    portfolio_value = getattr(kc, "portfolio_value", None) or Decimal("10000")
+    avg_w = getattr(kc, "avg_win", None) or Decimal("100")
+    avg_l = getattr(kc, "avg_loss", None) or Decimal("50")
+    entry_price = avg_w + avg_l  # Simplified entry price
+    stop_loss_price = entry_price * Decimal("0.95")  # 5% stop loss
+
+    position_size = calculate_position_size(
+        config=kc,
+        portfolio_value=portfolio_value,
+        entry_price=entry_price,
+        stop_loss_price=stop_loss_price,
+    )
+
+    return {
+        "kelly_fraction": str(kc.kelly_fraction),
+        "win_rate": str(kc.win_rate),
+        "avg_win": str(kc.avg_win),
+        "avg_loss": str(kc.avg_loss),
+        "portfolio_value": str(portfolio_value),
+        "position_size": str(position_size),
+        "kelly_percent": str(kelly_percent),
+        "fractional_kelly": str(fractional_kelly),
+        "method": kc.method,
+        "b_ratio": str(b),  # avg_win / avg_loss
+        "p": str(p),  # win rate
+        "q": str(q),  # loss rate
+    }
+
+
+@app.post("/paper/kelly/update")
+async def update_kelly_config(
+    kelly_fraction: str | None = None,
+    win_rate: str | None = None,
+    avg_win: str | None = None,
+    avg_loss: str | None = None,
+    portfolio_value: str | None = None,
+) -> dict[str, Any]:
+    """Update Kelly sizing configuration for paper trading.
+
+    Args:
+        kelly_fraction: Fraction of Kelly to use (0.5 = half-Kelly, 1.0 = full-Kelly)
+        win_rate: Historical win rate (0-1)
+        avg_win: Average win amount
+        avg_loss: Average loss amount
+        portfolio_value: Total portfolio value
+
+    Returns:
+        Updated Kelly configuration.
+    """
+    executor = _get_paper_executor()
+
+    if not hasattr(executor, "_kelly_config") or executor._kelly_config is None:
+        from core.risk.sizing import PositionSize
+
+        executor._kelly_config = PositionSize(
+            method="kelly",
+            kelly_fraction=Decimal("1.0"),
+            win_rate=Decimal("0.5"),
+            avg_win=Decimal("100"),
+            avg_loss=Decimal("50"),
+        )
+
+    kc = executor._kelly_config
+
+    if kelly_fraction is not None:
+        kc.kelly_fraction = Decimal(kelly_fraction)
+    if win_rate is not None:
+        kc.win_rate = Decimal(win_rate)
+    if avg_win is not None:
+        kc.avg_win = Decimal(avg_win)
+    if avg_loss is not None:
+        kc.avg_loss = Decimal(avg_loss)
+    if portfolio_value is not None:
+        setattr(kc, "portfolio_value", Decimal(portfolio_value))
+
+    return {
+        "success": True,
+        "kelly_config": {
+            "kelly_fraction": str(kc.kelly_fraction),
+            "win_rate": str(kc.win_rate),
+            "avg_win": str(kc.avg_win),
+            "avg_loss": str(kc.avg_loss),
+            "portfolio_value": str(getattr(kc, "portfolio_value", None) or "10000"),
+        },
+    }
 
 
 # =============================================================================
@@ -2077,3 +2384,4 @@ app.include_router(watchlist.router)
 app.include_router(trade_history.router)
 app.include_router(alerts_routes.router)
 app.include_router(backtest_routes.router)
+app.include_router(smoke_routes.router)

@@ -15,7 +15,14 @@ from core.strategy_eval.overfitting import (  # noqa: F401
     check_overfitting,
     compute_parameter_stability,
 )
-from core.strategy_eval.evaluator import StrategyEvaluator, EvaluationReport  # noqa: F401
+
+try:
+    from core.strategy_eval.evaluator import StrategyEvaluator, EvaluationReport  # noqa: F401
+except ImportError:
+    # evaluator.py may not exist in all setups; re-export from types as fallback
+    from core.strategy_eval.types import EvaluationReport  # noqa: F401
+
+    StrategyEvaluator = None  # type: ignore[misc,assignment]
 from core.strategy_eval.rejection import (  # noqa: F401
     RejectionCriteria,
     evaluate_rejection,
