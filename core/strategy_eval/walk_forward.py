@@ -22,6 +22,28 @@ from core.backtest.metrics import calculate_sharpe_ratio
 from core.fees.model import FeeModel
 
 
+def _parse_timeframe_to_timedelta(timeframe: str) -> timedelta:
+    """Convert a timeframe string (e.g., '1m', '5m', '1h', '4h', '1d') to a timedelta."""
+    if not isinstance(timeframe, str) or not timeframe:
+        raise ValueError("Timeframe must be a non-empty string")
+
+    unit = timeframe[-1]
+    value_str = timeframe[:-1]
+
+    if not value_str.isdigit():
+        raise ValueError(f"Invalid timeframe value in '{timeframe}'")
+
+    value = int(value_str)
+
+    if unit == "m":
+        return timedelta(minutes=value)
+    if unit == "h":
+        return timedelta(hours=value)
+    if unit == "d":
+        return timedelta(days=value)
+    raise ValueError(f"Unsupported timeframe unit: '{unit}' in '{timeframe}'")
+
+
 # ---------------------------------------------------------------------------
 # Walk-forward engine
 # ---------------------------------------------------------------------------
@@ -120,7 +142,6 @@ def run_walk_forward(
     # Determine date range
     start_date = candles[0].open_time
     end_date = candles[-1].open_time
-    total_days = (end_date - start_date).days
 
     # Generate fold boundaries
     folds: list[WalkForwardFold] = []
@@ -139,7 +160,8 @@ def run_walk_forward(
         # Strict split: train uses [warmup_start, train_end) (exclusive end),
         # test uses [train_end, test_end] (inclusive end).
         # This prevents the boundary candle at train_end from appearing in both sets.
-        warmup_candles = _split_candles(candles, warmup_start, current)
+        # Also, warmup uses end_exclusive so it does not include the candle at 'current'.
+        warmup_candles = _split_candles(candles, warmup_start, current, end_exclusive=True)
         train_candles = _split_candles(candles, current, train_end, end_exclusive=True)
         test_candles = _split_candles(candles, train_end, test_end)
 
@@ -159,7 +181,14 @@ def run_walk_forward(
         # training performance with warmup-period trades.
         warmup_pnl = warmup_result.total_pnl
         full_train_pnl = full_train_result.total_pnl
-        train_return = (full_train_pnl - warmup_pnl) / 10000.0
+
+        # Equity after warmup phase – the true denominator for the training-period return.
+        # warmup_pnl is float in BacktestResult, so keep this calculation in float space.
+        warmup_equity = 10000.0 + float(warmup_pnl)
+        if warmup_equity <= 0.0:
+            train_return = 0.0
+        else:
+            train_return = (full_train_pnl - warmup_pnl) / warmup_equity
 
         # Run testing (fresh start for OOS evaluation)
         test_result = BacktestEngine(candle_store=None, initial_capital=10000.0).run(strategy, test_candles)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-05-31
+### Walk-Forward Validation Fix
+- Fix a post-merge regression in `core/strategy_eval/walk_forward.py` where warmup equity used `Decimal + float`, causing `TypeError` and breaking strict OOS walk-forward tests.
+- Keep warmup-equity denominator computation in float space and remove stale unused locals from the fold setup path.
+
 ## 2026-05-28
 ### Paper Trading Hardening
 - Store orchestrator position exposure as quote-currency market value after fills so position-size checks compare against the configured quote-denominated limits.

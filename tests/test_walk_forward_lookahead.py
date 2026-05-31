@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
 import sys
 from pathlib import Path
 
@@ -43,7 +44,7 @@ def _make_candle(offset_hours: int, close: float = 50000.0) -> Candle:
         exchange="bitfinex",
         timeframe="1h",
         open_time=dt,
-        close_time=dt + timedelta(hours=59, minutes=59),
+        close_time=dt + timedelta(hours=1),
         open=Decimal(str(close)),
         high=Decimal(str(close * 1.01)),
         low=Decimal(str(close * 0.99)),
@@ -151,11 +152,9 @@ class TestWarmupSeparation:
             ),
         )
 
-        # With proper warmup separation, train return should be realistic
-        # (not inflated by warmup-period trades)
-        assert result.mean_train_return is not None
-        # A positive but not inflated return indicates warmup is handled
-        assert -1.0 < result.mean_train_return < 2.0
+        # With proper warmup separation, train return should be near zero
+        # (since all candles are flat, no trades should occur)
+        assert result.mean_train_return == pytest.approx(0.0, abs=1e-9)
 
     def test_warmup_provides_indicator_state(self):
         """Warmup candles build indicator state before training."""
@@ -186,6 +185,10 @@ class TestWarmupSeparation:
         # Should have at least one fold
         assert result.n_folds >= 1
         assert len(result.folds) >= 1
+
+        # With a warmup period, indicator state should be initialized and
+        # fold evaluation should produce a valid (finite) return metric.
+        assert result.folds[0].train_return >= 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +254,7 @@ class TestTrainReturn:
         # With warmup separation, the train return should be near zero
         # (since training candles are flat)
         # Without separation it would be inflated by the warmup decline
-        assert result.mean_train_return is not None
+        assert result.mean_train_return == pytest.approx(0.0, abs=1e-9)
 
 
 # ---------------------------------------------------------------------------
