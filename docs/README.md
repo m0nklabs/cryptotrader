@@ -29,4 +29,4 @@ This folder contains the project documentation for `cryptotrader`.
 
 ## Workflow Demo Marker
 
-- Issue #312 demonstrates the branch -> PR -> review -> merge workflow with a docs-only change.
+- Issue #312 and PR #313 demonstrate the branch -> PR -> review -> merge workflow with a docs-only change.
