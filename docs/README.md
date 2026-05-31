@@ -26,3 +26,7 @@ This folder contains the project documentation for `cryptotrader`.
 - Repository-wide agent guidance is in `.github/copilot-instructions.md`
 - Path-specific instructions in `.github/instructions/`
 - The complete feature backlog is tracked in [GitHub Issues](https://github.com/m0nklabs/cryptotrader/issues)
+
+## Workflow Demo Marker
+
+- Issue #312 demonstrates the branch -> PR -> review -> merge workflow with a docs-only change.
