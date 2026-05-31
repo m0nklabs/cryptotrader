@@ -14,6 +14,11 @@ on:
 
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
 jobs:
   mark-ready:
     name: Mark Copilot PR as ready for review
@@ -30,7 +35,7 @@ jobs:
 
       - name: Mark PR ready for review
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           BRANCH="${{ github.event.workflow_run.head_branch }}"
           REPO="${{ github.repository }}"
@@ -66,7 +71,7 @@ jobs:
     steps:
       - name: Mark eligible draft PRs ready
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -74,16 +79,21 @@ jobs:
           MIN_AGE_SECONDS=3600
           NOW=$(date +%s)
 
-          PRS=$(gh pr list --repo "$REPO" --state open --json number,isDraft,createdAt,headRefName \
-            --jq '[.[] | select(.isDraft == true) | select(.headRefName | startswith("copilot/"))]')
+          ROWS=$(gh pr list --repo "$REPO" --state open --json number,isDraft,createdAt,headRefName \
+            --jq '.[] | select(.isDraft == true and (.headRefName | startswith("copilot/"))) | [.number, .headRefName, .createdAt] | @tsv')
 
-          COUNT=$(echo "$PRS" | jq 'length')
+          if [ -z "$ROWS" ]; then
+            echo "Found 0 open draft Copilot PR(s) to evaluate"
+            exit 0
+          fi
+
+          COUNT=$(printf '%s\n' "$ROWS" | wc -l | tr -d ' ')
           echo "Found $COUNT open draft Copilot PR(s) to evaluate"
 
-          echo "$PRS" | jq -c '.[]' | while read -r pr; do
-            PR_NUMBER=$(echo "$pr" | jq -r '.number')
-            BRANCH=$(echo "$pr" | jq -r '.headRefName')
-            CREATED_AT=$(echo "$pr" | jq -r '.createdAt')
+          while IFS=$'\t' read -r PR_NUMBER BRANCH CREATED_AT; do
+            if [ -z "$PR_NUMBER" ] || [ -z "$BRANCH" ] || [ -z "$CREATED_AT" ]; then
+              continue
+            fi
 
             CREATED_TS=$(date -d "$CREATED_AT" +%s)
             AGE=$(( NOW - CREATED_TS ))
@@ -101,4 +111,4 @@ jobs:
 
             echo "Marking PR #$PR_NUMBER ready for review (age=${AGE}s, CI=success)"
             gh pr ready "$PR_NUMBER" --repo "$REPO" || true
-          done
+          done <<< "$ROWS"
