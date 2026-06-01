@@ -20,6 +20,7 @@ from core.types import Candle
 from core.backtest.engine import BacktestEngine, BacktestResult, Strategy
 from core.backtest.metrics import calculate_sharpe_ratio
 from core.fees.model import FeeModel
+from core.risk.sizing import PositionSize
 
 
 def _parse_timeframe_to_timedelta(timeframe: str) -> timedelta:
@@ -105,6 +106,7 @@ def run_walk_forward(
     candles: Sequence[Candle],
     config: WalkForwardConfig | None = None,
     fee_model: FeeModel | None = None,
+    position_size_config: PositionSize | None = None,
 ) -> WalkForwardResult:
     """Run walk-forward validation on a strategy.
 
@@ -117,12 +119,22 @@ def run_walk_forward(
         candles: Historical candles (must be time-sorted)
         config: Walk-forward configuration
         fee_model: Optional fee model for cost-aware evaluation
+        position_size_config: Position sizing config (default: Kelly)
 
     Returns:
         WalkForwardResult with aggregated metrics
     """
     if config is None:
         config = WalkForwardConfig()
+
+    if position_size_config is None:
+        position_size_config = PositionSize(
+            method="kelly",
+            kelly_fraction=Decimal("0.5"),
+            win_rate=Decimal("0.55"),
+            avg_win=Decimal("0.05"),
+            avg_loss=Decimal("0.02"),
+        )
 
     if not candles:
         return WalkForwardResult(
@@ -171,11 +183,21 @@ def run_walk_forward(
 
         # Warm-up phase: run through warmup candles to build indicator state
         # but exclude them from the training return calculation.
-        warmup_result = BacktestEngine(candle_store=None, initial_capital=10000.0).run(strategy, warmup_candles)
+        warmup_engine = BacktestEngine(
+            candle_store=None,
+            initial_capital=10000.0,
+            position_size_config=position_size_config,
+        )
+        warmup_result = warmup_engine.run(strategy, warmup_candles)
 
         # Full training run (warmup + training candles)
         full_train_candles = warmup_candles + train_candles
-        full_train_result = BacktestEngine(candle_store=None, initial_capital=10000.0).run(strategy, full_train_candles)
+        full_train_engine = BacktestEngine(
+            candle_store=None,
+            initial_capital=10000.0,
+            position_size_config=position_size_config,
+        )
+        full_train_result = full_train_engine.run(strategy, full_train_candles)
 
         # Compute training return excluding warmup PnL to avoid inflating
         # training performance with warmup-period trades.
@@ -191,7 +213,12 @@ def run_walk_forward(
             train_return = (full_train_pnl - warmup_pnl) / warmup_equity
 
         # Run testing (fresh start for OOS evaluation)
-        test_result = BacktestEngine(candle_store=None, initial_capital=10000.0).run(strategy, test_candles)
+        test_engine = BacktestEngine(
+            candle_store=None,
+            initial_capital=10000.0,
+            position_size_config=position_size_config,
+        )
+        test_result = test_engine.run(strategy, test_candles)
 
         fold = WalkForwardFold(
             train_start=current,

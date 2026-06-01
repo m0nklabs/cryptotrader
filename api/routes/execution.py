@@ -26,6 +26,8 @@ router = APIRouter(prefix="/api/execution", tags=["execution"])
 # Global orchestrator instance
 _orchestrator: ExecutionOrchestrator | None = None
 
+_VALID_SIGNAL_ACTIONS: set[str] = {"BUY", "SELL", "NEUTRAL", "VETO"}
+
 
 def get_orchestrator() -> ExecutionOrchestrator:
     """Get or create the global execution orchestrator."""
@@ -33,6 +35,22 @@ def get_orchestrator() -> ExecutionOrchestrator:
     if _orchestrator is None:
         _orchestrator = ExecutionOrchestrator()
     return _orchestrator
+
+
+def _role_from_payload(value: Any) -> RoleName:
+    """Return a valid role name from request payload data."""
+    try:
+        return RoleName(str(value or RoleName.SCREENER.value))
+    except ValueError:
+        return RoleName.SCREENER
+
+
+def _action_from_payload(value: Any) -> SignalAction:
+    """Return a valid signal action from request payload data."""
+    action = str(value or "NEUTRAL").upper()
+    if action in _VALID_SIGNAL_ACTIONS:
+        return action  # type: ignore[return-value]
+    return "NEUTRAL"
 
 
 # ---------------------------------------------------------------------------
@@ -44,12 +62,8 @@ class EvaluateRequest(BaseModel):
     """Request to evaluate a consensus decision against risk gates."""
 
     symbol: str = Field(..., description="Trading pair, e.g. BTCUSD")
-    final_action: SignalAction = Field(
-        ..., description="Consensus action: BUY, SELL, NEUTRAL, VETO"
-    )
-    final_confidence: float = Field(
-        ..., ge=0.0, le=1.0, description="Consensus confidence 0-1"
-    )
+    final_action: SignalAction = Field(..., description="Consensus action: BUY, SELL, NEUTRAL, VETO")
+    final_confidence: float = Field(..., ge=0.0, le=1.0, description="Consensus confidence 0-1")
     market_price: float = Field(..., gt=0, description="Current market price")
     portfolio_value: float = 10000.0
     current_exposure: float = 0.0
@@ -124,15 +138,12 @@ async def evaluate_consensus(req: EvaluateRequest) -> RiskDecisionResponse:
     consensus = ConsensusDecision(
         final_action=req.final_action,
         final_confidence=req.final_confidence,
+        verdicts=[
             RoleVerdict(
-                role=(
-                    RoleName(v.get("role", "screener"))
-                    if v.get("role", "screener") in RoleName._value2member_map_
-                    else RoleName.SCREENER
-                ),
-                action=v.get("action", "NEUTRAL"),
-                confidence=v.get("confidence", 0.5),
-                reasoning=v.get("reasoning", ""),
+                role=_role_from_payload(v.get("role")),
+                action=_action_from_payload(v.get("action")),
+                confidence=float(v.get("confidence", 0.5)),
+                reasoning=str(v.get("reasoning", "")),
             )
             for v in req.verdicts
         ],
@@ -168,9 +179,7 @@ async def evaluate_consensus(req: EvaluateRequest) -> RiskDecisionResponse:
         reason=result.reason,
         paper_order_id=result.paper_order.order_id if result.paper_order else None,
         market_price=float(result.market_price) if result.market_price else None,
-        portfolio_value=float(result.portfolio_value)
-        if result.portfolio_value
-        else None,
+        portfolio_value=float(result.portfolio_value) if result.portfolio_value else None,
         position_size=float(result.position_size) if result.position_size else None,
         position_value=float(result.position_value) if result.position_value else None,
         latency_ms=result.latency_ms,

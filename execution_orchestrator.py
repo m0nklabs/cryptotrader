@@ -148,6 +148,7 @@ class ExecutionOrchestrator:
             return self._build_result(
                 start_time=start_time,
                 symbol=symbol,
+                timeframe=timeframe,
                 consensus=consensus,
                 gate_results=gate_results,
                 action="REJECTED",
@@ -167,6 +168,7 @@ class ExecutionOrchestrator:
             return self._build_result(
                 start_time=start_time,
                 symbol=symbol,
+                timeframe=timeframe,
                 consensus=consensus,
                 gate_results=gate_results,
                 action="REJECTED",
@@ -196,6 +198,7 @@ class ExecutionOrchestrator:
             return self._build_result(
                 start_time=start_time,
                 symbol=symbol,
+                timeframe=timeframe,
                 consensus=consensus,
                 gate_results=gate_results,
                 action="REJECTED",
@@ -216,6 +219,7 @@ class ExecutionOrchestrator:
             return self._build_result(
                 start_time=start_time,
                 symbol=symbol,
+                timeframe=timeframe,
                 consensus=consensus,
                 gate_results=gate_results,
                 action="REJECTED",
@@ -238,6 +242,7 @@ class ExecutionOrchestrator:
         return self._build_result(
             start_time=start_time,
             symbol=symbol,
+            timeframe=timeframe,
             consensus=consensus,
             gate_results=gate_results,
             action="EXECUTED",
@@ -301,9 +306,7 @@ class ExecutionOrchestrator:
             gate=GateName.VETO,
             passed=True,
             reason="No veto",
-            details={
-                "vetoed_by": consensus.vetoed_by.value if consensus.vetoed_by else None
-            },
+            details={"vetoed_by": consensus.vetoed_by.value if consensus.vetoed_by else None},
         )
 
     def _check_budget_gate(
@@ -474,16 +477,12 @@ class ExecutionOrchestrator:
         # Convert to position size in units
         portfolio_percent = Decimal(str(kelly))
         risk_amount = portfolio_value * portfolio_percent
-        risk_per_unit = (
-            float(market_price) * 0.02
-        )  # 2% risk per unit (stop loss distance)
+        risk_per_unit = float(market_price) * 0.02  # 2% risk per unit (stop loss distance)
 
         if risk_per_unit == 0:
             return Decimal("1.0")
 
-        return (risk_amount / Decimal(str(risk_per_unit))).quantize(
-            Decimal("0.00000001")
-        )
+        return (risk_amount / Decimal(str(risk_per_unit))).quantize(Decimal("0.00000001"))
 
     def _execute_paper_order(
         self,
@@ -538,6 +537,7 @@ class ExecutionOrchestrator:
         self,
         start_time: datetime,
         symbol: str,
+        timeframe: str,
         consensus: ConsensusDecision,
         gate_results: list[GateCheckResult],
         action: str,
@@ -553,7 +553,7 @@ class ExecutionOrchestrator:
 
         decision = RiskDecision(
             symbol=symbol,
-            timeframe="",
+            timeframe=timeframe,
             final_action=consensus.final_action,
             final_confidence=consensus.final_confidence,
             gate_results=gate_results,

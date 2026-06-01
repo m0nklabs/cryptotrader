@@ -35,6 +35,11 @@ CONTAINER_NAME="cryptotrader-integration-db"
 KEEP_CONTAINER=false
 CLEAN_START=false
 PSQL_CMD="psql -h 127.0.0.1 -p $INTEGRATION_PORT -U $INTEGRATION_USER -d $INTEGRATION_DB"
+if [[ -x "$PROJECT_ROOT/.venv/bin/python" ]]; then
+    PYTHON_BIN="${PYTHON_BIN:-$PROJECT_ROOT/.venv/bin/python}"
+else
+    PYTHON_BIN="${PYTHON_BIN:-python3}"
+fi
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -104,7 +109,8 @@ done
 
 # Step 3: Apply schema and migrations
 echo "[3/4] Applying schema and migrations..."
-DB_URL="postgresql://${INTEGRATION_USER}:***@127.0.0.1:${INTEGRATION_PORT}/${INTEGRATION_DB}"
+DB_URL="postgresql://${INTEGRATION_USER}:${INTEGRATION_PASS}@127.0.0.1:${INTEGRATION_PORT}/${INTEGRATION_DB}"
+DISPLAY_DB_URL="postgresql://${INTEGRATION_USER}:***@127.0.0.1:${INTEGRATION_PORT}/${INTEGRATION_DB}"
 
 # Apply main schema
 PGPASSWORD="$INTEGRATION_PASS" psql -h 127.0.0.1 -p "$INTEGRATION_PORT" -U "$INTEGRATION_USER" -d "$INTEGRATION_DB" \
@@ -130,7 +136,7 @@ export DATABASE_URL="$DB_URL"
 export PGPASSWORD="$INTEGRATION_PASS"
 
 # Run pytest with integration marker
-python -m pytest tests/integration/ -v \
+"$PYTHON_BIN" -m pytest tests/integration/ -v \
     --tb=short \
     --durations=5 \
     "$@"
@@ -143,6 +149,7 @@ if $KEEP_CONTAINER; then
     echo "=== Tests complete (container kept) ==="
     echo "  Container: $CONTAINER_NAME"
     echo "  Port:      $INTEGRATION_PORT"
+    echo "  Database:  $DISPLAY_DB_URL"
     echo "  To stop:   docker rm -f $CONTAINER_NAME"
 else
     docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1

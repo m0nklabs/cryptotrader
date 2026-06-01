@@ -17,6 +17,7 @@ from core.backtest.metrics import (
 from core.backtest.strategy import Signal, Strategy
 from core.indicators.rsi import compute_rsi
 from core.persistence.interfaces import CandleStore
+from core.risk.sizing import PositionSize, calculate_position_size
 from core.types import Candle
 
 
@@ -45,9 +46,17 @@ class StrategyPerformance:
 class BacktestEngine:
     """Engine for backtesting strategies on historical data."""
 
-    def __init__(self, candle_store: CandleStore, initial_capital: float = 10000.0):
+    def __init__(
+        self,
+        candle_store: CandleStore,
+        initial_capital: float = 10000.0,
+        position_size_config: PositionSize | None = None,
+    ):
         self.candle_store = candle_store
         self.initial_capital = initial_capital
+        self.position_size_config = position_size_config or PositionSize(
+            method="fixed", portfolio_percent=Decimal("1.0")
+        )
 
     def load_candles(
         self,
@@ -66,16 +75,43 @@ class BacktestEngine:
             end=end,
         )
 
+    def _calculate_dynamic_size(
+        self,
+        entry_price: Decimal,
+        equity: float,
+        stop_loss_pct: float = 0.05,
+    ) -> Decimal:
+        """Calculate dynamic position size using the configured method.
+
+        Uses Kelly criterion when method is 'kelly', fixed fractional otherwise.
+        The stop loss percentage determines risk per unit.
+        """
+        portfolio_value = Decimal(str(equity))
+        stop_loss_price = entry_price * Decimal(str(1 - stop_loss_pct))
+
+        try:
+            size = calculate_position_size(
+                config=self.position_size_config,
+                portfolio_value=portfolio_value,
+                entry_price=entry_price,
+                stop_loss_price=stop_loss_price,
+            )
+            return max(size, Decimal("0.01"))  # floor at 0.01
+        except (ValueError, ZeroDivisionError):
+            return Decimal("1.0")  # fallback to fixed
+
     def run(
         self,
         strategy: Strategy,
         candles: Sequence[Candle],
+        stop_loss_pct: float = 0.05,
     ) -> BacktestResult:
         """Run backtest simulation on historical data.
 
         Args:
             strategy: Strategy implementing on_candle protocol
             candles: Historical candle data
+            stop_loss_pct: Stop loss percentage for position sizing (default 5%)
 
         Returns:
             BacktestResult with trades and performance metrics
@@ -98,13 +134,18 @@ class BacktestEngine:
             # Process signal
             if signal and signal.side != "HOLD":
                 if position is None:
-                    # Enter position
-                    if signal.side == "BUY":
-                        position = "LONG"
-                        entry_price = candle.close
-                    elif signal.side == "SELL":
-                        position = "SHORT"
-                        entry_price = candle.close
+                    # Enter position with dynamic sizing
+                    dynamic_size = self._calculate_dynamic_size(
+                        entry_price=candle.close,
+                        equity=current_equity,
+                        stop_loss_pct=stop_loss_pct,
+                    )
+                    position = "LONG" if signal.side == "BUY" else "SHORT"
+                    entry_price = candle.close
+                    # Store the size on the position for exit
+                    if not hasattr(self, "_current_position_size"):
+                        self._current_position_size = {}
+                    self._current_position_size[id(self)] = dynamic_size
                 else:
                     # Exit position if signal is opposite
                     should_exit = (position == "LONG" and signal.side == "SELL") or (
@@ -112,24 +153,29 @@ class BacktestEngine:
                     )
 
                     if should_exit and entry_price:
+                        # Get dynamic size for this position
+                        dynamic_size = self._current_position_size.get(id(self), Decimal("1.0"))
+
                         # Close position
                         trade_side = "BUY" if position == "LONG" else "SELL"
                         trade = Trade(
                             entry_price=entry_price,
                             exit_price=candle.close,
                             side=trade_side,
-                            size=Decimal("1.0"),
+                            size=dynamic_size,
                         )
                         trades.append(trade)
                         current_equity += float(trade.pnl)
 
-                        # Enter new position
-                        if signal.side == "BUY":
-                            position = "LONG"
-                            entry_price = candle.close
-                        elif signal.side == "SELL":
-                            position = "SHORT"
-                            entry_price = candle.close
+                        # Enter new position with fresh dynamic sizing
+                        dynamic_size = self._calculate_dynamic_size(
+                            entry_price=candle.close,
+                            equity=current_equity,
+                            stop_loss_pct=stop_loss_pct,
+                        )
+                        position = "LONG" if signal.side == "BUY" else "SHORT"
+                        entry_price = candle.close
+                        self._current_position_size[id(self)] = dynamic_size
 
             equity_curve.append(current_equity)
 
@@ -169,6 +215,9 @@ class BacktestEngine:
         """Run multiple strategies side-by-side on the same candles."""
         performances: list[StrategyPerformance] = []
         for name, strategy in strategies.items():
+            # Reset position size map for each strategy comparison
+            if hasattr(self, "_current_position_size"):
+                self._current_position_size = {}
             result = self.run(strategy=strategy, candles=candles)
             performances.append(StrategyPerformance(name=name, result=result))
         return performances

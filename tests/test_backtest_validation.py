@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import math
 import random
-import sys
 import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
@@ -30,6 +29,7 @@ import pytest
 # Repo root should already be on sys.path (see pyproject.toml pythonpath settings).
 
 from core.backtest.engine import BacktestEngine, BacktestResult, RSIStrategy  # noqa: E402
+from core.backtest.metrics import (  # noqa: E402
     Trade,
     calculate_max_drawdown,
     calculate_profit_factor,
@@ -101,12 +101,8 @@ def generate_synthetic_candles(
         close_price = open_price * (1 + ret)
 
         # High and low
-        high = max(open_price, close_price) * (
-            1 + abs(random.gauss(0, volatility * 0.5))
-        )
-        low = min(open_price, close_price) * (
-            1 - abs(random.gauss(0, volatility * 0.5))
-        )
+        high = max(open_price, close_price) * (1 + abs(random.gauss(0, volatility * 0.5)))
+        low = min(open_price, close_price) * (1 - abs(random.gauss(0, volatility * 0.5)))
         volume = Decimal(str(abs(random.gauss(100, 20))))
 
         candles.append(
@@ -289,7 +285,6 @@ class ValidationRunStore:
         return [asdict(r) for r in self._runs]
 
     @classmethod
-    @classmethod
     def from_json(cls, path: str) -> "ValidationRunStore":
         store = cls()
         with open(path, "r") as f:
@@ -297,7 +292,6 @@ class ValidationRunStore:
         for d in data:
             store._runs.append(ValidationRun(**d))
         store._next_id = len(data) + 1
-        return store
         return store
 
     def save_to_json(self, path: str) -> None:
@@ -324,9 +318,7 @@ class TestWalkForwardValidation:
     @pytest.fixture
     def sma_candles(self):
         """Generate candles suitable for SMA strategy testing."""
-        return generate_synthetic_candles(
-            n=2000, start_price=100.0, trend=0.0005, volatility=0.015
-        )
+        return generate_synthetic_candles(n=2000, start_price=100.0, trend=0.0005, volatility=0.015)
 
     @pytest.fixture
     def small_candles(self):
@@ -345,9 +337,7 @@ class TestWalkForwardValidation:
         )
         result = run_walk_forward(strategy, rsi_candles, config)
 
-        assert (
-            result.n_folds >= config.min_folds
-        ), f"Expected at least {config.min_folds} folds, got {result.n_folds}"
+        assert result.n_folds >= config.min_folds, f"Expected at least {config.min_folds} folds, got {result.n_folds}"
         assert isinstance(result.folds, list)
         assert len(result.folds) == result.n_folds
 
@@ -371,9 +361,7 @@ class TestWalkForwardValidation:
     def test_walk_forward_rsi_oos_decay(self, rsi_candles):
         """OOS decay indicates whether strategy generalizes to out-of-sample."""
         strategy = RSIStrategy(oversold=30.0, overbought=70.0)
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         result = run_walk_forward(strategy, rsi_candles, config)
 
         assert isinstance(result.mean_oos_decay, float)
@@ -384,9 +372,7 @@ class TestWalkForwardValidation:
     def test_walk_forward_rsi_overfitting_assessment(self, rsi_candles):
         """Overfitting risk is assessed correctly."""
         strategy = RSIStrategy(oversold=30.0, overbought=70.0)
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         result = run_walk_forward(strategy, rsi_candles, config)
 
         assert result.overfitting_risk in ("low", "medium", "high")
@@ -396,9 +382,7 @@ class TestWalkForwardValidation:
     def test_walk_forward_rsi_consistency(self, rsi_candles):
         """In-sample consistency is computed as a correlation."""
         strategy = RSIStrategy(oversold=30.0, overbought=70.0)
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         result = run_walk_forward(strategy, rsi_candles, config)
 
         assert isinstance(result.in_sample_consistency, float)
@@ -408,9 +392,7 @@ class TestWalkForwardValidation:
     def test_walk_forward_sma_basic(self, sma_candles):
         """Walk-forward validation runs for SMA strategy."""
         strategy = SimpleSMAStrategy(fast_period=10, slow_period=30)
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         result = run_walk_forward(strategy, sma_candles, config)
 
         assert result.n_folds >= 3
@@ -456,9 +438,7 @@ class TestWalkForwardValidation:
         """Cost-aware walk-forward applies fee deductions."""
         strategy = RSIStrategy()
         fee_model = FeeModel()
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         result = run_cost_aware_walk_forward(strategy, rsi_candles, fee_model, config)
 
         assert result.n_folds > 0
@@ -467,9 +447,7 @@ class TestWalkForwardValidation:
     def test_walk_forward_fold_date_ranges(self, rsi_candles):
         """Each fold has non-overlapping train/test windows."""
         strategy = RSIStrategy()
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         result = run_walk_forward(strategy, rsi_candles, config)
 
         for fold in result.folds:
@@ -482,9 +460,7 @@ class TestWalkForwardValidation:
 
     def test_walk_forward_multiple_strategies(self, rsi_candles):
         """Walk-forward works with different strategy parameterizations."""
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         strategies = [
             RSIStrategy(oversold=25.0, overbought=75.0),
             RSIStrategy(oversold=35.0, overbought=65.0),
@@ -503,9 +479,7 @@ class TestWalkForwardValidation:
 
     def test_walk_forward_deterministic(self, rsi_candles):
         """Walk-forward produces deterministic results for same input."""
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         strategy = RSIStrategy()
         result1 = run_walk_forward(strategy, rsi_candles, config)
         result2 = run_walk_forward(strategy, rsi_candles, config)
@@ -585,9 +559,7 @@ class TestOutOfSampleValidation:
 
     def test_oos_strategies_report_separately(self, candles):
         """Multiple strategies report OOS metrics independently."""
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         strategies = {
             "rsi_default": RSIStrategy(oversold=30.0, overbought=70.0),
             "rsi_tight": RSIStrategy(oversold=25.0, overbought=75.0),
@@ -704,11 +676,7 @@ class TestLookaheadBias:
 
             def on_candle(self, candle, indicators):
                 # Lookahead: uses the mean of next 5 candles
-                idx = next(
-                    i
-                    for i, c in enumerate(self.all_candles)
-                    if c.open_time == candle.open_time
-                )
+                idx = next(i for i, c in enumerate(self.all_candles) if c.open_time == candle.open_time)
                 future = self.all_candles[idx : idx + 6]
                 future_avg = sum(float(c.close) for c in future) / len(future)
 
@@ -719,9 +687,7 @@ class TestLookaheadBias:
         strategy = FutureReadingStrategy(candles)
 
         # This should work but produce different results than a no-lookahead version
-        result = BacktestEngine(candle_store=MockCandleStore(candles)).run(
-            strategy, candles
-        )
+        result = BacktestEngine(candle_store=MockCandleStore(candles)).run(strategy, candles)
         assert isinstance(result, BacktestResult)
 
     def test_rsi_lookahead_bias_with_future_window(self, candles):
@@ -850,11 +816,7 @@ class TestBacktestReport:
         assert report.num_winning_trades + report.num_losing_trades <= report.num_trades
         assert report.avg_win >= 0.0
         assert report.avg_loss <= 0.0
-        assert (
-            report.largest_win >= report.avg_win
-            if report.num_winning_trades > 0
-            else True
-        )
+        assert report.largest_win >= report.avg_win if report.num_winning_trades > 0 else True
 
     def test_report_equity_curve(self, result, candles):
         """Report equity curve matches engine results."""
@@ -1149,9 +1111,7 @@ class TestValidationPipeline:
     def test_full_rsi_validation_pipeline(self, candles):
         """Full validation pipeline for RSI: walk-forward + OOS + lookahead."""
         # 1. Run walk-forward
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         strategy = RSIStrategy()
         wf_result = run_walk_forward(strategy, candles, config)
 
@@ -1206,9 +1166,7 @@ class TestValidationPipeline:
 
     def test_full_sma_validation_pipeline(self, candles):
         """Full validation pipeline for SMA: walk-forward + OOS + lookahead."""
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
 
         # SMA strategy needs SMA indicators in the dict
         class SMAStrategyWithIndicators(SimpleSMAStrategy):
@@ -1218,27 +1176,19 @@ class TestValidationPipeline:
                     closes = [float(c.close) for c in candles]
                     sma_10_vals = compute_sma(closes, 10)
                     sma_30_vals = compute_sma(closes, 30)
-                    idx = next(
-                        i
-                        for i, c in enumerate(candles)
-                        if c.open_time == candle.open_time
-                    )
+                    idx = next(i for i, c in enumerate(candles) if c.open_time == candle.open_time)
                     indicators["sma_10"] = sma_10_vals[idx]
                     indicators["sma_30"] = sma_30_vals[idx]
                 return super().on_candle(candle, indicators)
 
-        strategy_with_indicators = SMAStrategyWithIndicators(
-            fast_period=10, slow_period=30
-        )
+        strategy_with_indicators = SMAStrategyWithIndicators(fast_period=10, slow_period=30)
         wf_result = run_walk_forward(strategy_with_indicators, candles, config)
 
         assert wf_result.n_folds > 0
 
     def test_validation_results_compare_across_runs(self, candles):
         """Validation results can be compared across multiple runs."""
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         store = ValidationRunStore()
 
         # Run multiple strategies
@@ -1296,17 +1246,33 @@ class TestValidationPipeline:
     def test_acceptance_criteria_lookahead_bias(self, candles):
         """Acceptance: tests fail if strategy can read future candles."""
 
+        class PastOnlyCandles:
+            """Sequence facade that fails when strategy code reads future candles."""
+
+            def __init__(self, all_candles: Sequence[Candle]):
+                self._candles = all_candles
+                self.current_index = 0
+
+            def __iter__(self):
+                return iter(self._candles[: self.current_index + 1])
+
+            def __getitem__(self, key):
+                if isinstance(key, slice):
+                    stop = len(self._candles) if key.stop is None else key.stop
+                    if stop > self.current_index + 1:
+                        raise AssertionError("strategy attempted to read future candles")
+                    return self._candles[key]
+                if key > self.current_index:
+                    raise AssertionError("strategy attempted to read future candles")
+                return self._candles[key]
+
         # Create a strategy that reads future candles
         class FutureReadingStrategy:
             def __init__(self, all_candles):
                 self.all_candles = all_candles
 
             def on_candle(self, candle, indicators):
-                idx = next(
-                    i
-                    for i, c in enumerate(self.all_candles)
-                    if c.open_time == candle.open_time
-                )
+                idx = next(i for i, c in enumerate(self.all_candles) if c.open_time == candle.open_time)
                 # Lookahead: uses mean of next 5 candles
                 future = self.all_candles[idx : idx + 6]
                 future_avg = sum(float(c.close) for c in future) / len(future)
@@ -1315,20 +1281,13 @@ class TestValidationPipeline:
                     return Signal(side="BUY", strength=50)
                 return Signal(side="HOLD", strength=0)
 
-        future_strategy = FutureReadingStrategy(candles)
-        past_strategy = RSIStrategy()
+        guarded_candles = PastOnlyCandles(candles)
+        future_strategy = FutureReadingStrategy(guarded_candles)
 
-        future_result = BacktestEngine(candle_store=MockCandleStore(candles)).run(
-            future_strategy, candles
-        )
-        past_result = BacktestEngine(candle_store=MockCandleStore(candles)).run(
-            past_strategy, candles
-        )
-
-        # Both should produce valid results, but future strategy may show
-        # different characteristics (e.g., higher returns due to lookahead)
-        assert math.isfinite(future_result.total_return)
-        assert math.isfinite(past_result.total_return)
+        with pytest.raises(AssertionError, match="future candles"):
+            for index, candle in enumerate(candles[:20]):
+                guarded_candles.current_index = index
+                future_strategy.on_candle(candle, {})
 
     def test_acceptance_criteria_oos_metrics(self, candles):
         """Acceptance: backtest output reports in-sample and out-of-sample metrics."""
@@ -1371,9 +1330,7 @@ class TestEdgeCases:
 
     def test_walk_forward_with_volatile_candles(self):
         """Walk-forward handles volatile price data."""
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         candles = generate_synthetic_candles(n=1000, volatility=0.05)
         strategy = RSIStrategy()
         result = run_walk_forward(strategy, candles, config)
@@ -1383,9 +1340,7 @@ class TestEdgeCases:
 
     def test_walk_forward_with_trending_candles(self):
         """Walk-forward handles trending price data."""
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         candles = generate_synthetic_candles(n=1000, trend=0.001, volatility=0.01)
         strategy = RSIStrategy()
         result = run_walk_forward(strategy, candles, config)
@@ -1394,9 +1349,7 @@ class TestEdgeCases:
 
     def test_walk_forward_with_flat_candles(self):
         """Walk-forward handles flat/sideways price data."""
-        config = WalkForwardConfig(
-            train_size_days=7, test_size_days=3, step_size_days=3
-        )
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
         candles = generate_synthetic_candles(n=1000, trend=0.0, volatility=0.001)
         strategy = RSIStrategy()
         result = run_walk_forward(strategy, candles, config)
@@ -1425,18 +1378,10 @@ class TestEdgeCases:
         """Metric calculations produce correct results."""
         # Create known trades
         trades = [
-            Trade(
-                entry_price=Decimal("100"), exit_price=Decimal("110"), side="BUY"
-            ),  # +10
-            Trade(
-                entry_price=Decimal("100"), exit_price=Decimal("95"), side="BUY"
-            ),  # -5
-            Trade(
-                entry_price=Decimal("100"), exit_price=Decimal("120"), side="BUY"
-            ),  # +20
-            Trade(
-                entry_price=Decimal("100"), exit_price=Decimal("90"), side="BUY"
-            ),  # -10
+            Trade(entry_price=Decimal("100"), exit_price=Decimal("110"), side="BUY"),  # +10
+            Trade(entry_price=Decimal("100"), exit_price=Decimal("95"), side="BUY"),  # -5
+            Trade(entry_price=Decimal("100"), exit_price=Decimal("120"), side="BUY"),  # +20
+            Trade(entry_price=Decimal("100"), exit_price=Decimal("90"), side="BUY"),  # -10
         ]
 
         win_rate = calculate_win_rate(trades)

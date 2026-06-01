@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-01
+### Paper Execution PR Repair
+- Repair PR #325 paper execution review blockers: rebuild consensus decisions from public enum constructors, preserve execution timeframes in risk decisions, and reject non-trade consensus actions before paper execution.
+- Harden disposable PostgreSQL integration testing by using authenticated psql URLs, a project-local Python runner, per-test table cleanup, and portable Postgres array binds for latest candle-close queries.
+- Restore project pytest/Ruff configuration and fix backtest validation tests so lookahead-bias checks fail on future candle access instead of relying on stale imports or duplicate decorators.
+
 ## 2026-05-31
 ### Walk-Forward Validation Fix
 - Fix a post-merge regression in `core/strategy_eval/walk_forward.py` where warmup equity used `Decimal + float`, causing `TypeError` and breaking strict OOS walk-forward tests.

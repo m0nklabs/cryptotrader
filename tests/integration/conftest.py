@@ -13,6 +13,7 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Generator
+from urllib.parse import urlparse
 
 import pytest
 
@@ -23,10 +24,28 @@ DISPOSABLE_DB_NAME = "cryptotrader_test"
 DISPOSABLE_DB_USER = "cryptotrader"
 DISPOSABLE_DB_PASSWORD = "testpassword123"
 DISPOSABLE_DB_URL = (
-    f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}"
-    "@127.0.0.1:5433/"
-    f"{DISPOSABLE_DB_NAME}"
+    f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}" "@127.0.0.1:5433/" f"{DISPOSABLE_DB_NAME}"
 )
+
+
+def _psql_env() -> dict[str, str]:
+    """Return an environment that lets psql authenticate non-interactively."""
+    return {**os.environ, "PGPASSWORD": DISPOSABLE_DB_PASSWORD}
+
+
+def _psql_args(db_url: str) -> list[str]:
+    """Build psql connection arguments from a PostgreSQL URL."""
+    parsed = urlparse(db_url)
+    return [
+        "-h",
+        parsed.hostname or "127.0.0.1",
+        "-p",
+        str(parsed.port or 5433),
+        "-U",
+        parsed.username or DISPOSABLE_DB_USER,
+        "-d",
+        (parsed.path or f"/{DISPOSABLE_DB_NAME}").lstrip("/"),
+    ]
 
 
 def _docker_available() -> bool:
@@ -62,7 +81,7 @@ def _psql_available(port: int = 5433, retries: int = 10, delay: int = 2) -> bool
                 ],
                 capture_output=True,
                 timeout=5,
-                env={**os.environ, "PGPASSWORD": DISPOSABLE_DB_PASSWORD},
+                env=_psql_env(),
             )
             if result.returncode == 0:
                 return True
@@ -122,12 +141,8 @@ def start_disposable_db(port: int = 5433) -> str:
             text=True,
             timeout=10,
         )
-        raise RuntimeError(
-            f"PostgreSQL did not become ready on port {port}.\n{logs.stdout[-500:]}"
-    return (
-        f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}"
-        f"@127.0.0.1:{port}/{DISPOSABLE_DB_NAME}"
-    )
+        raise RuntimeError(f"PostgreSQL did not become ready on port {port}.\n{logs.stdout[-500:]}")
+    return f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}" f"@127.0.0.1:{port}/{DISPOSABLE_DB_NAME}"
 
 
 def stop_disposable_db() -> None:
@@ -146,21 +161,14 @@ def apply_schema(db_url: str, schema_path: Path | None = None) -> None:
     result = subprocess.run(
         [
             "psql",
-            "-h",
-            "127.0.0.1",
-            "-p",
-            "5433",
-            "-U",
-            DISPOSABLE_DB_USER,
-            "-d",
-            DISPOSABLE_DB_NAME,
+            *_psql_args(db_url),
             "-f",
             str(schema_path),
         ],
         capture_output=True,
         text=True,
         timeout=30,
-        env={**os.environ, "PGPASSWORD": DISPOSABLE_DB_PASSWORD},
+        env=_psql_env(),
     )
     if result.returncode != 0:
         raise RuntimeError(f"Schema application failed:\n{result.stderr}")
@@ -179,21 +187,14 @@ def apply_migrations(db_url: str, migrations_dir: Path | None = None) -> int:
         result = subprocess.run(
             [
                 "psql",
-                "-h",
-                "127.0.0.1",
-                "-p",
-                "5433",
-                "-U",
-                DISPOSABLE_DB_USER,
-                "-d",
-                DISPOSABLE_DB_NAME,
+                *_psql_args(db_url),
                 "-f",
                 str(mf),
             ],
             capture_output=True,
             text=True,
             timeout=30,
-            env={**os.environ, "PGPASSWORD": DISPOSABLE_DB_PASSWORD},
+            env=_psql_env(),
         )
         if result.returncode != 0:
             raise RuntimeError(f"Migration {mf.name} failed:\n{result.stderr}")

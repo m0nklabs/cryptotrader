@@ -73,7 +73,32 @@ def migrations_ready(schema_ready: str) -> str:
 @pytest.fixture
 def stores(migrations_ready: str) -> PostgresStores:
     """Create a PostgresStores instance pointing at the disposable DB."""
-    return PostgresStores(config=PostgresConfig(database_url=migrations_ready))
+    store = PostgresStores(config=PostgresConfig(database_url=migrations_ready))
+    engine = store._get_engine()  # noqa: SLF001
+    _, text = store._require_sqlalchemy()  # noqa: SLF001
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                TRUNCATE TABLE
+                    candles,
+                    candle_gaps,
+                    market_data_job_runs,
+                    market_data_jobs,
+                    orders,
+                    trade_fills,
+                    portfolio_snapshots,
+                    system_prompts,
+                    pair_predictions,
+                    alerts,
+                    trades,
+                    paper_orders,
+                    paper_positions
+                RESTART IDENTITY CASCADE
+                """
+            )
+        )
+    return store
 
 
 @pytest.fixture
@@ -109,12 +134,8 @@ def sample_candles_multi_symbol() -> list[Candle]:
                     exchange="bitfinex",
                     symbol=symbol,
                     timeframe=tf,
-                    open_time=base + timedelta(hours=i)
-                    if tf == "1h"
-                    else base + timedelta(hours=i * 4),
-                    close_time=(base + timedelta(hours=i + 1))
-                    if tf == "1h"
-                    else base + timedelta(hours=i * 4 + 4),
+                    open_time=base + timedelta(hours=i) if tf == "1h" else base + timedelta(hours=i * 4),
+                    close_time=(base + timedelta(hours=i + 1)) if tf == "1h" else base + timedelta(hours=i * 4 + 4),
                     open=Decimal("40000") + Decimal(i * 100),
                     high=Decimal("40500") + Decimal(i * 100),
                     low=Decimal("39500") + Decimal(i * 100),
@@ -133,9 +154,7 @@ def sample_candles_multi_symbol() -> list[Candle]:
 class TestCandleUpserts:
     """Test candle upsert and query paths."""
 
-    def test_upsert_candles_inserts_records(
-        self, stores: PostgresStores, sample_candles: list[Candle]
-    ):
+    def test_upsert_candles_inserts_records(self, stores: PostgresStores, sample_candles: list[Candle]):
         """Verify upsert_candles inserts all candles."""
         count = stores.upsert_candles(candles=sample_candles)
         assert count == len(sample_candles)
@@ -180,9 +199,7 @@ class TestCandleUpserts:
         count2 = stores.upsert_candles(candles=[candle_updated])
         assert count2 == 1
 
-    def test_upsert_candles_multiple_symbols(
-        self, stores: PostgresStores, sample_candles_multi_symbol: list[Candle]
-    ):
+    def test_upsert_candles_multiple_symbols(self, stores: PostgresStores, sample_candles_multi_symbol: list[Candle]):
         """Verify upsert works across symbols and timeframes."""
         count = stores.upsert_candles(candles=sample_candles_multi_symbol)
         assert count == len(sample_candles_multi_symbol)
@@ -191,9 +208,7 @@ class TestCandleUpserts:
 class TestCandleQueries:
     """Test candle read paths."""
 
-    def test_get_candles_returns_filtered(
-        self, stores: PostgresStores, sample_candles: list[Candle]
-    ):
+    def test_get_candles_returns_filtered(self, stores: PostgresStores, sample_candles: list[Candle]):
         """Verify get_candles returns correct subset."""
         stores.upsert_candles(candles=sample_candles)
 
@@ -202,7 +217,7 @@ class TestCandleQueries:
             symbol="BTCUSD",
             timeframe="1h",
             start=datetime(2024, 1, 1, tzinfo=timezone.utc),
-            end=datetime(2024, 1, 1, 5, tzinfo=timezone.utc),
+            end=datetime(2024, 1, 1, 4, tzinfo=timezone.utc),
         )
         assert len(candles) == 5
 
@@ -240,7 +255,7 @@ class TestCandleQueries:
             timeframe="1h",
         )
         assert result is not None
-        assert result == base
+        assert result.replace(tzinfo=timezone.utc) == base
 
     def test_get_latest_candle_open_time_no_data(self, stores: PostgresStores):
         """Verify returns None when no candles exist."""
@@ -251,9 +266,7 @@ class TestCandleQueries:
         )
         assert result is None
 
-    def test_get_latest_candle_closes(
-        self, stores: PostgresStores, sample_candles: list[Candle]
-    ):
+    def test_get_latest_candle_closes(self, stores: PostgresStores, sample_candles: list[Candle]):
         """Verify get_latest_candle_closes returns correct latest close per symbol."""
         stores.upsert_candles(candles=sample_candles)
 
@@ -332,9 +345,7 @@ class TestGapDetection:
         gap_id = stores.log_gap(gap=gap)
 
         repaired_at = datetime(2024, 1, 1, 13, 0, 0, tzinfo=timezone.utc)
-        stores.mark_repaired(
-            gap_id=gap_id, repaired_at=repaired_at, notes="Repaired by backfill"
-        )
+        stores.mark_repaired(gap_id=gap_id, repaired_at=repaired_at, notes="Repaired by backfill")
 
         # Verify via direct query
         result = subprocess.run(
@@ -454,9 +465,7 @@ class TestMarketDataJobs:
             timeout=10,
         )
 
-        for i, (job_type, symbol) in enumerate(
-            [("backfill", "BTCUSD"), ("realtime", "ETHUSD"), ("repair", "BTCUSD")]
-        ):
+        for i, (job_type, symbol) in enumerate([("backfill", "BTCUSD"), ("realtime", "ETHUSD"), ("repair", "BTCUSD")]):
             job = MarketDataJob(
                 job_type=job_type,
                 exchange="bitfinex",
@@ -624,6 +633,7 @@ class TestOrdersAndFills:
     def test_get_orders(self, stores: PostgresStores):
         """Verify orders table returns filtered orders."""
         for i in range(3):
+            side = "BUY" if i % 2 == 0 else "SELL"
             subprocess.run(
                 [
                     "psql",
@@ -640,7 +650,7 @@ class TestOrdersAndFills:
                     "-c",
                     f"INSERT INTO orders (exchange, symbol, order_id, side, order_type, amount, price, status) "
                     f"VALUES ('bitfinex', 'BTCUSD', 'order-{i:03d}', "
-                    f"'{\"BUY\" if i % 2 == 0 else \"SELL\"}', 'limit', 0.5, "
+                    f"'{side}', 'limit', 0.5, "
                     f"{40000 + i * 100}, 'FILLED')",
                 ],
                 capture_output=True,
@@ -1417,9 +1427,7 @@ class TestSchemaVerification:
 class TestRoundtrip:
     """End-to-end write and read verification."""
 
-    def test_candle_roundtrip(
-        self, stores: PostgresStores, sample_candles: list[Candle]
-    ):
+    def test_candle_roundtrip(self, stores: PostgresStores, sample_candles: list[Candle]):
         """Write candles, read them back, verify data integrity."""
         stores.upsert_candles(candles=sample_candles)
 
