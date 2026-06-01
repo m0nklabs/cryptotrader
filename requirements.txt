@@ -10,7 +10,7 @@ numpy>=1.26.0
 plyer>=2.1.0
 
 # Optional (only needed if you configure DATABASE_URL for indicator weights/signals)
-SQLAlchemy>=2.0.0
+SQLAlchemy>=2.0.50
 psycopg2-binary>=2.9.0
 asyncpg>=0.29.0  # Async PostgreSQL driver for SQLAlchemy async sessions
 
