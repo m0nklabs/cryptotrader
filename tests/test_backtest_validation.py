@@ -254,7 +254,7 @@ class PastOnlyCandles:
         if isinstance(key, slice):
             start, stop, step = key.indices(len(self._candles))
             if step == 0:
-                raise ValueError("slice step cannot be zero")
+                raise IndexError("slice step cannot be zero")
 
             # Determine the highest index that would be accessed by this slice.
             if step > 0:
