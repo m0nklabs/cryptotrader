@@ -137,7 +137,7 @@ async def evaluate_consensus(req: EvaluateRequest) -> RiskDecisionResponse:
             for v in req.verdicts
         ],
         reasoning=req.reasoning,
-        vetoed_by=RoleName(req.vetoed_by) if req.vetoed_by else None,
+        vetoed_by=req.vetoed_by,
     )
 
     result = orch.evaluate_and_execute(
