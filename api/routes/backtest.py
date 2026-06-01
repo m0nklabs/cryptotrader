@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -14,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from core.backtest.engine import BacktestEngine
 from core.fees.model import FeeModel
+from core.risk.sizing import PositionSize
 from core.strategy_eval.walk_forward import (
     WalkForwardConfig,
     run_walk_forward,
@@ -220,8 +222,19 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
         else:
             start_time = end_time - timedelta(days=30)
 
-        # Create backtest engine
-        engine = BacktestEngine(candle_store=stores, initial_capital=request.initial_capital)
+        # Create backtest engine with Kelly sizing
+        kelly_position_config = PositionSize(
+            method="kelly",
+            kelly_fraction=Decimal("0.5"),
+            win_rate=Decimal("0.55"),
+            avg_win=Decimal("0.05"),
+            avg_loss=Decimal("0.02"),
+        )
+        engine = BacktestEngine(
+            candle_store=stores,
+            initial_capital=request.initial_capital,
+            position_size_config=kelly_position_config,
+        )
 
         # Load candles
         candles = engine.load_candles(
@@ -296,6 +309,7 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
             candles=candles,
             config=wf_config,
             fee_model=fee_model,
+            position_size_config=kelly_position_config,
         )
 
         # Convert walk-forward result for response
@@ -336,8 +350,7 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
 
         # Log walk-forward results
         logger.info(
-            "Walk-forward: %d folds, mean train=%.4f, mean test=%.4f, "
-            "OOS decay=%.4f, overfitting=%s, significant=%s",
+            "Walk-forward: %d folds, mean train=%.4f, mean test=%.4f, OOS decay=%.4f, overfitting=%s, significant=%s",
             wf_result.n_folds,
             wf_result.mean_train_return,
             wf_result.mean_test_return,

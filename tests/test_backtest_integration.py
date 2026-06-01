@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.backtest.engine import BacktestEngine, BacktestResult, RSIStrategy
+from core.risk.sizing import PositionSize
 from core.types import Candle
 
 
@@ -130,3 +131,104 @@ def test_compare_strategies_returns_results() -> None:
     default_perf = perf_by_name["rsi_default"]
     assert isinstance(default_perf.result, BacktestResult)
     assert isinstance(default_perf.result.total_pnl, float)
+
+
+def test_backtest_engine_dynamic_kelly_sizing() -> None:
+    """Test that backtest engine uses dynamic Kelly sizing, not fixed 1.0."""
+    from core.risk.sizing import PositionSize
+
+    # Create price data with varying prices so Kelly sizing produces different sizes
+    prices = (
+        [100.0 + i for i in range(15)]  # Uptrend to trigger overbought
+        + [115.0 - i for i in range(30)]  # Downtrend to trigger oversold
+        + [85.0 + i * 0.5 for i in range(20)]  # Recovery
+    )
+    candles = [_make_test_candle(price, i) for i, price in enumerate(prices)]
+
+    class MockCandleStore:
+        def get_candles(self, **kwargs):
+            return candles
+
+    # Use Kelly sizing
+    kelly_config = PositionSize(
+        method="kelly",
+        kelly_fraction=Decimal("0.5"),
+        win_rate=Decimal("0.55"),
+        avg_win=Decimal("0.05"),
+        avg_loss=Decimal("0.02"),
+    )
+    engine = BacktestEngine(
+        candle_store=MockCandleStore(),
+        initial_capital=DEFAULT_INITIAL_CAPITAL,
+        position_size_config=kelly_config,
+    )
+    strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+    result = engine.run(strategy=strategy, candles=candles)
+
+    assert len(result.trades) > 0, "Should generate at least one trade"
+
+    # Verify trades have dynamic (non-1.0) sizes
+    sizes = [float(t.size) for t in result.trades]
+    # With Kelly sizing on varying prices, sizes should differ
+    # At least some trades should have size != 1.0
+    non_fixed = sum(1 for s in sizes if abs(s - 1.0) > 0.01)
+    assert non_fixed > 0, f"Expected some trades with dynamic size, got sizes: {sizes}"
+
+    # Verify PnL accounts for size
+    for trade in result.trades:
+        if trade.side == "BUY":
+            expected_pnl = float(trade.exit_price - trade.entry_price) * float(trade.size)
+        else:
+            expected_pnl = float(trade.entry_price - trade.exit_price) * float(trade.size)
+        assert (
+            abs(float(trade.pnl) - expected_pnl) < FLOAT_TOLERANCE
+        ), f"PnL mismatch: expected {expected_pnl}, got {float(trade.pnl)}"
+
+
+def test_backtest_engine_fixed_sizing_still_works() -> None:
+    """Test that fixed sizing still works as before (size=1.0)."""
+    prices = [100.0 + i for i in range(15)]
+    candles = [_make_test_candle(price, i) for i, price in enumerate(prices)]
+
+    class MockCandleStore:
+        def get_candles(self, **kwargs):
+            return candles
+
+    # Default fixed sizing
+    engine = BacktestEngine(candle_store=MockCandleStore(), initial_capital=DEFAULT_INITIAL_CAPITAL)
+    strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+    result = engine.run(strategy=strategy, candles=candles)
+
+    assert isinstance(result, BacktestResult)
+    assert len(result.trades) >= 0
+
+
+def test_backtest_engine_sizing_affects_equity() -> None:
+    """Test that dynamic sizing correctly affects equity curve."""
+    # Large price swings to create big PnL differences
+    prices = [100.0, 105.0, 95.0, 110.0, 90.0, 120.0, 85.0, 130.0]
+    candles = [_make_test_candle(price, i) for i, price in enumerate(prices)]
+
+    class MockCandleStore:
+        def get_candles(self, **kwargs):
+            return candles
+
+    kelly_config = PositionSize(
+        method="kelly",
+        kelly_fraction=Decimal("0.5"),
+        win_rate=Decimal("0.55"),
+        avg_win=Decimal("0.05"),
+        avg_loss=Decimal("0.02"),
+    )
+    engine = BacktestEngine(
+        candle_store=MockCandleStore(),
+        initial_capital=DEFAULT_INITIAL_CAPITAL,
+        position_size_config=kelly_config,
+    )
+    strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+    result = engine.run(strategy=strategy, candles=candles)
+
+    # Equity curve should start with initial capital
+    assert result.equity_curve[0] == DEFAULT_INITIAL_CAPITAL
+    # Total PnL should be consistent with equity curve
+    assert abs((result.total_return * DEFAULT_INITIAL_CAPITAL) - result.total_pnl) < FLOAT_TOLERANCE

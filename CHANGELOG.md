@@ -3,6 +3,7 @@
 ## 2026-06-01
 ### Paper Execution PR Repair
 - Repair PR #325 paper execution review blockers: rebuild consensus decisions from public enum constructors, preserve execution timeframes in risk decisions, and reject non-trade consensus actions before paper execution.
+- Apply Kelly-based position sizing through the backtest API and walk-forward validation path while preserving fixed-size defaults for direct engine callers.
 - Harden disposable PostgreSQL integration testing by using authenticated psql URLs, a project-local Python runner, per-test table cleanup, and portable Postgres array binds for latest candle-close queries.
 - Restore project pytest/Ruff configuration and fix backtest validation tests so lookahead-bias checks fail on future candle access instead of relying on stale imports or duplicate decorators.
 
