@@ -640,7 +640,7 @@ class TestOrdersAndFills:
                     "-c",
                     f"INSERT INTO orders (exchange, symbol, order_id, side, order_type, amount, price, status) "
                     f"VALUES ('bitfinex', 'BTCUSD', 'order-{i:03d}', "
-                    f"{'BUY' if i % 2 == 0 else 'SELL'}, 'limit', 0.5, "
+                    f"'{\"BUY\" if i % 2 == 0 else \"SELL\"}', 'limit', 0.5, "
                     f"{40000 + i * 100}, 'FILLED')",
                 ],
                 capture_output=True,
