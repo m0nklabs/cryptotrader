@@ -103,7 +103,7 @@ class BacktestEngine:
                 entry_price=entry_price,
                 stop_loss_price=stop_loss_price,
             )
-            return max(size, Decimal("0.01"))  # floor at 0.01
+            return max(size, Decimal("0"))  # allow 0-size (no-trade) outcomes
         except (ValueError, ZeroDivisionError):
             return Decimal("1.0")  # fallback to fixed
 
