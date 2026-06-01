@@ -21,7 +21,7 @@ from execution_orchestrator import ExecutionOrchestrator
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/execution", tags=["execution"])
+router = APIRouter(prefix="/execution", tags=["execution"])
 
 # Global orchestrator instance
 _orchestrator: ExecutionOrchestrator | None = None
