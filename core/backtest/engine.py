@@ -48,7 +48,7 @@ class BacktestEngine:
 
     def __init__(
         self,
-        candle_store: CandleStore | None,
+        candle_store: CandleStore,
         initial_capital: float = 10000.0,
         position_size_config: PositionSize | None = None,
     ):
@@ -65,9 +65,6 @@ class BacktestEngine:
         end: datetime,
     ) -> Sequence[Candle]:
         """Load candles from database for date range."""
-        if self.candle_store is None:
-            raise ValueError("candle_store is required to load candles")
-
         return self.candle_store.get_candles(
             exchange=exchange,
             symbol=symbol,
@@ -116,7 +113,6 @@ class BacktestEngine:
         Args:
             strategy: Strategy implementing on_candle protocol
             candles: Historical candle data
-            stop_loss_pct: Stop loss percentage for position sizing (default 5%)
 
         Returns:
             BacktestResult with trades and performance metrics

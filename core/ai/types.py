@@ -156,6 +156,44 @@ class AIResponse:
 SignalAction = Literal["BUY", "SELL", "NEUTRAL", "VETO"]
 
 
+# ---------------------------------------------------------------------------
+# Risk / Execution types
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RiskGateResult:
+    """Result of a single risk gate check."""
+
+    gate: str
+    passed: bool
+    reason: str = ""
+    details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RiskDecision:
+    """Complete risk-gate evaluation result."""
+
+    symbol: str
+    timeframe: str
+    final_action: SignalAction
+    final_confidence: float
+    gate_results: list[RiskGateResult]
+    action: str  # "EXECUTED" or "REJECTED"
+    reason: str
+    paper_order: Any = None  # PaperOrder or None
+    market_price: Any = None  # Decimal or None
+    portfolio_value: Any = None  # Decimal or None
+    position_size: Any = None  # Decimal or None
+    position_value: Any = None  # Decimal or None
+    latency_ms: float = 0.0
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+    verdicts: list[RoleVerdict] = field(default_factory=list)
+    vetoed_by: RoleName | None = None
+    reasoning: str = ""
+
+
 @dataclass
 class RoleVerdict:
     """A single role's verdict on a trading opportunity."""
@@ -200,44 +238,6 @@ class UsageRecord:
     symbol: str = ""
     success: bool = True
     error: str | None = None  # Error message for failed requests
-
-
-# ---------------------------------------------------------------------------
-# Execution / Risk types
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class RiskGateResult:
-    """Result of a single risk gate check."""
-
-    gate: str
-    passed: bool
-    reason: str = ""
-    details: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class RiskDecision:
-    """Complete risk-gate evaluation result for a symbol."""
-
-    symbol: str
-    timeframe: str
-    final_action: SignalAction
-    final_confidence: float
-    gate_results: list[RiskGateResult] = field(default_factory=list)
-    action: str = ""  # "EXECUTED" or "REJECTED"
-    reason: str = ""
-    paper_order: Any = None  # PaperOrder from core.execution.paper
-    market_price: Any = None  # Decimal
-    portfolio_value: Any = None  # Decimal
-    position_size: Any = None  # Decimal
-    position_value: Any = None  # Decimal
-    latency_ms: float = 0.0
-    timestamp: datetime = field(default_factory=datetime.utcnow)
-    verdicts: list[RoleVerdict] = field(default_factory=list)
-    vetoed_by: RoleName | None = None
-    reasoning: str = ""
 
 
 @dataclass

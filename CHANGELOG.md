@@ -1,13 +1,19 @@
 # Changelog
 
 ## 2026-06-01
-### Paper Execution PR Repair
-- Repair PR #325 paper execution review blockers: rebuild consensus decisions from public enum constructors, preserve execution timeframes in risk decisions, and reject non-trade consensus actions before paper execution.
-- Apply Kelly-based position sizing through the backtest API and walk-forward validation path while preserving fixed-size defaults for direct engine callers.
-- Harden disposable PostgreSQL integration testing by using authenticated psql URLs, a project-local Python runner, per-test table cleanup, and portable Postgres array binds for latest candle-close queries.
-- Restore project pytest/Ruff configuration and fix backtest validation tests so lookahead-bias checks fail on future candle access instead of relying on stale imports or duplicate decorators.
-- Close the remaining PR #325 review items by preserving legacy unit sizing for unsized backtests, normalizing orchestrator gate results onto public risk types, comparing gate enums directly in paper-execution tests, using a local RNG in synthetic backtest candles, and aligning disposable Postgres fixtures/scripts to skip cleanly without Docker, capture pytest failures, and reuse one container name.
-- Remove env-driven test import path overrides, fix the disposable-Postgres architecture doc to reference real integration files, make `BacktestEngine` accept an optional `candle_store` in walk-forward mode, and align the simplified stop-loss comment with the implemented risk sizing logic.
+### Execution API and Orchestrator
+- Port unmanaged local execution API and orchestrator changes from master checkout onto the dedicated PR branch.
+- Add `execution_orchestrator.py` — bridges AI consensus decisions to paper-order execution with risk gates (VETO, Budget, Exposure, Risk limits).
+- Add `api/routes/execution.py` — execution API endpoints (`/api/execution/evaluate`, `/api/execution/paper-order`, `/api/execution/decision-path`, `/api/execution/paper-summary`).
+- Update `api/routes/backtest.py` — Kelly position sizing through API with `PositionSize` config.
+- Update `core/backtest/engine.py` — dynamic position sizing with `_calculate_dynamic_size()`, `stop_loss_pct` parameter, and position size map for compare_strategies.
+- Update `core/strategy_eval/walk_forward.py` — pass `position_size_config` through all BacktestEngine instances in walk-forward folds.
+- Update `core/storage/postgres/stores.py` — fix SQL text array casting for `exchange` and `symbols` parameters.
+- Add `RiskDecision` and `RiskGateResult` types to `core/ai/types.py`.
+- Register execution routes in `api/main.py`.
+
+### Frontend Dependencies
+- Restore PR #320 by rebumping `frontend` `react-dom` from `^19.2.4` to `^19.2.6` and revalidate the dependency update with the frontend Vitest suite and production build.
 
 ## 2026-05-31
 ### Walk-Forward Validation Fix
