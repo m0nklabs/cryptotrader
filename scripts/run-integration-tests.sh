@@ -70,14 +70,21 @@ fi
 
 # Step 2: Start disposable PostgreSQL
 echo "[2/4] Starting disposable PostgreSQL..."
-docker run -d \
-    --name "$CONTAINER_NAME" \
-    -p "$INTEGRATION_PORT":5432 \
-    -e "POSTGRES_USER=$INTEGRATION_USER" \
-    -e "POSTGRES_PASSWORD=$INTEGRATION_PASS" \
-    -e "POSTGRES_DB=$INTEGRATION_DB" \
-    -e "POSTGRES_INITDB_ARGS=--encoding=UTF-8" \
-    "postgres:$PG_VERSION" > /dev/null
+if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+    echo "  Container already running: $CONTAINER_NAME"
+elif docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+    echo "  Reusing existing container: $CONTAINER_NAME"
+    docker start "$CONTAINER_NAME" > /dev/null
+else
+    docker run -d \
+        --name "$CONTAINER_NAME" \
+        -p "$INTEGRATION_PORT":5432 \
+        -e "POSTGRES_USER=$INTEGRATION_USER" \
+        -e "POSTGRES_PASSWORD=$INTEGRATION_PASS" \
+        -e "POSTGRES_DB=$INTEGRATION_DB" \
+        -e "POSTGRES_INITDB_ARGS=--encoding=UTF-8" \
+        "postgres:$PG_VERSION" > /dev/null
+fi
 
 # Wait for PostgreSQL to be ready
 echo "  Waiting for PostgreSQL to be ready..."
