@@ -282,12 +282,15 @@ class ExecutionOrchestrator:
                 details={"vetoed_by": consensus.vetoed_by.value},
             )
 
-        # Also check if final_action is NEUTRAL due to VETO
-        if consensus.final_action == "NEUTRAL" and consensus.final_confidence == 0.0:
+        # Only BUY/SELL are executable actions; anything else is rejected early.
+        if consensus.final_action not in ("BUY", "SELL"):
             return GateCheckResult(
                 gate=GateName.VETO,
                 passed=False,
-                reason=f"Consensus NEUTRAL (conf={consensus.final_confidence:.2f})",
+                reason=(
+                    f"Consensus action not executable: {consensus.final_action} "
+                    f"(conf={consensus.final_confidence:.2f})"
+                ),
                 details={
                     "final_action": consensus.final_action,
                     "confidence": consensus.final_confidence,
@@ -298,7 +301,9 @@ class ExecutionOrchestrator:
             gate=GateName.VETO,
             passed=True,
             reason="No veto",
-            details={"vetoed_by": consensus.vetoed_by},
+            details={
+                "vetoed_by": consensus.vetoed_by.value if consensus.vetoed_by else None
+            },
         )
 
     def _check_budget_gate(
