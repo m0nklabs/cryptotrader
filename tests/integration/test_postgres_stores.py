@@ -839,9 +839,11 @@ class TestPortfolioSnapshots:
                 "-t",
                 "-A",
                 "-c",
-                "INSERT INTO portfolio_snapshots (exchange, total_value, cash_balance, "
-                "positions_value, unrealized_pnl, realized_pnl, snapshot_time) "
-                "VALUES ('bitfinex', 50000.00, 30000.00, 20000.00, 1500.00, 500.00, '2024-01-01 12:00:00')",
+                (
+                    "INSERT INTO portfolio_snapshots (exchange, total_value, cash_balance, "
+                    + "positions_value, unrealized_pnl, realized_pnl, snapshot_time) "
+                    + "VALUES ('bitfinex', 50000.00, 30000.00, 20000.00, 1500.00, 500.00, '2024-01-01 12:00:00')"
+                ),
             ],
             capture_output=True,
             text=True,
