@@ -290,14 +290,15 @@ class ValidationRunStore:
         return [asdict(r) for r in self._runs]
 
     @classmethod
+    @classmethod
     def from_json(cls, path: str) -> "ValidationRunStore":
         store = cls()
         with open(path, "r") as f:
             data = json.load(f)
         for d in data:
-            d["timestamp"] = datetime.fromisoformat(d["timestamp"])
             store._runs.append(ValidationRun(**d))
         store._next_id = len(data) + 1
+        return store
         return store
 
     def save_to_json(self, path: str) -> None:
