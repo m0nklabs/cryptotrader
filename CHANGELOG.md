@@ -1,6 +1,9 @@
 # Changelog
 
 ## 2026-06-01
+### Frontend Dependencies
+- Restore PR #320 by rebumping `frontend` `react-dom` from `^19.2.4` to `^19.2.6` and revalidate the dependency update with the frontend Vitest suite and production build.
+
 ### Paper Execution PR Repair
 - Capture the last PR #325 local drift by keeping the execution API route unmounted in `api.main` and finalizing the shared execution-risk dataclasses in `core.ai.types`.
 - Isolate walk-forward strategy instances per phase, reject non-positive orchestrator position sizes before execution, allow zero-priced backtest exits, remove hardcoded disposable Postgres ports from integration tests, and tighten the related regression tests/docs.
