@@ -62,6 +62,7 @@ def _psql_available(port: int = 5433, retries: int = 10, delay: int = 2) -> bool
                 ],
                 capture_output=True,
                 timeout=5,
+                env={**os.environ, "PGPASSWORD": DISPOSABLE_DB_PASSWORD},
             )
             if result.returncode == 0:
                 return True
