@@ -185,11 +185,12 @@ class PaperExecutor:
 
             # Calculate fees based on fill notional
             fill_notional = fill_price * fill_qty
-            cost_estimate = self._fee_model.estimate_cost(
-                gross_notional=fill_notional,
-                taker=(fee_tier == "taker"),
-            )
-            fees = cost_estimate.estimated_total_cost
+            if fill_notional > 0:
+                cost_estimate = self._fee_model.estimate_cost(
+                    gross_notional=fill_notional,
+                    taker=(fee_tier == "taker"),
+                )
+                fees = cost_estimate.estimated_total_cost
 
             if status in ("FILLED", "PARTIAL"):
                 self._update_position(symbol, side, qty, fill_price)
@@ -200,6 +201,15 @@ class PaperExecutor:
             status = "PENDING"
             fill_qty = qty
             self._order_book.add_order(symbol, side, qty, limit_price, order_id=order_id, created_at=now)
+
+            # Calculate fees for limit orders using limit_price as expected fill price
+            fill_notional = limit_price * fill_qty
+            if fill_notional > 0:
+                cost_estimate = self._fee_model.estimate_cost(
+                    gross_notional=fill_notional,
+                    taker=(fee_tier == "taker"),
+                )
+                fees = cost_estimate.estimated_total_cost
 
         order = PaperOrder(
             order_id=order_id,
