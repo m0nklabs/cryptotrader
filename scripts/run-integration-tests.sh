@@ -136,12 +136,11 @@ export DATABASE_URL="$DB_URL"
 export PGPASSWORD="$INTEGRATION_PASS"
 
 # Run pytest with integration marker
+TEST_EXIT=0
 "$PYTHON_BIN" -m pytest tests/integration/ -v \
     --tb=short \
     --durations=5 \
-    "$@"
-
-TEST_EXIT=$?
+    "$@" || TEST_EXIT=$?
 
 # Step 5: Cleanup
 if $KEEP_CONTAINER; then

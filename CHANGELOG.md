@@ -6,7 +6,7 @@
 - Apply Kelly-based position sizing through the backtest API and walk-forward validation path while preserving fixed-size defaults for direct engine callers.
 - Harden disposable PostgreSQL integration testing by using authenticated psql URLs, a project-local Python runner, per-test table cleanup, and portable Postgres array binds for latest candle-close queries.
 - Restore project pytest/Ruff configuration and fix backtest validation tests so lookahead-bias checks fail on future candle access instead of relying on stale imports or duplicate decorators.
-- Close the remaining PR #325 review items by preserving legacy unit sizing for unsized backtests, comparing gate enums directly in paper-execution tests, and aligning disposable Postgres fixtures/scripts to skip cleanly without Docker and reuse one container name.
+- Close the remaining PR #325 review items by preserving legacy unit sizing for unsized backtests, normalizing orchestrator gate results onto public risk types, comparing gate enums directly in paper-execution tests, using a local RNG in synthetic backtest candles, and aligning disposable Postgres fixtures/scripts to skip cleanly without Docker, capture pytest failures, and reuse one container name.
 
 ## 2026-05-31
 ### Walk-Forward Validation Fix

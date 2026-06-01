@@ -18,6 +18,7 @@ from typing import Any, Optional
 from core.ai.types import (
     ConsensusDecision,
     RiskDecision,
+    RiskGateResult,
     SignalAction,
 )
 from core.execution.paper import PaperExecutor, PaperOrder
@@ -550,13 +551,22 @@ class ExecutionOrchestrator:
     ) -> RiskDecision:
         """Build a RiskDecision from gate results and execution outcome."""
         latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+        normalized_gate_results = [
+            RiskGateResult(
+                gate=gr.gate.value,
+                passed=gr.passed,
+                reason=gr.reason,
+                details=gr.details,
+            )
+            for gr in gate_results
+        ]
 
         decision = RiskDecision(
             symbol=symbol,
             timeframe=timeframe,
             final_action=consensus.final_action,
             final_confidence=consensus.final_confidence,
-            gate_results=gate_results,
+            gate_results=normalized_gate_results,
             action=action,
             reason=reason,
             paper_order=paper_order,
@@ -578,12 +588,12 @@ class ExecutionOrchestrator:
             "reason": reason,
             "gate_results": [
                 {
-                    "gate": gr.gate.value,
+                    "gate": gr.gate,
                     "passed": gr.passed,
                     "reason": gr.reason,
                     "details": gr.details,
                 }
-                for gr in gate_results
+                for gr in normalized_gate_results
             ],
             "paper_order_id": paper_order.order_id if paper_order else None,
             "market_price": str(market_price) if market_price else None,

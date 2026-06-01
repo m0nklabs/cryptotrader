@@ -90,20 +90,20 @@ def generate_synthetic_candles(
     minutes = tf_map.get(timeframe, 60)
     td = timedelta(minutes=minutes)
 
-    random.seed(42)  # Deterministic
+    rng = random.Random(42)
     for i in range(n):
         open_time = start_date + td * i
         close_time = open_time + td
 
         # Generate OHLCV with trend and volatility
-        ret = trend + random.gauss(0, volatility)
+        ret = trend + rng.gauss(0, volatility)
         open_price = price
         close_price = open_price * (1 + ret)
 
         # High and low
-        high = max(open_price, close_price) * (1 + abs(random.gauss(0, volatility * 0.5)))
-        low = min(open_price, close_price) * (1 - abs(random.gauss(0, volatility * 0.5)))
-        volume = Decimal(str(abs(random.gauss(100, 20))))
+        high = max(open_price, close_price) * (1 + abs(rng.gauss(0, volatility * 0.5)))
+        low = min(open_price, close_price) * (1 - abs(rng.gauss(0, volatility * 0.5)))
+        volume = Decimal(str(abs(rng.gauss(100, 20))))
 
         candles.append(
             Candle(
