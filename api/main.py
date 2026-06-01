@@ -26,8 +26,10 @@ from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path as FilePath
 from typing import Any, Literal, Optional
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -68,6 +70,32 @@ from api.routes import (
 from core.ratelimit import RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
+
+_REPO_ROOT = FilePath(__file__).resolve().parents[1]
+_runtime_env_loaded = False
+
+
+def _load_runtime_env() -> None:
+    """Load repo-local runtime environment defaults once when needed."""
+    global _runtime_env_loaded
+    if _runtime_env_loaded:
+        return
+    env_path = os.environ.get("CRYPTOTRADER_ENV_FILE")
+    dotenv_path = FilePath(env_path).expanduser() if env_path else _REPO_ROOT / ".env"
+    if dotenv_path.is_file():
+        load_dotenv(dotenv_path=dotenv_path, override=False)
+    _runtime_env_loaded = True
+
+
+def _get_database_url() -> str:
+    """Resolve DATABASE_URL from environment or the repo-local .env file."""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        _load_runtime_env()
+        database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL environment variable is required")
+    return database_url
 
 
 @asynccontextmanager
@@ -255,10 +283,7 @@ def _get_stores() -> PostgresStores:
     """Get or initialize the database stores."""
     global _stores
     if _stores is None:
-        database_url = os.environ.get("DATABASE_URL")
-        if not database_url:
-            raise RuntimeError("DATABASE_URL environment variable is required")
-        _stores = PostgresStores(config=PostgresConfig(database_url=database_url))
+        _stores = PostgresStores(config=PostgresConfig(database_url=_get_database_url()))
     return _stores
 
 

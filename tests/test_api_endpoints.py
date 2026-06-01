@@ -17,6 +17,32 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+def test_database_url_loads_from_runtime_env_file(tmp_path, monkeypatch) -> None:
+    """Verify DATABASE_URL falls back to the configured runtime env file."""
+    from api import main
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("DATABASE_URL=postgresql://local:test@127.0.0.1:5432/cryptotrader\n")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("CRYPTOTRADER_ENV_FILE", str(env_file))
+    monkeypatch.setattr(main, "_runtime_env_loaded", False)
+
+    assert main._get_database_url() == "postgresql://local:test@127.0.0.1:5432/cryptotrader"
+
+
+def test_database_url_env_var_wins_over_runtime_env_file(tmp_path, monkeypatch) -> None:
+    """Verify an explicit DATABASE_URL is never overwritten by .env loading."""
+    from api import main
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("DATABASE_URL=postgresql://file:test@127.0.0.1:5432/cryptotrader\n")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://explicit:test@127.0.0.1:5432/cryptotrader")
+    monkeypatch.setenv("CRYPTOTRADER_ENV_FILE", str(env_file))
+    monkeypatch.setattr(main, "_runtime_env_loaded", False)
+
+    assert main._get_database_url() == "postgresql://explicit:test@127.0.0.1:5432/cryptotrader"
+
+
 def test_get_candles_latest_uses_default_exchange(api_client) -> None:
     """Verify /candles/latest endpoint uses default exchange when not provided.
 

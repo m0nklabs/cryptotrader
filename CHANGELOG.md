@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-01
+### Dashboard DB Access Repair
+- Load the repo-local runtime environment file as a safe fallback when the API resolves `DATABASE_URL`, keeping explicit process environment values authoritative.
+- Add regression coverage for DB URL resolution so manually started API processes no longer break dashboard candle and market-watch endpoints.
+
 ## 2026-05-31
 ### Walk-Forward Validation Fix
 - Fix a post-merge regression in `core/strategy_eval/walk_forward.py` where warmup equity used `Decimal + float`, causing `TypeError` and breaking strict OOS walk-forward tests.
