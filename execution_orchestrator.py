@@ -510,30 +510,22 @@ class ExecutionOrchestrator:
         confidence: float,
     ) -> Decimal:
         """Calculate position size based on confidence and portfolio value."""
-        win_rate = self.position_size_config.win_rate or Decimal("0.55")
-        avg_win = self.position_size_config.avg_win or Decimal("0.05")
-        avg_loss = self.position_size_config.avg_loss or Decimal("0.02")
-        confidence_weight = Decimal(str(max(confidence, 0.1)))
-        kelly_fraction = self.position_size_config.kelly_fraction or Decimal("0.5")
-
-        if avg_loss <= 0 or market_price <= 0:
+        if market_price <= 0 or portfolio_value <= 0:
             return Decimal("0")
 
-        reward_ratio = avg_win / avg_loss
-        if reward_ratio <= 0:
+        # Keep sizing consistent with the risk-limit gate (2% stop).
+        stop_loss = market_price * Decimal("0.98")
+        try:
+            size = calculate_position_size(
+                config=self.position_size_config,
+                portfolio_value=portfolio_value,
+                entry_price=market_price,
+                stop_loss_price=stop_loss,
+            )
+        except ValueError:
             return Decimal("0")
 
-        loss_rate = Decimal("1") - win_rate
-        kelly = ((win_rate * reward_ratio) - loss_rate) / reward_ratio
-        weighted_kelly = max(kelly, Decimal("0")) * confidence_weight * kelly_fraction
-
-        portfolio_percent = min(weighted_kelly, Decimal("0.25"))
-        risk_amount = portfolio_value * portfolio_percent
-        risk_per_unit = market_price * Decimal("0.02")
-        if risk_per_unit <= 0:
-            return Decimal("0")
-
-        return (risk_amount / risk_per_unit).quantize(Decimal("0.00000001"))
+        return max(size, Decimal("0")).quantize(Decimal("0.00000001"))
 
     def _execute_paper_order(
         self,
