@@ -80,6 +80,8 @@ def start_disposable_db(port: int = 5433) -> str:
     if not _docker_available():
         raise RuntimeError("Docker is not available for disposable PostgreSQL")
 
+    # Ensure non-interactive psql calls can authenticate.
+    os.environ.setdefault("PGPASSWORD", DISPOSABLE_DB_PASSWORD)
     # Stop any existing test container
     subprocess.run(
         ["docker", "rm", "-f", "cryptotrader-test-db"],
