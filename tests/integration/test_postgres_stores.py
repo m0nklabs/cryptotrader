@@ -1111,8 +1111,10 @@ class TestAlerts:
                 "-t",
                 "-A",
                 "-c",
-                "INSERT INTO alerts (user_id, symbol, exchange, timeframe, condition_type, operator, threshold_value, enabled) "
-                "VALUES (NULL, 'BTCUSD', 'bitfinex', '1h', 'price_above', 'above', 40000.0, true)",
+                (
+                    "INSERT INTO alerts (user_id, symbol, exchange, timeframe, condition_type, operator, threshold_value, enabled) "
+                    + "VALUES (NULL, 'BTCUSD', 'bitfinex', '1h', 'price_above', 'above', 40000.0, true)"
+                ),
             ],
             capture_output=True,
             text=True,
