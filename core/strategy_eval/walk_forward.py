@@ -142,9 +142,6 @@ def run_walk_forward(
             avg_loss=Decimal("0.02"),
         )
 
-    if fee_model is not None and not isinstance(strategy, _CostAwareStrategy):
-        strategy = _CostAwareStrategy(strategy, fee_model)
-
     if not candles:
         return WalkForwardResult(
             folds=[],
@@ -159,6 +156,9 @@ def run_walk_forward(
             oos_win_rate=0.0,
             overfitting_risk="high",
         )
+
+    if fee_model is not None and not isinstance(strategy, _CostAwareStrategy):
+        strategy = _CostAwareStrategy(strategy, fee_model)
 
     # Determine date range
     start_date = candles[0].open_time
