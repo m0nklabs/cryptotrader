@@ -595,6 +595,10 @@ class TestOrdersAndFills:
 
     def test_upsert_order(self, stores: PostgresStores):
         """Verify orders table accepts inserts."""
+        insert_sql = (
+            "INSERT INTO orders (exchange, symbol, order_id, side, order_type, amount, price, status) "
+            + "VALUES ('bitfinex', 'BTCUSD', 'order-001', 'BUY', 'market', 0.5, 40000.0, 'FILLED')"
+        )
         result = subprocess.run(
             [
                 "psql",
@@ -609,8 +613,7 @@ class TestOrdersAndFills:
                 "-t",
                 "-A",
                 "-c",
-                "INSERT INTO orders (exchange, symbol, order_id, side, order_type, amount, price, status) "
-                "VALUES ('bitfinex', 'BTCUSD', 'order-001', 'BUY', 'market', 0.5, 40000.0, 'FILLED')",
+                insert_sql,
             ],
             capture_output=True,
             text=True,
