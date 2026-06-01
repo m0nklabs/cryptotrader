@@ -124,9 +124,12 @@ async def evaluate_consensus(req: EvaluateRequest) -> RiskDecisionResponse:
     consensus = ConsensusDecision(
         final_action=req.final_action,
         final_confidence=req.final_confidence,
-        verdicts=[
             RoleVerdict(
-                role=RoleName(v.get("role", "screener")),
+                role=(
+                    RoleName(v.get("role", "screener"))
+                    if v.get("role", "screener") in RoleName._value2member_map_
+                    else RoleName.SCREENER
+                ),
                 action=v.get("action", "NEUTRAL"),
                 confidence=v.get("confidence", 0.5),
                 reasoning=v.get("reasoning", ""),
