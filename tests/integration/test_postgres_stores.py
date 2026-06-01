@@ -687,7 +687,7 @@ class TestOrdersAndFills:
                 "-A",
                 "-c",
                 "INSERT INTO trade_fills (exchange, symbol, order_id, trade_id, side, amount, price, fee_currency, fee_amount) "
-                "VALUES ('bitfinex', 'BTCUSD', 'order-001', 'fill-001', 'BUY', 0.5, 40000.0, 'USD', 20.0)",
+                + "VALUES ('bitfinex', 'BTCUSD', 'order-001', 'fill-001', 'BUY', 0.5, 40000.0, 'USD', 20.0)",
             ],
             capture_output=True,
             text=True,
