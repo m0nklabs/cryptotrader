@@ -402,7 +402,7 @@ class ExecutionOrchestrator:
         portfolio_value: Decimal,
     ) -> GateCheckResult:
         """Check risk limits (position sizing, ATR-based, etc.)."""
-        # Calculate stop loss (simplified: 2% below entry for long, 2% above for short)
+        # Use a fixed 2% downside stop for the simplified sizing estimate.
         stop_loss = market_price * Decimal("0.98")  # 2% stop loss
 
         try:

@@ -7,6 +7,7 @@
 - Harden disposable PostgreSQL integration testing by using authenticated psql URLs, a project-local Python runner, per-test table cleanup, and portable Postgres array binds for latest candle-close queries.
 - Restore project pytest/Ruff configuration and fix backtest validation tests so lookahead-bias checks fail on future candle access instead of relying on stale imports or duplicate decorators.
 - Close the remaining PR #325 review items by preserving legacy unit sizing for unsized backtests, normalizing orchestrator gate results onto public risk types, comparing gate enums directly in paper-execution tests, using a local RNG in synthetic backtest candles, and aligning disposable Postgres fixtures/scripts to skip cleanly without Docker, capture pytest failures, and reuse one container name.
+- Remove env-driven test import path overrides, fix the disposable-Postgres architecture doc to reference real integration files, make `BacktestEngine` accept an optional `candle_store` in walk-forward mode, and align the simplified stop-loss comment with the implemented risk sizing logic.
 
 ## 2026-05-31
 ### Walk-Forward Validation Fix

@@ -10,8 +10,6 @@ Covers:
 
 from __future__ import annotations
 
-import os
-import sys
 from decimal import Decimal
 
 import pytest
@@ -19,11 +17,6 @@ import pytest
 from core.ai.types import ConsensusDecision, RoleName, RoleVerdict
 from core.execution.paper import PaperExecutor
 from core.risk.limits import ExposureLimits
-
-# Add workspace to path for local imports
-workspace = os.environ.get("HERMES_KANBAN_WORKSPACE", os.getcwd())
-if workspace not in sys.path:
-    sys.path.insert(0, workspace)
 
 from execution_orchestrator import ExecutionOrchestrator, GateName  # noqa: E402
 

@@ -99,7 +99,8 @@ python -m pytest tests/integration/test_postgres_stores.py::TestRoundtrip -v
 │  │                       migrations, env override           │
 │  ├── test_postgres_stores.py  # Store-level integration     │
 │  │                       tests (write + read roundtrip)     │
-│  └── test_migrations.py # Migration-level tests             │
+│  └── test_bitfinex_api.py  # Exchange integration smoke     │
+│                          tests (API-key gated)              │
 │                                                             │
 │  scripts/                                                   │
 │  └── run-integration-tests.sh  # Single-command runner      │
