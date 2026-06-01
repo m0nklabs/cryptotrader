@@ -651,6 +651,8 @@ class ExecutionOrchestrator:
             "timestamp": start_time.isoformat(),
         }
         self._audit_log.append(audit_entry)
+        if len(self._audit_log) > 10_000:
+            del self._audit_log[:-10_000]
 
         logger.info(
             "Risk decision for %s: %s (%s) — %s",
