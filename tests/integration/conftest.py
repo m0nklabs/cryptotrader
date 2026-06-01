@@ -152,7 +152,7 @@ def start_disposable_db(port: int = DISPOSABLE_DB_PORT) -> str:
             timeout=30,
         )
     else:
-        subprocess.run(
+        result = subprocess.run(
             [
                 "docker",
                 "run",
@@ -172,8 +172,13 @@ def start_disposable_db(port: int = DISPOSABLE_DB_PORT) -> str:
                 f"postgres:{os.environ.get('PG_VERSION', '16-alpine')}",
             ],
             capture_output=True,
+            text=True,
             timeout=30,
         )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Failed to start disposable PostgreSQL container ({DISPOSABLE_DB_CONTAINER}): {result.stderr.strip()}"
+            )
 
     # Wait for it to be ready
     if not _psql_available(port):
