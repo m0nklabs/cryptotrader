@@ -1028,8 +1028,10 @@ class TestAIDecisions:
                 "-t",
                 "-A",
                 "-c",
-                "INSERT INTO pair_predictions (exchange, symbol, role, action, confidence, reasoning) "
-                "VALUES ('bitfinex', 'BTCUSD', 'screener', 'BUY', 0.85, 'Test prediction')",
+                (
+                    "INSERT INTO pair_predictions (exchange, symbol, role, action, confidence, reasoning) "
+                    + "VALUES ('bitfinex', 'BTCUSD', 'screener', 'BUY', 0.85, 'Test prediction')"
+                ),
             ],
             capture_output=True,
             text=True,
