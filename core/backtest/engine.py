@@ -179,9 +179,14 @@ class BacktestEngine:
                             equity=current_equity,
                             stop_loss_pct=stop_loss_pct,
                         )
-                        position = "LONG" if signal.side == "BUY" else "SHORT"
-                        entry_price = candle.close
-                        self._current_position_size = dynamic_size
+                        if dynamic_size > 0:
+                            position = "LONG" if signal.side == "BUY" else "SHORT"
+                            entry_price = candle.close
+                            self._current_position_size = dynamic_size
+                        else:
+                            position = None
+                            entry_price = None
+                            self._current_position_size = None
 
             equity_curve.append(current_equity)
 
