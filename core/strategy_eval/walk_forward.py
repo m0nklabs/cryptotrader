@@ -142,6 +142,9 @@ def run_walk_forward(
             avg_loss=Decimal("0.02"),
         )
 
+    if fee_model is not None and not isinstance(strategy, _CostAwareStrategy):
+        strategy = _CostAwareStrategy(strategy, fee_model)
+
     if not candles:
         return WalkForwardResult(
             folds=[],

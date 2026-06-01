@@ -342,18 +342,18 @@ class ValidationRunStore:
 class TestWalkForwardValidation:
     """Tests for walk-forward validation of strategies."""
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def rsi_candles(self):
         """Generate candles suitable for RSI strategy testing.
-        2000 hourly candles = ~83 days. Default walk-forward (train=90d, test=30d) needs ~120d for first fold.
-        With smaller configs (train=7d, test=3d) we get many folds.
+        1000 hourly candles = ~41 days. Enough for 5+ folds with small configs
+        (train=7d, test=3d, step=3d). Generated once per class to avoid repeated cost.
         """
-        return generate_synthetic_candles(n=2000, start_price=100.0, volatility=0.02)
+        return generate_synthetic_candles(n=1000, start_price=100.0, volatility=0.02)
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def sma_candles(self):
         """Generate candles suitable for SMA strategy testing."""
-        return generate_synthetic_candles(n=2000, start_price=100.0, trend=0.0005, volatility=0.015)
+        return generate_synthetic_candles(n=1000, start_price=100.0, trend=0.0005, volatility=0.015)
 
     @pytest.fixture
     def small_candles(self):
