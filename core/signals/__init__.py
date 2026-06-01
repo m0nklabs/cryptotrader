@@ -12,6 +12,7 @@ from core.signals.scoring import (
 )
 from core.signals.weights import (
     DEFAULT_WEIGHTS,
+    MIN_EDGE_THRESHOLDS,
     get_weights,
     get_weights_async,
     load_weights_from_db,
@@ -24,6 +25,7 @@ __all__ = [
     "normalize_weights",
     "score_signals",
     "DEFAULT_WEIGHTS",
+    "MIN_EDGE_THRESHOLDS",
     "get_weights",
     "get_weights_async",
     "load_weights_from_db",

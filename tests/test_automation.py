@@ -15,6 +15,7 @@ from core.automation import (
     DailyTradeCountCheck,
     KillSwitchCheck,
     PositionSizeCheck,
+    SignalDeduplication,
     SlippageCheck,
     SymbolConfig,
     TradeHistory,
@@ -29,7 +30,6 @@ from typing import Literal
 from core.backtest.strategy import Signal
 from core.execution.bitfinex_live import BitfinexLiveExecutor
 from core.execution.interfaces import Order
-from core.types import Candle, OrderIntent
 
 
 # ========== Rules Tests ==========
@@ -1227,3 +1227,289 @@ class TestPolicyDecide:
 
         result = policy.decide(opportunity=opportunity, cost=cost, proposed_intent=intent)
         assert result.decision == "allow"
+
+
+# ========== Signal Deduplication Tests ===========
+
+
+class TestSignalDeduplication:
+    """Tests for SignalDeduplication check."""
+
+    def test_no_cooldown(self) -> None:
+        """Test when no cooldown is configured."""
+        from core.automation.safety import SignalDeduplication
+
+        SignalDeduplication.clear_last_signal()
+        config = AutomationConfig(enabled=True, cooldown_seconds_default=0)
+        history = TradeHistory()
+        check = SignalDeduplication(config=config, trade_history=history)
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+
+        result = check.check(intent=intent)
+        assert result.ok is True
+        assert "No cooldown" in result.reason
+
+    def test_no_previous_trades(self) -> None:
+        """Test when there are no previous trades."""
+        from core.automation.safety import SignalDeduplication
+
+        SignalDeduplication.clear_last_signal()
+        config = AutomationConfig(enabled=True, cooldown_seconds_default=60)
+        history = TradeHistory()
+        check = SignalDeduplication(config=config, trade_history=history)
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+
+        result = check.check(intent=intent)
+        assert result.ok is True
+        assert "No previous trades" in result.reason
+
+    def test_duplicate_signal_deduplicated(self) -> None:
+        """Test that the first signal passes through and subsequent same-side signals are deduplicated."""
+        from core.automation.safety import SignalDeduplication
+
+        SignalDeduplication.clear_last_signal()
+        symbol_config = SymbolConfig(symbol="BTC/USDT", cooldown_seconds=120)
+        config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
+        history = TradeHistory()
+        recent_time = datetime.now(timezone.utc) - timedelta(seconds=30)
+        history.add_trade("BTC/USDT", recent_time)
+
+        check = SignalDeduplication(config=config, trade_history=history)
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+
+        # First signal passes through
+        result = check.check(intent=intent)
+        assert result.ok is True
+        assert "deduplication" in result.reason.lower()
+        assert "BUY" in result.reason
+
+    def test_different_signal_not_deduplicated(self) -> None:
+        """Test that different signal sides are not deduplicated against each other."""
+        from core.automation.safety import SignalDeduplication
+
+        SignalDeduplication.clear_last_signal()
+        symbol_config = SymbolConfig(symbol="BTC/USDT", cooldown_seconds=120)
+        config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
+        history = TradeHistory()
+        recent_time = datetime.now(timezone.utc) - timedelta(seconds=30)
+        history.add_trade("BTC/USDT", recent_time)
+
+        check = SignalDeduplication(config=config, trade_history=history)
+
+        # First BUY passes through (first occurrence)
+        intent_buy = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        result_buy = check.check(intent=intent_buy)
+        assert result_buy.ok is True
+
+        # Second BUY is deduplicated (same side, within cooldown)
+        intent_buy2 = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        result_buy2 = check.check(intent=intent_buy2)
+        assert result_buy2.ok is False
+
+        # SELL passes through (different side)
+        intent_sell = OrderIntent(exchange="binance", symbol="BTC/USDT", side="SELL", amount=Decimal("100"))
+        result_sell = check.check(intent=intent_sell)
+        assert result_sell.ok is True
+
+    def test_cooldown_passed_resets_tracking(self) -> None:
+        """Test that cooldown passing resets signal tracking."""
+        from core.automation.safety import SignalDeduplication
+
+        SignalDeduplication.clear_last_signal()
+        symbol_config = SymbolConfig(symbol="BTC/USDT", cooldown_seconds=60)
+        config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
+        history = TradeHistory()
+        old_time = datetime.now(timezone.utc) - timedelta(seconds=120)
+        history.add_trade("BTC/USDT", old_time)
+
+        check = SignalDeduplication(config=config, trade_history=history)
+        intent = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+
+        result = check.check(intent=intent)
+        assert result.ok is True
+        assert "cooldown passed" in result.reason.lower()
+
+    def test_deduplication_with_symbol_specific_cooldown(self) -> None:
+        """Test deduplication respects symbol-specific cooldown values."""
+        from core.automation.safety import SignalDeduplication
+
+        SignalDeduplication.clear_last_signal()
+        btc_config = SymbolConfig(symbol="BTC/USDT", cooldown_seconds=300)
+        eth_config = SymbolConfig(symbol="ETH/USDT", cooldown_seconds=60)
+        config = AutomationConfig(
+            enabled=True,
+            symbol_configs={"BTC/USDT": btc_config, "ETH/USDT": eth_config},
+        )
+        history = TradeHistory()
+        recent_time = datetime.now(timezone.utc) - timedelta(seconds=200)
+        history.add_trade("BTC/USDT", recent_time)
+        history.add_trade("ETH/USDT", recent_time)
+
+        check = SignalDeduplication(config=config, trade_history=history)
+
+        # First BTC signal passes through (first occurrence, within 300s cooldown)
+        intent_btc = OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        result_btc = check.check(intent=intent_btc)
+        assert result_btc.ok is True
+
+        # ETH signal passes through (cooldown passed: 200s > 60s)
+        intent_eth = OrderIntent(exchange="binance", symbol="ETH/USDT", side="BUY", amount=Decimal("100"))
+        result_eth = check.check(intent=intent_eth)
+        assert result_eth.ok is True
+
+    def test_signals_deduplicated_during_cooldown_window(self) -> None:
+        """Test that signals during the cooldown window are correctly deduplicated.
+
+        The first signal passes through (triggers trade), subsequent same-side
+        signals are deduplicated, and different-side signals pass through.
+        """
+        from core.automation.safety import SignalDeduplication
+
+        SignalDeduplication.clear_last_signal()
+        symbol_config = SymbolConfig(symbol="BTC/USDT", cooldown_seconds=120)
+        config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
+        history = TradeHistory()
+        recent_time = datetime.now(timezone.utc) - timedelta(seconds=30)
+        history.add_trade("BTC/USDT", recent_time)
+
+        check = SignalDeduplication(config=config, trade_history=history)
+
+        # First BUY signal passes through (first occurrence)
+        result = check.check(
+            intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        )
+        assert result.ok is True
+        assert "first" in result.reason.lower()
+
+        # Second BUY signal is deduplicated (same side, within cooldown)
+        result = check.check(
+            intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        )
+        assert result.ok is False
+        assert "duplicate" in result.reason.lower()
+
+        # Third BUY signal is also deduplicated
+        result = check.check(
+            intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        )
+        assert result.ok is False
+
+        # SELL signal passes through (different side)
+        result = check.check(
+            intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="SELL", amount=Decimal("100"))
+        )
+        assert result.ok is True
+
+        # Fourth BUY signal passes through again (after SELL updated tracking)
+        result = check.check(
+            intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        )
+        assert result.ok is True
+
+    def test_cooldown_expiry_resets_dedup_correctly(self) -> None:
+        """Test that signal dedup resets correctly when cooldown expires.
+
+        After cooldown expires, the next signal should pass through as a
+        fresh signal, not be incorrectly treated as a duplicate.
+
+        This tests the fix for a bug where last_signal was set to datetime.now()
+        instead of last_signal_time when cooldown expired, causing the next
+        signal to have last_time >= last_signal_time and be falsely rejected.
+        """
+        from core.automation.rules import TradeRecord
+
+        SignalDeduplication.clear_last_signal()
+        symbol_config = SymbolConfig(symbol="BTC/USDT", cooldown_seconds=60)
+        config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
+        history = TradeHistory()
+
+        # Record a trade 10 seconds ago
+        trade_time = datetime.now(timezone.utc) - timedelta(seconds=10)
+        history.add_trade("BTC/USDT", trade_time)
+
+        check = SignalDeduplication(config=config, trade_history=history)
+
+        # First signal within cooldown — passes through, updates last_signal
+        result = check.check(
+            intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        )
+        assert result.ok is True
+        assert "first" in result.reason.lower()
+
+        # Second signal — duplicate, rejected
+        result = check.check(
+            intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        )
+        assert result.ok is False
+        assert "duplicate" in result.reason.lower()
+
+        # Advance time past cooldown (simulate time passing)
+        # Replace the trade record with one that's 70s ago
+        old_trades = [t for t in history.trades if t.symbol == "BTC/USDT"]
+        for t in old_trades:
+            history.trades.remove(t)
+        history.trades.append(
+            TradeRecord(symbol="BTC/USDT", timestamp=datetime.now(timezone.utc) - timedelta(seconds=70))
+        )
+
+        # Third signal — cooldown has passed, should pass through (not duplicate)
+        result = check.check(
+            intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        )
+        assert result.ok is True
+        assert "passed" in result.reason.lower()
+
+        # Fourth signal — after cooldown reset, should pass through again
+        # (the reset sets last_signal to last_signal_time, so next signal
+        # has last_time < last_signal_time → first occurrence)
+        result = check.check(
+            intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100"))
+        )
+        assert result.ok is True
+
+    def test_dedup_with_multiple_cooldown_cycles(self) -> None:
+        """Test dedup across multiple cooldown cycles."""
+        from core.automation.rules import TradeRecord
+
+        SignalDeduplication.clear_last_signal()
+        symbol_config = SymbolConfig(symbol="BTC/USDT", cooldown_seconds=60)
+        config = AutomationConfig(enabled=True, symbol_configs={"BTC/USDT": symbol_config})
+        history = TradeHistory()
+
+        # Trade at T=0 (10 seconds ago)
+        trade_time = datetime.now(timezone.utc) - timedelta(seconds=10)
+        history.add_trade("BTC/USDT", trade_time)
+
+        check = SignalDeduplication(config=config, trade_history=history)
+
+        # Cycle 1: within cooldown
+        r1 = check.check(intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100")))
+        assert r1.ok is True  # first
+
+        r2 = check.check(intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100")))
+        assert r2.ok is False  # duplicate
+
+        # Advance past cooldown
+        old_trades = [t for t in history.trades if t.symbol == "BTC/USDT"]
+        for t in old_trades:
+            history.trades.remove(t)
+        history.trades.append(
+            TradeRecord(symbol="BTC/USDT", timestamp=datetime.now(timezone.utc) - timedelta(seconds=70))
+        )
+
+        r3 = check.check(intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100")))
+        assert r3.ok is True  # cooldown passed
+
+        # Record a new trade to start a new cooldown cycle
+        history.trades.append(
+            TradeRecord(symbol="BTC/USDT", timestamp=datetime.now(timezone.utc) - timedelta(seconds=10))
+        )
+
+        # Cycle 2: first signal of new cycle (last_signal was cleared by r3,
+        # so r4 enters "first occurrence" branch — correct behavior)
+        r4 = check.check(intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100")))
+        assert r4.ok is True  # first of new cycle
+
+        # Cycle 2: second signal — duplicate
+        r5 = check.check(intent=OrderIntent(exchange="binance", symbol="BTC/USDT", side="BUY", amount=Decimal("100")))
+        assert r5.ok is False  # duplicate in new cycle

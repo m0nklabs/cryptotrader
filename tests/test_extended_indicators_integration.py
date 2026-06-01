@@ -109,7 +109,8 @@ def test_detect_atr_signal_integration() -> None:
     # Should detect volatility signal
     if signal:
         assert signal.code == "ATR"
-        assert signal.side == "HOLD"  # ATR signals are informational
+        # ATR now returns directional signals (HOLD for flat, CONFIRM for flat+high vol, BUY/SELL for trending)
+        assert signal.side in ("HOLD", "CONFIRM", "BUY", "SELL")
 
 
 def test_detect_signals_with_all_indicators() -> None:

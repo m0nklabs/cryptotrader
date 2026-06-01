@@ -8,7 +8,7 @@ All timestamps use timezone-aware UTC datetimes for consistency.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Protocol, Sequence
@@ -258,3 +258,104 @@ class DrawdownCheck:
             ok=True,
             reason=f"Drawdown OK: daily {self.daily_drawdown_pct:.2%}, total {self.total_drawdown_pct:.2%}",
         )
+
+
+class SignalDeduplication:
+    """Deduplicate signals within the cooldown window.
+
+    Tracks the last signal side per symbol. If the same signal side
+    arrives again within the cooldown window, it is filtered out.
+    Opposite signals (BUY vs SELL) are never deduplicated against each other.
+
+    This prevents the same signal type from being re-processed repeatedly
+    during a strong trend, even after a trade has been executed.
+
+    last_signal is a class-level dict so it survives across instances
+    (the orchestrator creates a new SignalDeduplication each iteration).
+    """
+
+    # Class-level tracking dict — shared across all instances
+    last_signal: dict[str, tuple[str, datetime]] = field(default_factory=dict, init=False, repr=False)
+
+    def __init__(
+        self,
+        config: AutomationConfig,
+        trade_history: TradeHistory,
+    ) -> None:
+        self.config = config
+        self.trade_history = trade_history
+        # Ensure class-level dict exists
+        if not hasattr(SignalDeduplication, "_last_signal"):
+            SignalDeduplication._last_signal: dict[str, tuple[str, datetime]] = {}
+        # Alias to class-level for shared state
+        self.last_signal = SignalDeduplication._last_signal
+
+    @classmethod
+    def clear_last_signal(cls) -> None:
+        """Clear the shared last_signal dict. Useful for testing."""
+        if hasattr(cls, "_last_signal"):
+            cls._last_signal.clear()
+
+    def check(self, *, intent: OrderIntent) -> SafetyResult:
+        symbol_config = self.config.get_symbol_config(intent.symbol)
+
+        if symbol_config.cooldown_seconds <= 0:
+            return SafetyResult(ok=True, reason="No cooldown configured")
+
+        last_signal_time = self.trade_history.get_last_trade_time(intent.symbol)
+        if last_signal_time is None:
+            # No previous trades yet. Set last_time to current time.
+            # place_order will record a trade after this signal passes,
+            # so the second signal will see last_time >= last_signal_time
+            # as a duplicate (same side).
+            self.last_signal[intent.symbol] = (intent.side, datetime.now(timezone.utc))
+            return SafetyResult(ok=True, reason="No previous trades")
+
+        time_since_last = datetime.now(timezone.utc) - last_signal_time
+        cooldown = timedelta(seconds=symbol_config.cooldown_seconds)
+
+        if time_since_last < cooldown:
+            remaining = cooldown - time_since_last
+            key = intent.symbol
+            if key in self.last_signal:
+                last_side, last_time = self.last_signal[key]
+                if last_side == intent.side:
+                    # Check if this is a first occurrence (time is strictly after trade)
+                    # vs. a true duplicate (time is at or before trade, meaning
+                    # the first signal already set last_time to the trade's time).
+                    if last_time > last_signal_time:
+                        # First occurrence — update time to trade's time so
+                        # subsequent signals correctly identify as duplicates.
+                        self.last_signal[key] = (intent.side, last_signal_time)
+                        return SafetyResult(
+                            ok=True,
+                            reason=f"Signal deduplication: first {intent.side} for {intent.symbol} within cooldown — {remaining.total_seconds():.0f}s remaining",
+                        )
+                    # Duplicate — reject
+                    return SafetyResult(
+                        ok=False,
+                        reason=f"Signal deduplication: duplicate {intent.side} for {intent.symbol} — {remaining.total_seconds():.0f}s remaining since last {last_side}",
+                    )
+                # Different side — pass through and update tracking
+                self.last_signal[key] = (intent.side, last_signal_time)
+                return SafetyResult(
+                    ok=True,
+                    reason=f"Signal deduplication: {intent.side} for {intent.symbol} (different from last {last_side}) — {remaining.total_seconds():.0f}s remaining",
+                )
+
+            # First occurrence within cooldown — record and pass through.
+            # The first signal after a trade triggers the trade;
+            # subsequent same-side signals are the duplicates.
+            self.last_signal[key] = (intent.side, last_signal_time)
+            return SafetyResult(
+                ok=True,
+                reason=f"Signal deduplication: first {intent.side} for {intent.symbol} within cooldown — {remaining.total_seconds():.0f}s remaining",
+            )
+
+        # Cooldown has passed — reset the signal tracking for this symbol
+        # by clearing the entry. This ensures the next signal enters the
+        # "first occurrence" branch. If a new trade has been recorded since
+        # the last signal, last_signal_time will be newer and the signal
+        # will correctly be treated as a fresh start to a new cooldown cycle.
+        self.last_signal.pop(intent.symbol, None)
+        return SafetyResult(ok=True, reason="Signal deduplication: cooldown passed")

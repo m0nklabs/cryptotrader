@@ -13,12 +13,35 @@ from api.main import app, _get_paper_executor
 @pytest.fixture(autouse=True)
 def reset_paper_executor():
     """Reset the paper executor state before each test."""
+    from api.main import (
+        _automation_config,
+        _cooldown_check,
+        _get_trade_history,
+        _get_signal_dedup,
+    )
+
     executor = _get_paper_executor()
     executor._orders.clear()
     executor._positions.clear()
     executor._last_prices.clear()
     executor._order_book._orders.clear()
     executor._next_order_id = 1
+
+    # Reset shared trade history
+    th = _get_trade_history()
+    th.trades.clear()
+
+    # Reset cooldown check
+    if _cooldown_check is not None:
+        _cooldown_check.__dict__.clear()
+        _cooldown_check.__dict__["config"] = _automation_config
+        _cooldown_check.__dict__["trade_history"] = th
+
+    # Reset signal dedup - clear the last_signal dict (not __dict__)
+    dedup = _get_signal_dedup()
+    if hasattr(dedup, "last_signal") and dedup.last_signal is not None:
+        dedup.last_signal.clear()
+
     yield
 
 
@@ -312,3 +335,135 @@ class TestPaperTradingEndpointsExist:
         routes = [route.path for route in app.routes]
         assert "/positions" in routes
         assert "/positions/{symbol}/close" in routes
+
+
+class TestCooldownDedup:
+    """Tests for cooldown and signal deduplication in place_order."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        from api.main import _get_trade_history, _get_signal_dedup
+
+        th = _get_trade_history()
+        th.trades.clear()
+        dedup = _get_signal_dedup()
+        if hasattr(dedup, "last_signal") and dedup.last_signal is not None:
+            dedup.last_signal.clear()
+
+    def test_duplicate_buy_signal_rejected(self, client):
+        """Test that duplicate BUY signals within cooldown are rejected."""
+        # First BUY order should succeed
+        r1 = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+        assert r1.status_code == 200
+
+        # Second BUY order for same symbol should be rejected (cooldown active)
+        r2 = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+        assert r2.status_code == 409
+        assert r2.json()["detail"]["error"] == "safety_check_failed"
+
+    def test_opposite_signal_allowed(self, client):
+        """Test that opposite signals (BUY/SELL) are not deduplicated."""
+        # Place a BUY order
+        client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+
+        # SELL should be allowed (different side)
+        r = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "SELL",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+        assert r.status_code == 200
+
+    def test_trade_recorded_on_rejection(self, client):
+        """Test that rejected orders still record a trade in history."""
+        from api.main import _get_trade_history
+
+        th = _get_trade_history()
+        th.trades.clear()
+
+        # First order succeeds
+        client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+        assert len(th.trades) == 1
+
+        # Second order rejected
+        r = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+        assert r.status_code == 409
+
+        # Trade was recorded despite rejection
+        assert len(th.trades) == 2
+
+    def test_different_symbols_not_deduplicated(self, client):
+        """Test that different symbols are not affected by dedup."""
+        client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+
+        # ETHUSD should not be affected by BTCUSD cooldown
+        r = client.post(
+            "/orders",
+            json={
+                "symbol": "ETHUSD",
+                "side": "BUY",
+                "qty": "10.0",
+                "order_type": "market",
+                "market_price": "3000",
+            },
+        )
+        assert r.status_code == 200

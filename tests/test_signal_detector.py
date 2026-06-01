@@ -116,7 +116,7 @@ def test_detect_ma_crossover_death():
 
 
 def test_detect_volume_spike():
-    """Test volume spike detection."""
+    """Test volume spike detection with directional context."""
     # Create candles with normal volume then a spike
     candles = []
     for i in range(30):
@@ -127,7 +127,8 @@ def test_detect_volume_spike():
 
     assert signal is not None
     assert signal.code == "VOLUME_SPIKE"
-    assert signal.side == "CONFIRM"
+    # VOLUME_SPIKE now returns directional side (BUY/SELL/CONFIRM)
+    assert signal.side in ("BUY", "SELL", "CONFIRM")
     assert signal.strength > 0
 
 

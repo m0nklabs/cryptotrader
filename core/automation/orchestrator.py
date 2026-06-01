@@ -30,12 +30,13 @@ from core.automation.safety import (
     PositionSizeCheck,
     SafetyCheck,
     SafetyResult,
+    SignalDeduplication,
     run_safety_checks,
 )
-from core.backtest.strategy import Signal, Strategy
 from core.execution.interfaces import OrderExecutor
 from core.execution.bitfinex_live import create_bitfinex_live_executor
 from core.execution.paper import PaperExecutor
+from core.backtest.strategy import Signal, Strategy
 from core.risk.drawdown import DrawdownConfig, DrawdownMonitor
 from core.risk.limits import ExposureChecker, ExposureLimits
 from core.types import Candle, ExecutionResult, OrderIntent
@@ -203,6 +204,10 @@ class StrategyOrchestrator:
                 current_price=current_price,
             ),
             CooldownCheck(
+                config=self.automation_config,
+                trade_history=self.trade_history,
+            ),
+            SignalDeduplication(
                 config=self.automation_config,
                 trade_history=self.trade_history,
             ),

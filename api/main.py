@@ -43,6 +43,7 @@ from core.automation.rules import AutomationConfig, TradeHistory
 from core.automation.safety import (
     CooldownCheck,
     SafetyResult,
+    SignalDeduplication,
 )
 
 # Import new route modules with aliases to avoid conflicts
@@ -109,8 +110,9 @@ _paper_executor: PaperExecutor | None = None
 _automation_config: AutomationConfig | None = None
 _trade_history: TradeHistory | None = None
 
-# Cooldown check (shared between API and orchestrator)
+# Cooldown dedup state (shared between API and orchestrator)
 _cooldown_check: CooldownCheck | None = None
+_signal_dedup: SignalDeduplication | None = None
 
 # Global CoinGecko client (singleton)
 _coingecko_client: CoinGeckoClient | None = None
@@ -199,24 +201,51 @@ def _get_cooldown_check() -> CooldownCheck:
     return _cooldown_check
 
 
-def _run_cooldown_check(symbol: str, side: Literal["BUY", "SELL"]) -> SafetyResult | None:
-    """Run cooldown check for an order.
+def _get_signal_dedup() -> SignalDeduplication:
+    """Get or initialize the shared signal deduplication."""
+    global _signal_dedup
+    if _signal_dedup is None:
+        _signal_dedup = SignalDeduplication(
+            config=_get_automation_config(),
+            trade_history=_get_trade_history(),
+        )
+    return _signal_dedup
+
+
+def _run_cooldown_and_dedup(symbol: str, side: Literal["BUY", "SELL"]) -> SafetyResult | None:
+    """Run cooldown and signal dedup checks for an order.
 
     Returns:
         SafetyResult with ok=False if order should be rejected,
-        or None if no cooldown is configured (skip the check).
+        or None if no cooldown/dedup is configured (skip the check).
     """
-    # Build a minimal OrderIntent for the check
+    # Build a minimal OrderIntent for the checks
     intent = OrderIntent(
         exchange="paper",
         symbol=symbol,
         side=side,
-        amount=Decimal("1"),
+        amount=Decimal("1"),  # Notional amount doesn't matter for cooldown/dedup
     )
 
     # Run cooldown check
     cooldown = _get_cooldown_check()
-    return cooldown.check(intent=intent)
+    cooldown_result = cooldown.check(intent=intent)
+
+    # Run signal deduplication
+    dedup = _get_signal_dedup()
+    dedup_result = dedup.check(intent=intent)
+
+    # If cooldown is active but dedup allows this signal (different side),
+    # allow the order. Only reject if both checks fail.
+    if not cooldown_result.ok and not dedup_result.ok:
+        return cooldown_result
+    if not cooldown_result.ok:
+        # Cooldown active but dedup says OK (different side) — allow
+        return None
+    if not dedup_result.ok:
+        return dedup_result
+
+    return None
 
 
 _stores: PostgresStores | None = None
@@ -867,7 +896,7 @@ def _position_to_response(position: PaperPosition, current_price: Decimal) -> di
 async def place_order(request: OrderRequest) -> dict[str, Any]:
     """Place a paper trading order.
 
-    Runs cooldown check before execution.
+    Runs cooldown and signal deduplication checks before execution.
     Duplicate signals during cooldown are rejected to prevent overtrading.
 
     Args:
@@ -881,9 +910,11 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
     """
     executor = _get_paper_executor()
 
-    # Run cooldown check before executing
-    safety = _run_cooldown_check(request.symbol, request.side)
+    # Run cooldown and signal dedup checks before executing
+    safety = _run_cooldown_and_dedup(request.symbol, request.side)
     if safety is not None and not safety.ok:
+        trade_history = _get_trade_history()
+        trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
         raise HTTPException(
             status_code=409,
             detail={
@@ -920,7 +951,7 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
                 limit_price=request.limit_price,
             )
 
-        # Record the trade in shared history for cooldown tracking
+        # Record the trade in shared history for cooldown/dedup tracking
         trade_history = _get_trade_history()
         trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
 

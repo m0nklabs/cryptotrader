@@ -760,9 +760,9 @@ async def test_seed_ensures_one_active_prompt_per_role(db_session):
         role_prompts = await get_prompts(db_session, role=role.value)
         active_prompts = [p for p in role_prompts if p.is_active]
 
-        assert len(active_prompts) == 1, (
-            f"Role {role.value} should have exactly 1 active prompt, found {len(active_prompts)}"
-        )
+        assert (
+            len(active_prompts) == 1
+        ), f"Role {role.value} should have exactly 1 active prompt, found {len(active_prompts)}"
 
         # Also verify get_active_prompt works
         active_prompt = await get_active_prompt(db_session, role.value)

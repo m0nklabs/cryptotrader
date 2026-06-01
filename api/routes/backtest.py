@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from core.backtest.engine import BacktestEngine
+from core.fees.model import FeeModel
+from core.strategy_eval.walk_forward import (
+    WalkForwardConfig,
+    run_walk_forward,
+)
 from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/backtest", tags=["backtest"])
 
@@ -30,6 +41,31 @@ def _get_stores() -> PostgresStores:
         config = PostgresConfig(database_url=database_url)
         _stores = PostgresStores(config=config)
     return _stores
+
+
+def _write_comparison_json(data: dict[str, Any]) -> None:
+    """Write combined backtest + walk-forward results to backtest_comparison.json."""
+    output_dir = Path(os.getenv("BACKTEST_OUTPUT_DIR", "/tmp"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "backtest_comparison.json"
+
+    # Append to file if it exists (preserve history)
+    existing = []
+    if output_path.exists():
+        try:
+            with open(output_path, "r") as f:
+                existing = json.load(f)
+            if not isinstance(existing, list):
+                existing = [existing]
+        except (json.JSONDecodeError, OSError):
+            existing = []
+
+    existing.append(data)
+
+    with open(output_path, "w") as f:
+        json.dump(existing, f, indent=2, default=str)
+
+    logger.info("Wrote comparison results to %s (total entries: %d)", output_path, len(existing))
 
 
 # ============ Request/Response Models ============
@@ -97,18 +133,75 @@ class StrategyInfo(BaseModel):
     parameters: dict[str, Any]
 
 
+class WalkForwardFoldResponse(BaseModel):
+    """One fold in the walk-forward evaluation."""
+
+    train_start: str
+    train_end: str
+    test_start: str
+    test_end: str
+    train_return: float
+    test_return: float
+    test_sharpe: float
+    test_max_dd: float
+    test_win_rate: float
+    test_trades: int
+    oos_decay: float
+
+
+class WalkForwardResponse(BaseModel):
+    """Aggregated walk-forward results."""
+
+    n_folds: int
+    mean_train_return: float
+    mean_test_return: float
+    mean_oos_decay: float
+    in_sample_consistency: float
+    oos_significant: bool
+    oos_sharpe: float
+    oos_max_dd: float
+    oos_win_rate: float
+    overfitting_risk: str
+    folds: list[WalkForwardFoldResponse]
+
+
+class BacktestComparisonResponse(BaseModel):
+    """Combined backtest + walk-forward results."""
+
+    # Standard backtest
+    exchange: str
+    symbol: str
+    timeframe: str
+    strategy: str
+    start_date: str
+    end_date: str
+    initial_capital: float
+    total_pnl: float
+    total_return: float
+    sharpe_ratio: float
+    max_drawdown: float
+    win_rate: float
+    profit_factor: float
+    num_trades: int
+    trades: list[TradeResponse]
+    equity_curve: list[float]
+
+    # Walk-forward results
+    walk_forward: WalkForwardResponse
+
+
 # ============ Endpoints ============
 
 
-@router.post("/run", response_model=BacktestResponse)
+@router.post("/run", response_model=BacktestComparisonResponse)
 async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
-    """Run a backtest on historical data.
+    """Run a backtest on historical data with walk-forward validation.
 
     Args:
         request: Backtest configuration including symbol, strategy, and date range.
 
     Returns:
-        Backtest results with performance metrics and trade history.
+        Combined backtest results with standard metrics and walk-forward validation.
 
     Raises:
         HTTPException: If insufficient data or invalid parameters.
@@ -169,7 +262,7 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
                 detail={"error": "invalid_strategy", "message": f"Unknown strategy: {request.strategy}"},
             )
 
-        # Run backtest
+        # Run standard backtest
         result = engine.run(strategy=strategy, candles=candles)
 
         # Generate comprehensive report
@@ -190,7 +283,70 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
         response_dict = report_to_dict(report)
         response_dict["strategy"] = response_dict.pop("strategy_name")
 
-        return response_dict
+        # Run walk-forward validation
+        fee_model = FeeModel()
+        wf_config = WalkForwardConfig(
+            train_size_days=90,
+            test_size_days=30,
+            step_size_days=15,
+            lookback_candles=200,
+        )
+        wf_result = run_walk_forward(
+            strategy=strategy,
+            candles=candles,
+            config=wf_config,
+            fee_model=fee_model,
+        )
+
+        # Convert walk-forward result for response
+        wf_response = WalkForwardResponse(
+            n_folds=wf_result.n_folds,
+            mean_train_return=wf_result.mean_train_return,
+            mean_test_return=wf_result.mean_test_return,
+            mean_oos_decay=wf_result.mean_oos_decay,
+            in_sample_consistency=wf_result.in_sample_consistency,
+            oos_significant=wf_result.oos_significant,
+            oos_sharpe=wf_result.oos_sharpe,
+            oos_max_dd=wf_result.oos_max_dd,
+            oos_win_rate=wf_result.oos_win_rate,
+            overfitting_risk=wf_result.overfitting_risk,
+            folds=[
+                WalkForwardFoldResponse(
+                    train_start=f.train_start.isoformat(),
+                    train_end=f.train_end.isoformat(),
+                    test_start=f.test_start.isoformat(),
+                    test_end=f.test_end.isoformat(),
+                    train_return=f.train_return,
+                    test_return=f.test_return,
+                    test_sharpe=f.test_sharpe,
+                    test_max_dd=f.test_max_dd,
+                    test_win_rate=f.test_win_rate,
+                    test_trades=f.test_trades,
+                    oos_decay=f.oos_decay,
+                )
+                for f in wf_result.folds
+            ],
+        )
+
+        # Combine results
+        combined = {**response_dict, "walk_forward": wf_response.model_dump()}
+
+        # Write to backtest_comparison.json
+        _write_comparison_json(combined)
+
+        # Log walk-forward results
+        logger.info(
+            "Walk-forward: %d folds, mean train=%.4f, mean test=%.4f, "
+            "OOS decay=%.4f, overfitting=%s, significant=%s",
+            wf_result.n_folds,
+            wf_result.mean_train_return,
+            wf_result.mean_test_return,
+            wf_result.mean_oos_decay,
+            wf_result.overfitting_risk,
+            wf_result.oos_significant,
+        )
+
+        return combined
 
     except HTTPException:
         raise

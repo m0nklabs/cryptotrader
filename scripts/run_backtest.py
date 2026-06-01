@@ -21,6 +21,14 @@ from core.backtest.engine import (
 )
 from core.storage.postgres.config import PostgresConfig
 from core.storage.postgres.stores import PostgresStores
+from core.strategy_eval.cost_aware import (
+    evaluate_cost_aware,
+    to_dict as cost_aware_to_dict,
+)
+from core.strategy_eval.kelly_comparison import (
+    run_kelly_backtest,
+)
+from core.strategy_eval.regime import RegimeDetector
 
 
 def _serialize_result(result: BacktestResult) -> dict:
@@ -48,12 +56,43 @@ def _serialize_result(result: BacktestResult) -> dict:
     }
 
 
-def export_results_json(result: BacktestResult | list[StrategyPerformance], filename: str) -> None:
-    """Export backtest results (single or comparison) to JSON file."""
+def export_results_json(
+    result: BacktestResult | list[StrategyPerformance],
+    filename: str,
+    candles=None,
+    regime_detector=None,
+) -> None:
+    """Export backtest results (single or comparison) to JSON file.
+
+    Includes cost-adjusted metrics, regime breakdowns, and Kelly sizing
+    comparison (half-Kelly 0.5 vs full-Kelly 1.0).
+    """
     if isinstance(result, list):
-        output = {"strategies": [{"name": perf.name, **_serialize_result(perf.result)} for perf in result]}
+        output = {"strategies": []}
+        for perf in result:
+            strategy_data = {"name": perf.name, **_serialize_result(perf.result)}
+
+            # Add cost-aware evaluation if candles available
+            if candles is not None:
+                cost_eval = evaluate_cost_aware(perf.result, candles, regime_detector=regime_detector)
+                strategy_data["cost_adjusted"] = cost_aware_to_dict(cost_eval)
+
+            # Add Kelly sizing comparison
+            kelly_comp = run_kelly_backtest(perf.result)
+            strategy_data["kelly_sizing"] = kelly_comp.to_dict()
+
+            output["strategies"].append(strategy_data)
     else:
         output = _serialize_result(result)
+
+        # Add cost-aware evaluation if candles available
+        if candles is not None:
+            cost_eval = evaluate_cost_aware(result, candles, regime_detector=regime_detector)
+            output["cost_adjusted"] = cost_aware_to_dict(cost_eval)
+
+        # Add Kelly sizing comparison
+        kelly_comp = run_kelly_backtest(result)
+        output["kelly_sizing"] = kelly_comp.to_dict()
 
     with open(filename, "w") as f:
         json.dump(output, f, indent=2)
@@ -124,6 +163,7 @@ def main() -> None:
     # Run backtest
     print("\nRunning backtest with RSI strategy...")
     base_strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+    regime_detector = RegimeDetector()
 
     if args.compare:
         strategies = {
@@ -157,7 +197,7 @@ def main() -> None:
             print(f"   Final Equity: ${final_equity:,.2f}")
 
         output_file = "backtest_comparison.json"
-        export_results_json(performances, output_file)
+        export_results_json(performances, output_file, candles=candles, regime_detector=regime_detector)
     else:
         result = engine.run(strategy=base_strategy, candles=candles)
 
@@ -178,9 +218,9 @@ def main() -> None:
             print(f"Initial Capital: ${args.capital:,.2f}")
             print(f"Final Equity: ${final_equity:,.2f}")
 
-        # Export to JSON
+        # Export to JSON with cost-aware evaluation
         output_file = "backtest_results.json"
-        export_results_json(result, output_file)
+        export_results_json(result, output_file, candles=candles, regime_detector=regime_detector)
 
     print(f"\n{'=' * 50}")
 

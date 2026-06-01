@@ -27,13 +27,27 @@ logger = logging.getLogger(__name__)
 # Default indicator weights (hardcoded, no DB required)
 # These are used when DB is unavailable or no custom weights exist
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "RSI": 0.20,
-    "MACD": 0.25,
-    "STOCHASTIC": 0.15,
-    "BOLLINGER": 0.15,
-    "ATR": 0.05,
-    "MA_CROSS": 0.15,
-    "VOLUME_SPIKE": 0.05,
+    "RSI": 0.19,
+    "MACD": 0.23,
+    "STOCHASTIC": 0.13,
+    "BOLLINGER": 0.13,
+    "ATR": 0.06,  # Increased from 0.05 (now directional)
+    "MA_CROSS": 0.13,
+    "VOLUME_SPIKE": 0.07,  # Increased from 0.05 (now directional)
+    "HIGH_LOW": 0.06,  # New signal weight
+}
+
+# Per-signal minimum edge thresholds (in basis points)
+# Signals with strength below their threshold are filtered out
+MIN_EDGE_THRESHOLDS: dict[str, float] = {
+    "RSI": 10,
+    "MACD": 15,
+    "STOCHASTIC": 10,
+    "BOLLINGER": 12,
+    "ATR": 8,
+    "MA_CROSS": 20,
+    "VOLUME_SPIKE": 10,
+    "HIGH_LOW": 10,
 }
 
 
