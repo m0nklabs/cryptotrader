@@ -55,7 +55,7 @@ class EvaluateRequest(BaseModel):
     current_exposure: float = 0.0
     current_positions: int = 0
     timeframe: str = "1h"
-    vetoed_by: str | None = None
+    vetoed_by: RoleName | None = None
     reasoning: str = ""
     verdicts: list[dict[str, Any]] = Field(default_factory=list)
 
