@@ -17,6 +17,7 @@ import pytest
 from core.ai.types import ConsensusDecision, RoleName, RoleVerdict
 from core.execution.paper import PaperExecutor
 from core.risk.limits import ExposureLimits
+from core.risk.sizing import PositionSize
 
 from execution_orchestrator import ExecutionOrchestrator, GateName  # noqa: E402
 
@@ -151,13 +152,14 @@ def test_pass_all_gates_buy(orchestrator, buy_consensus):
     assert result.paper_order.symbol == "BTCUSD"
     assert result.paper_order.side == "BUY"
     assert result.paper_order.status in ("FILLED", "PENDING")
-    assert len(result.gate_results) == 4
+    assert len(result.gate_results) == 5
     assert all(gr.passed for gr in result.gate_results)
 
     # Verify all gates
     gate_names = [gr.gate.value if hasattr(gr.gate, "value") else str(gr.gate) for gr in result.gate_results]
     assert "veto" in gate_names
     assert "budget" in gate_names
+    assert "position_size" in gate_names
     assert "exposure" in gate_names
     assert "risk_limit" in gate_names
 
@@ -209,7 +211,39 @@ def test_audit_log_entry_created(orchestrator, buy_consensus):
     assert entry["action"] == "EXECUTED"
     assert entry["paper_order_id"] is not None
     assert entry["market_price"] == "50000"
-    assert len(entry["gate_results"]) == 4
+    assert len(entry["gate_results"]) == 5
+
+
+def test_non_positive_position_size_rejected_before_execution(buy_consensus):
+    """Negative Kelly sizing is clamped and rejected before execution."""
+    orch = ExecutionOrchestrator(
+        paper_executor=PaperExecutor(),
+        position_size_config=PositionSize(
+            method="kelly",
+            kelly_fraction=Decimal("1.0"),
+            win_rate=Decimal("0.20"),
+            avg_win=Decimal("0.01"),
+            avg_loss=Decimal("0.05"),
+        ),
+        confidence_threshold=0.6,
+    )
+
+    result = orch.evaluate_and_execute(
+        consensus=buy_consensus,
+        symbol="BTCUSD",
+        market_price=Decimal("50000"),
+        portfolio_value=Decimal("10000"),
+    )
+
+    assert result.action == "REJECTED"
+    assert result.paper_order is None
+    position_size_gate = next(
+        (gr for gr in result.gate_results if gr.gate == GateName.POSITION_SIZE),
+        None,
+    )
+    assert position_size_gate is not None
+    assert position_size_gate.passed is False
+    assert "non-positive" in position_size_gate.reason.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -493,7 +527,7 @@ def test_audit_log_has_gate_results(orchestrator):
     assert len(entries) >= 1
     entry = entries[-1]
     assert "gate_results" in entry
-    assert len(entry["gate_results"]) == 4
+    assert len(entry["gate_results"]) == 5
 
     # Verify each gate result has required fields
     for gr in entry["gate_results"]:

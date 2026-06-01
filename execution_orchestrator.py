@@ -61,7 +61,7 @@ class ExecutionOrchestrator:
 
     Workflow:
     1. Receive a ConsensusDecision from the AI multi-brain.
-    2. Apply risk gates in order: VETO → Budget → Exposure → Risk limits.
+    2. Apply risk gates in order: VETO → Budget → Position size → Exposure → Risk limits.
     3. If all gates pass, create a paper-order intent and execute.
     4. Persist the full decision path (AI decision → risk decision → paper order).
     5. Audit-log every gate check and the final outcome.
@@ -185,6 +185,23 @@ class ExecutionOrchestrator:
             portfolio_value=portfolio_value,
             confidence=consensus.final_confidence,
         )
+
+        position_size_result = self._check_position_size_gate(position_size)
+        gate_results.append(position_size_result)
+        if not position_size_result.passed:
+            return self._build_result(
+                start_time=start_time,
+                symbol=symbol,
+                timeframe=timeframe,
+                consensus=consensus,
+                gate_results=gate_results,
+                action="REJECTED",
+                reason=position_size_result.reason,
+                market_price=market_price,
+                portfolio_value=portfolio_value,
+                position_size=position_size,
+            )
+
         position_value = market_price * position_size
 
         exposure_result = self._check_exposure_gate(
@@ -409,6 +426,23 @@ class ExecutionOrchestrator:
             },
         )
 
+    def _check_position_size_gate(self, position_size: Decimal) -> GateCheckResult:
+        """Reject non-positive position sizes before exposure/risk checks."""
+        if position_size <= 0:
+            return GateCheckResult(
+                gate=GateName.POSITION_SIZE,
+                passed=False,
+                reason=f"Non-positive position size: {position_size}",
+                details={"position_size": str(position_size)},
+            )
+
+        return GateCheckResult(
+            gate=GateName.POSITION_SIZE,
+            passed=True,
+            reason="Position size positive",
+            details={"position_size": str(position_size)},
+        )
+
     def _check_risk_limit_gate(
         self,
         symbol: str,
@@ -470,35 +504,30 @@ class ExecutionOrchestrator:
         confidence: float,
     ) -> Decimal:
         """Calculate position size based on confidence and portfolio value."""
-        # Kelly criterion with confidence weighting
         win_rate = self.position_size_config.win_rate or Decimal("0.55")
         avg_win = self.position_size_config.avg_win or Decimal("0.05")
         avg_loss = self.position_size_config.avg_loss or Decimal("0.02")
+        confidence_weight = Decimal(str(max(confidence, 0.1)))
+        kelly_fraction = self.position_size_config.kelly_fraction or Decimal("0.5")
 
-        # Kelly formula: f* = (p * b - q) / b
-        p = float(win_rate)
-        q = 1.0 - p
-        b = float(avg_win) / float(avg_loss) if float(avg_loss) > 0 else 1.0
-        kelly = (p * b - q) / b if b > 0 else 0.0
+        if avg_loss <= 0 or market_price <= 0:
+            return Decimal("0")
 
-        # Apply confidence weighting
-        kelly *= max(confidence, 0.1)
+        reward_ratio = avg_win / avg_loss
+        if reward_ratio <= 0:
+            return Decimal("0")
 
-        # Apply kelly_fraction
-        kelly *= float(self.position_size_config.kelly_fraction or Decimal("0.5"))
+        loss_rate = Decimal("1") - win_rate
+        kelly = ((win_rate * reward_ratio) - loss_rate) / reward_ratio
+        weighted_kelly = max(kelly, Decimal("0")) * confidence_weight * kelly_fraction
 
-        # Cap at 25% of portfolio
-        kelly = min(kelly, 0.25)
-
-        # Convert to position size in units
-        portfolio_percent = Decimal(str(kelly))
+        portfolio_percent = min(weighted_kelly, Decimal("0.25"))
         risk_amount = portfolio_value * portfolio_percent
-        risk_per_unit = float(market_price) * 0.02  # 2% risk per unit (stop loss distance)
+        risk_per_unit = market_price * Decimal("0.02")
+        if risk_per_unit <= 0:
+            return Decimal("0")
 
-        if risk_per_unit == 0:
-            return Decimal("1.0")
-
-        return (risk_amount / Decimal(str(risk_per_unit))).quantize(Decimal("0.00000001"))
+        return (risk_amount / risk_per_unit).quantize(Decimal("0.00000001"))
 
     def _execute_paper_order(
         self,

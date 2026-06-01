@@ -3,6 +3,7 @@
 ## 2026-06-01
 ### Paper Execution PR Repair
 - Capture the last PR #325 local drift by keeping the execution API route unmounted in `api.main` and finalizing the shared execution-risk dataclasses in `core.ai.types`.
+- Isolate walk-forward strategy instances per phase, reject non-positive orchestrator position sizes before execution, allow zero-priced backtest exits, remove hardcoded disposable Postgres ports from integration tests, and tighten the related regression tests/docs.
 
 ## 2026-05-31
 ### Walk-Forward Validation Fix

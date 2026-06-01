@@ -6,6 +6,7 @@ that strategy performance is robust and not overfitted to a specific period.
 
 from __future__ import annotations
 
+from copy import deepcopy
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -43,6 +44,11 @@ def _parse_timeframe_to_timedelta(timeframe: str) -> timedelta:
     if unit == "d":
         return timedelta(days=value)
     raise ValueError(f"Unsupported timeframe unit: '{unit}' in '{timeframe}'")
+
+
+def _clone_strategy(strategy: Strategy) -> Strategy:
+    """Create an isolated strategy instance for a single walk-forward run."""
+    return deepcopy(strategy)
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +194,7 @@ def run_walk_forward(
             initial_capital=10000.0,
             position_size_config=position_size_config,
         )
-        warmup_result = warmup_engine.run(strategy, warmup_candles)
+        warmup_result = warmup_engine.run(_clone_strategy(strategy), warmup_candles)
 
         # Full training run (warmup + training candles)
         full_train_candles = warmup_candles + train_candles
@@ -197,7 +203,7 @@ def run_walk_forward(
             initial_capital=10000.0,
             position_size_config=position_size_config,
         )
-        full_train_result = full_train_engine.run(strategy, full_train_candles)
+        full_train_result = full_train_engine.run(_clone_strategy(strategy), full_train_candles)
 
         # Compute training return excluding warmup PnL to avoid inflating
         # training performance with warmup-period trades.
@@ -218,7 +224,7 @@ def run_walk_forward(
             initial_capital=10000.0,
             position_size_config=position_size_config,
         )
-        test_result = test_engine.run(strategy, test_candles)
+        test_result = test_engine.run(_clone_strategy(strategy), test_candles)
 
         fold = WalkForwardFold(
             train_start=current,

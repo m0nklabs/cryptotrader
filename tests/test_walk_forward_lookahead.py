@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.backtest.engine import RSIStrategy
+from core.backtest.strategy import Signal
 from core.strategy_eval.walk_forward import (
     WalkForwardConfig,
     _split_candles,
@@ -134,6 +135,39 @@ class TestSplitCandles:
 
 class TestWarmupSeparation:
     """Tests for warmup/training candle separation."""
+
+    def test_strategy_instances_are_isolated_per_phase(self):
+        """Warmup, train, and test runs each use a fresh strategy copy."""
+
+        class ResetSensitiveStrategy:
+            def __init__(self):
+                self.call_count = 0
+
+            def on_candle(self, candle, indicators):
+                self.call_count += 1
+                if self.call_count == 1:
+                    return Signal(side="BUY", strength=100)
+                if self.call_count == 2:
+                    return Signal(side="SELL", strength=100)
+                return Signal(side="HOLD", strength=0)
+
+        candles = _generate_candles(168)
+        strategy = ResetSensitiveStrategy()
+
+        result = run_walk_forward(
+            strategy,
+            candles,
+            config=WalkForwardConfig(
+                train_size_days=2,
+                test_size_days=1,
+                step_size_days=1,
+                lookback_candles=24,
+            ),
+        )
+
+        assert result.n_folds >= 1
+        assert strategy.call_count == 0
+        assert all(fold.test_trades >= 1 for fold in result.folds)
 
     def test_warmup_excluded_from_train_return(self):
         """Warmup PnL is subtracted from full train PnL."""

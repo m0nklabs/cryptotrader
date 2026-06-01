@@ -158,7 +158,7 @@ class BacktestEngine:
                         position == "SHORT" and signal.side == "BUY"
                     )
 
-                    if should_exit and entry_price:
+                    if should_exit and entry_price is not None:
                         # Get dynamic size for this position
                         dynamic_size = self._current_position_size.get(id(self), Decimal("1.0"))
 

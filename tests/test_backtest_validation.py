@@ -712,15 +712,13 @@ class TestLookaheadBias:
         with pytest.raises(IndexError, match="future candles"):
             strategy.on_candle(candles[5], {})
 
-    def test_rsi_lookahead_bias_with_future_window(self, candles):
-        """RSI computed with future window introduces bias."""
-        # Compute RSI with a wider window that includes future candles
-        future_rsi = compute_rsi(candles, period=14)
-        past_rsi = compute_rsi(candles[:200], period=14)
+    def test_rsi_values_remain_bounded_across_window_endpoints(self, candles):
+        """RSI stays bounded when evaluated at different series endpoints."""
+        later_rsi = compute_rsi(candles, period=14)
+        earlier_rsi = compute_rsi(candles[:200], period=14)
 
-        # Both should be valid RSI values
-        assert 0 <= future_rsi <= 100
-        assert 0 <= past_rsi <= 100
+        assert 0 <= later_rsi <= 100
+        assert 0 <= earlier_rsi <= 100
 
     def test_signal_strength_no_lookahead(self, candles):
         """Signal strength is computed from past data only."""

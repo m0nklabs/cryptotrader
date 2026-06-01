@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.backtest.engine import BacktestEngine, BacktestResult, RSIStrategy
+from core.backtest.strategy import Signal
 from core.risk.sizing import PositionSize
 from core.types import Candle
 
@@ -105,6 +106,31 @@ def test_backtest_engine_with_flat_data() -> None:
     assert result.equity_curve[0] == DEFAULT_INITIAL_CAPITAL, "Should start with initial capital"
 
 
+def test_backtest_engine_closes_zero_entry_price_position() -> None:
+    """A zero entry price is still a valid position to close."""
+
+    class ZeroEntryExitStrategy:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def on_candle(self, candle, indicators):
+            self.calls += 1
+            if self.calls == 1:
+                return Signal(side="BUY", strength=100)
+            if self.calls == 2:
+                return Signal(side="SELL", strength=100)
+            return Signal(side="HOLD", strength=0)
+
+    candles = [_make_test_candle(0.0, 0), _make_test_candle(1.0, 1)]
+
+    engine = BacktestEngine(candle_store=None, initial_capital=DEFAULT_INITIAL_CAPITAL)
+    result = engine.run(strategy=ZeroEntryExitStrategy(), candles=candles)
+
+    assert len(result.trades) == 1
+    assert result.trades[0].entry_price == Decimal("0")
+    assert result.trades[0].exit_price == Decimal("1.0")
+
+
 def test_compare_strategies_returns_results() -> None:
     """Compare multiple strategies side-by-side."""
     uptrend = [100.0 + i for i in range(15)]
@@ -135,8 +161,6 @@ def test_compare_strategies_returns_results() -> None:
 
 def test_backtest_engine_dynamic_kelly_sizing() -> None:
     """Test that backtest engine uses dynamic Kelly sizing, not fixed 1.0."""
-    from core.risk.sizing import PositionSize
-
     # Create price data with varying prices so Kelly sizing produces different sizes
     prices = (
         [100.0 + i for i in range(15)]  # Uptrend to trigger overbought
