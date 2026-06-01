@@ -20,17 +20,32 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 # Disposable DB configuration
-DISPOSABLE_DB_NAME = "cryptotrader_test"
-DISPOSABLE_DB_USER = "cryptotrader"
-DISPOSABLE_DB_PASSWORD = "testpassword123"
+DISPOSABLE_DB_NAME = os.environ.get("INTEGRATION_DB", "cryptotrader_test")
+DISPOSABLE_DB_USER = os.environ.get("INTEGRATION_USER", "cryptotrader")
+DISPOSABLE_DB_PASSWORD = os.environ.get("INTEGRATION_PASS", "testpassword123")
+DISPOSABLE_DB_PORT = int(os.environ.get("INTEGRATION_PORT", "5433"))
+DISPOSABLE_DB_CONTAINER = os.environ.get("INTEGRATION_CONTAINER_NAME", "cryptotrader-test-db")
+KEEP_DISPOSABLE_DB_ENV = "CRYPTOTRADER_KEEP_DISPOSABLE_DB"
+CLEAN_DISPOSABLE_DB_ENV = "CRYPTOTRADER_CLEAN_DISPOSABLE_DB"
 DISPOSABLE_DB_URL = (
-    f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}" "@127.0.0.1:5433/" f"{DISPOSABLE_DB_NAME}"
+    f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}"
+    f"@127.0.0.1:{DISPOSABLE_DB_PORT}/{DISPOSABLE_DB_NAME}"
 )
 
 
 def _psql_env() -> dict[str, str]:
     """Return an environment that lets psql authenticate non-interactively."""
     return {**os.environ, "PGPASSWORD": DISPOSABLE_DB_PASSWORD}
+
+
+def _keep_disposable_db() -> bool:
+    """Return whether the disposable DB container should be kept after tests."""
+    return os.environ.get(KEEP_DISPOSABLE_DB_ENV) == "1"
+
+
+def _clean_disposable_db() -> bool:
+    """Return whether an existing disposable DB container should be discarded first."""
+    return os.environ.get(CLEAN_DISPOSABLE_DB_ENV) == "1"
 
 
 def _psql_args(db_url: str) -> list[str]:
@@ -40,7 +55,7 @@ def _psql_args(db_url: str) -> list[str]:
         "-h",
         parsed.hostname or "127.0.0.1",
         "-p",
-        str(parsed.port or 5433),
+        str(parsed.port or DISPOSABLE_DB_PORT),
         "-U",
         parsed.username or DISPOSABLE_DB_USER,
         "-d",
@@ -61,7 +76,7 @@ def _docker_available() -> bool:
         return False
 
 
-def _psql_available(port: int = 5433, retries: int = 10, delay: int = 2) -> bool:
+def _psql_available(port: int = DISPOSABLE_DB_PORT, retries: int = 10, delay: int = 2) -> bool:
     """Wait for PostgreSQL to be ready on the given port."""
     for _ in range(retries):
         try:
@@ -92,52 +107,77 @@ def _psql_available(port: int = 5433, retries: int = 10, delay: int = 2) -> bool
     return False
 
 
-def start_disposable_db(port: int = 5433) -> str:
+def start_disposable_db(port: int = DISPOSABLE_DB_PORT) -> str:
     """Start a disposable PostgreSQL container and return its URL.
 
-    Uses docker run with a dedicated test database.
+    Reuses an existing named container unless clean-start was requested.
     Returns the DATABASE_URL string.
     """
     if not _docker_available():
         pytest.skip("Docker is not available for disposable PostgreSQL integration tests")
 
     # Ensure non-interactive psql calls can authenticate.
-    os.environ.setdefault("PGPASSWORD", DISPOSABLE_DB_PASSWORD)
-    # Stop any existing test container
-    subprocess.run(
-        ["docker", "rm", "-f", "cryptotrader-test-db"],
+    os.environ["PGPASSWORD"] = DISPOSABLE_DB_PASSWORD
+
+    if _clean_disposable_db():
+        subprocess.run(
+            ["docker", "rm", "-f", DISPOSABLE_DB_CONTAINER],
+            capture_output=True,
+        )
+
+    running = subprocess.run(
+        ["docker", "ps", "--format", "{{.Names}}"],
         capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    existing = subprocess.run(
+        ["docker", "ps", "-a", "--format", "{{.Names}}"],
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
 
-    # Start fresh container
-    subprocess.run(
-        [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            "cryptotrader-test-db",
-            "-p",
-            f"{port}:5432",
-            "-e",
-            f"POSTGRES_USER={DISPOSABLE_DB_USER}",
-            "-e",
-            f"POSTGRES_PASSWORD={DISPOSABLE_DB_PASSWORD}",
-            "-e",
-            f"POSTGRES_DB={DISPOSABLE_DB_NAME}",
-            "-e",
-            "POSTGRES_INITDB_ARGS=--encoding=UTF-8",
-            "postgres:16-alpine",
-        ],
-        capture_output=True,
-        timeout=30,
-    )
+    running_names = running.stdout.splitlines()
+    existing_names = existing.stdout.splitlines()
+
+    if DISPOSABLE_DB_CONTAINER in running_names:
+        pass
+    elif DISPOSABLE_DB_CONTAINER in existing_names:
+        subprocess.run(
+            ["docker", "start", DISPOSABLE_DB_CONTAINER],
+            capture_output=True,
+            timeout=30,
+        )
+    else:
+        subprocess.run(
+            [
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                DISPOSABLE_DB_CONTAINER,
+                "-p",
+                f"{port}:5432",
+                "-e",
+                f"POSTGRES_USER={DISPOSABLE_DB_USER}",
+                "-e",
+                f"POSTGRES_PASSWORD={DISPOSABLE_DB_PASSWORD}",
+                "-e",
+                f"POSTGRES_DB={DISPOSABLE_DB_NAME}",
+                "-e",
+                "POSTGRES_INITDB_ARGS=--encoding=UTF-8",
+                "postgres:16-alpine",
+            ],
+            capture_output=True,
+            timeout=30,
+        )
 
     # Wait for it to be ready
     if not _psql_available(port):
         # Collect logs for debugging
         logs = subprocess.run(
-            ["docker", "logs", "cryptotrader-test-db"],
+            ["docker", "logs", DISPOSABLE_DB_CONTAINER],
             capture_output=True,
             text=True,
             timeout=10,
@@ -148,8 +188,11 @@ def start_disposable_db(port: int = 5433) -> str:
 
 def stop_disposable_db() -> None:
     """Stop and remove the disposable PostgreSQL container."""
+    if _keep_disposable_db():
+        return
+
     subprocess.run(
-        ["docker", "rm", "-f", "cryptotrader-test-db"],
+        ["docker", "rm", "-f", DISPOSABLE_DB_CONTAINER],
         capture_output=True,
     )
 

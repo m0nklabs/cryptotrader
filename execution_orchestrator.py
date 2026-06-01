@@ -303,6 +303,21 @@ class ExecutionOrchestrator:
                 },
             )
 
+        if consensus.final_confidence < self.confidence_threshold:
+            return GateCheckResult(
+                gate=GateName.VETO,
+                passed=False,
+                reason=(
+                    f"Confidence {consensus.final_confidence:.2f} below threshold "
+                    f"{self.confidence_threshold:.2f} for {consensus.final_action}"
+                ),
+                details={
+                    "final_action": consensus.final_action,
+                    "confidence": consensus.final_confidence,
+                    "confidence_threshold": self.confidence_threshold,
+                },
+            )
+
         return GateCheckResult(
             gate=GateName.VETO,
             passed=True,

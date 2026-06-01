@@ -48,7 +48,7 @@ class BacktestEngine:
 
     def __init__(
         self,
-        candle_store: CandleStore,
+        candle_store: CandleStore | None,
         initial_capital: float = 10000.0,
         position_size_config: PositionSize | None = None,
     ):
@@ -65,6 +65,9 @@ class BacktestEngine:
         end: datetime,
     ) -> Sequence[Candle]:
         """Load candles from database for date range."""
+        if self.candle_store is None:
+            raise ValueError("candle_store is required to load candles")
+
         return self.candle_store.get_candles(
             exchange=exchange,
             symbol=symbol,
@@ -89,7 +92,8 @@ class BacktestEngine:
             return Decimal("1.0")
 
         portfolio_value = Decimal(str(equity))
-        stop_loss_price = entry_price * Decimal(str(1 - stop_loss_pct))
+        stop_loss_pct_decimal = Decimal(str(stop_loss_pct))
+        stop_loss_price = entry_price * (Decimal("1") - stop_loss_pct_decimal)
 
         try:
             size = calculate_position_size(
@@ -113,6 +117,7 @@ class BacktestEngine:
         Args:
             strategy: Strategy implementing on_candle protocol
             candles: Historical candle data
+            stop_loss_pct: Stop loss percentage for position sizing (default 5%)
 
         Returns:
             BacktestResult with trades and performance metrics

@@ -156,19 +156,19 @@ The disposable test path is designed for CI environments:
 
 ```bash
 ./scripts/run-integration-tests.sh --keep
-docker exec -it cryptotrader-integration-db psql -U cryptotrader -d cryptotrader_test
+docker exec -it cryptotrader-test-db psql -U cryptotrader -d cryptotrader_test
 ```
 
 ### View container logs
 
 ```bash
-docker logs cryptotrader-integration-db
+docker logs cryptotrader-test-db
 ```
 
 ### Connect to running container
 
 ```bash
-docker exec -it cryptotrader-integration-db psql -U cryptotrader -d cryptotrader_test
+docker exec -it cryptotrader-test-db psql -U cryptotrader -d cryptotrader_test
 ```
 
 ### Check tables

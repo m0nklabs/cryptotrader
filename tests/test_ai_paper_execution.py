@@ -258,6 +258,30 @@ def test_neutral_consensus_becomes_rejected(orchestrator):
     assert result.action == "REJECTED"
 
 
+def test_low_confidence_buy_is_rejected(orchestrator):
+    """Executable actions below the configured confidence threshold are rejected."""
+    low_confidence_buy = ConsensusDecision(
+        final_action="BUY",
+        final_confidence=0.55,
+        verdicts=[
+            RoleVerdict(role=RoleName.SCREENER, action="BUY", confidence=0.55, reasoning="Weak setup"),
+        ],
+        reasoning="BUY but below threshold",
+    )
+
+    result = orchestrator.evaluate_and_execute(
+        consensus=low_confidence_buy,
+        symbol="BTCUSD",
+        market_price=Decimal("50000"),
+    )
+
+    assert result.action == "REJECTED"
+    veto_gate = next((gr for gr in result.gate_results if gr.gate == GateName.VETO), None)
+    assert veto_gate is not None
+    assert veto_gate.passed is False
+    assert "below threshold" in veto_gate.reason.lower()
+
+
 # ---------------------------------------------------------------------------
 # Budget gate — budget exceeded blocks order
 # ---------------------------------------------------------------------------
