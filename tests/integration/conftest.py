@@ -100,7 +100,9 @@ def _psql_available(port: int = DISPOSABLE_DB_PORT, retries: int = 10, delay: in
             )
             if result.returncode == 0:
                 return True
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except FileNotFoundError:
+            pytest.skip("psql is not available for disposable PostgreSQL integration tests")
+        except subprocess.TimeoutExpired:
             # Tooling may not be ready yet while the container is still starting.
             continue
         time.sleep(delay)
