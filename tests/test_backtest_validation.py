@@ -27,10 +27,9 @@ from typing import Sequence
 
 import pytest
 
-sys.path.insert(0, "/home/flip/cryptotrader")
+# Repo root should already be on sys.path (see pyproject.toml pythonpath settings).
 
 from core.backtest.engine import BacktestEngine, BacktestResult, RSIStrategy  # noqa: E402
-from core.backtest.metrics import (  # noqa: E402
     Trade,
     calculate_max_drawdown,
     calculate_profit_factor,
