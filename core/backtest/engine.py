@@ -148,9 +148,10 @@ class BacktestEngine:
                         equity=current_equity,
                         stop_loss_pct=stop_loss_pct,
                     )
-                    position = "LONG" if signal.side == "BUY" else "SHORT"
-                    entry_price = candle.close
-                    self._current_position_size = dynamic_size
+                    if dynamic_size > 0:
+                        position = "LONG" if signal.side == "BUY" else "SHORT"
+                        entry_price = candle.close
+                        self._current_position_size = dynamic_size
                 else:
                     # Exit position if signal is opposite
                     should_exit = (position == "LONG" and signal.side == "SELL") or (
