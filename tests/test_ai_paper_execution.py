@@ -22,6 +22,11 @@ from core.risk.sizing import PositionSize
 from execution_orchestrator import ExecutionOrchestrator, GateName  # noqa: E402
 
 
+def _find_gate(result, gate: GateName):
+    """Return a normalized public gate result by gate enum."""
+    return next((gr for gr in result.gate_results if gr.gate == gate.value), None)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -237,10 +242,7 @@ def test_non_positive_position_size_rejected_before_execution(buy_consensus):
 
     assert result.action == "REJECTED"
     assert result.paper_order is None
-    position_size_gate = next(
-        (gr for gr in result.gate_results if gr.gate == GateName.POSITION_SIZE),
-        None,
-    )
+    position_size_gate = _find_gate(result, GateName.POSITION_SIZE)
     assert position_size_gate is not None
     assert position_size_gate.passed is False
     assert "non-positive" in position_size_gate.reason.lower()
@@ -265,7 +267,7 @@ def test_veto_blocks_order(orchestrator, veto_consensus):
     assert "VETO" in result.reason.upper() or "veto" in result.reason.lower()
 
     # VETO gate should be the first failing gate
-    veto_gate = next((gr for gr in result.gate_results if gr.gate == GateName.VETO), None)
+    veto_gate = _find_gate(result, GateName.VETO)
     assert veto_gate is not None
     assert veto_gate.passed is False
 
@@ -310,7 +312,7 @@ def test_low_confidence_buy_is_rejected(orchestrator):
     )
 
     assert result.action == "REJECTED"
-    veto_gate = next((gr for gr in result.gate_results if gr.gate == GateName.VETO), None)
+    veto_gate = _find_gate(result, GateName.VETO)
     assert veto_gate is not None
     assert veto_gate.passed is False
     assert "below threshold" in veto_gate.reason.lower()
@@ -355,7 +357,7 @@ def test_budget_exceeded_daily(orchestrator):
     )
     assert result2.action == "REJECTED"
 
-    budget_gate = next((gr for gr in result2.gate_results if gr.gate == GateName.BUDGET), None)
+    budget_gate = _find_gate(result2, GateName.BUDGET)
     assert budget_gate is not None
     assert budget_gate.passed is False
 
@@ -383,7 +385,7 @@ def test_budget_exceeded_monthly(orchestrator):
     )
 
     assert result.action == "REJECTED"
-    budget_gate = next((gr for gr in result.gate_results if gr.gate == GateName.BUDGET), None)
+    budget_gate = _find_gate(result, GateName.BUDGET)
     assert budget_gate is not None
     assert budget_gate.passed is False
 
@@ -421,7 +423,7 @@ def test_exposure_limit_exceeded(orchestrator):
 
     # Should be rejected due to position size exceeding limit
     assert result.action == "REJECTED"
-    exposure_gate = next((gr for gr in result.gate_results if gr.gate == GateName.EXPOSURE), None)
+    exposure_gate = _find_gate(result, GateName.EXPOSURE)
     assert exposure_gate is not None
     assert exposure_gate.passed is False
 
@@ -449,9 +451,36 @@ def test_position_count_limit_exceeded(orchestrator):
     )
 
     assert result.action == "REJECTED"
-    exposure_gate = next((gr for gr in result.gate_results if gr.gate == GateName.EXPOSURE), None)
+    exposure_gate = _find_gate(result, GateName.EXPOSURE)
     assert exposure_gate is not None
     assert exposure_gate.passed is False
+
+
+def test_risk_limit_uses_notional_position_value(buy_consensus):
+    """Risk-limit checks compare quote notional, not base-unit size."""
+    orch = ExecutionOrchestrator(
+        paper_executor=PaperExecutor(),
+        exposure_limits=ExposureLimits(
+            max_position_size_per_symbol=Decimal("80000"),
+            max_total_exposure=Decimal("1000000"),
+            max_positions=5,
+        ),
+        confidence_threshold=0.6,
+    )
+
+    result = orch.evaluate_and_execute(
+        consensus=buy_consensus,
+        symbol="BTCUSD",
+        market_price=Decimal("50000"),
+        portfolio_value=Decimal("10000"),
+    )
+
+    assert result.action == "REJECTED"
+    risk_gate = _find_gate(result, GateName.RISK_LIMIT)
+    assert risk_gate is not None
+    assert risk_gate.passed is False
+    assert Decimal(risk_gate.details["calculated_value"]) == Decimal("92500")
+    assert Decimal(risk_gate.details["max_position_value"]) == Decimal("80000")
 
 
 def test_risk_limit_calculation_success(orchestrator, buy_consensus):
@@ -463,7 +492,7 @@ def test_risk_limit_calculation_success(orchestrator, buy_consensus):
         portfolio_value=Decimal("10000"),
     )
 
-    risk_gate = next((gr for gr in result.gate_results if gr.gate == GateName.RISK_LIMIT), None)
+    risk_gate = _find_gate(result, GateName.RISK_LIMIT)
     assert risk_gate is not None
     assert risk_gate.passed is True
 

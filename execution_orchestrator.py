@@ -462,16 +462,18 @@ class ExecutionOrchestrator:
                 stop_loss_price=stop_loss,
             )
 
-            # Check if calculated position size is reasonable
+            # max_position_size_per_symbol is a quote-currency notional limit.
             max_position = self.exposure_checker.limits.max_position_size_per_symbol
-            if max_position is not None and calc_size > max_position:
+            calc_position_value = market_price * calc_size
+            if max_position is not None and calc_position_value > max_position:
                 return GateCheckResult(
                     gate=GateName.RISK_LIMIT,
                     passed=False,
-                    reason=f"Calculated position size {calc_size} exceeds max {max_position}",
+                    reason=(f"Calculated position value {calc_position_value} " f"exceeds max {max_position}"),
                     details={
                         "calculated_size": str(calc_size),
-                        "max_size": str(max_position),
+                        "calculated_value": str(calc_position_value),
+                        "max_position_value": str(max_position),
                     },
                 )
 
@@ -481,6 +483,7 @@ class ExecutionOrchestrator:
                 reason="Risk limits within bounds",
                 details={
                     "calculated_size": str(calc_size),
+                    "calculated_value": str(calc_position_value),
                     "stop_loss": str(stop_loss),
                     "method": self.position_size_config.method,
                 },
