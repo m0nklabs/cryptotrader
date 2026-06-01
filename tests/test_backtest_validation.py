@@ -1353,7 +1353,7 @@ class TestValidationPipeline:
         # document the paper-only requirement
 
         # Check module docstring mentions paper/dry-run
-        import test_backtest_validation as mod
+        from tests import test_backtest_validation as mod
 
         assert "paper" in mod.__doc__.lower() or "dry-run" in mod.__doc__.lower()
 
