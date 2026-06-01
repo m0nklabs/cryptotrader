@@ -55,6 +55,7 @@ class BacktestEngine:
         self.candle_store = candle_store
         self.initial_capital = initial_capital
         self.position_size_config = position_size_config
+        self._current_position_size: Decimal | None = None
 
     def load_candles(
         self,
@@ -127,6 +128,7 @@ class BacktestEngine:
         current_equity = self.initial_capital
         position = None  # None, 'LONG', or 'SHORT'
         entry_price = None
+        self._current_position_size = None
 
         for i, candle in enumerate(candles):
             # Calculate indicators
@@ -148,10 +150,7 @@ class BacktestEngine:
                     )
                     position = "LONG" if signal.side == "BUY" else "SHORT"
                     entry_price = candle.close
-                    # Store the size on the position for exit
-                    if not hasattr(self, "_current_position_size"):
-                        self._current_position_size = {}
-                    self._current_position_size[id(self)] = dynamic_size
+                    self._current_position_size = dynamic_size
                 else:
                     # Exit position if signal is opposite
                     should_exit = (position == "LONG" and signal.side == "SELL") or (
@@ -160,7 +159,8 @@ class BacktestEngine:
 
                     if should_exit and entry_price is not None:
                         # Get dynamic size for this position
-                        dynamic_size = self._current_position_size.get(id(self), Decimal("1.0"))
+                        current_position_size = getattr(self, "_current_position_size", None)
+                        dynamic_size = current_position_size if current_position_size is not None else Decimal("1.0")
 
                         # Close position
                         trade_side = "BUY" if position == "LONG" else "SELL"
@@ -181,7 +181,7 @@ class BacktestEngine:
                         )
                         position = "LONG" if signal.side == "BUY" else "SHORT"
                         entry_price = candle.close
-                        self._current_position_size[id(self)] = dynamic_size
+                        self._current_position_size = dynamic_size
 
             equity_curve.append(current_equity)
 
@@ -221,9 +221,7 @@ class BacktestEngine:
         """Run multiple strategies side-by-side on the same candles."""
         performances: list[StrategyPerformance] = []
         for name, strategy in strategies.items():
-            # Reset position size map for each strategy comparison
-            if hasattr(self, "_current_position_size"):
-                self._current_position_size = {}
+            self._current_position_size = None
             result = self.run(strategy=strategy, candles=candles)
             performances.append(StrategyPerformance(name=name, result=result))
         return performances

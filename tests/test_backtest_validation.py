@@ -624,8 +624,10 @@ class TestLookaheadBias:
 
     def test_rsi_no_lookahead_bias(self, candles):
         """RSI indicator uses only past candles (no lookahead)."""
-        # compute_rsi should only use candles up to the current index
-        for i in range(14, len(candles)):
+        sample_indices = sorted({14, 25, 50, 100, 250, 500, len(candles) - 1})
+
+        # compute_rsi should only use candles up to the sampled current index
+        for i in sample_indices:
             # RSI at index i should only use candles[0:i+1]
             rsi = compute_rsi(candles[: i + 1], period=14)
             assert math.isfinite(rsi)
@@ -694,12 +696,11 @@ class TestLookaheadBias:
 
         # Verify that signals are generated based on past RSI values
         # The RSI at each candle should not use future data
-        for i, candle in enumerate(candles):
-            if i >= 14:
-                # Compute RSI using only past candles
-                past_candles = candles[max(0, i - 100) : i + 1]
-                rsi = compute_rsi(past_candles, period=14)
-                assert 0 <= rsi <= 100
+        sample_indices = sorted({14, 25, 50, 100, 250, 500, len(candles) - 1})
+        for i in sample_indices:
+            past_candles = candles[max(0, i - 100) : i + 1]
+            rsi = compute_rsi(past_candles, period=14)
+            assert 0 <= rsi <= 100
 
     def test_lookahead_bias_test_fails_with_future_read(self, candles):
         """Test fails if strategy reads future candles (lookahead bias detected)."""
