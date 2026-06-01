@@ -1205,15 +1205,17 @@ class TestValidationPipeline:
 
         # SMA strategy needs SMA indicators in the dict
         class SMAStrategyWithIndicators(SimpleSMAStrategy):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                closes = [float(c.close) for c in candles]
+                self._sma_10_vals = compute_sma(closes, 10)
+                self._sma_30_vals = compute_sma(closes, 30)
+                self._idx_by_open_time = {c.open_time: i for i, c in enumerate(candles)}
+
             def on_candle(self, candle, indicators):
-                # Compute SMA values from raw close prices if not provided
-                if "sma_10" not in indicators:
-                    closes = [float(c.close) for c in candles]
-                    sma_10_vals = compute_sma(closes, 10)
-                    sma_30_vals = compute_sma(closes, 30)
-                    idx = next(i for i, c in enumerate(candles) if c.open_time == candle.open_time)
-                    indicators["sma_10"] = sma_10_vals[idx]
-                    indicators["sma_30"] = sma_30_vals[idx]
+                idx = self._idx_by_open_time[candle.open_time]
+                indicators["sma_10"] = self._sma_10_vals[idx]
+                indicators["sma_30"] = self._sma_30_vals[idx]
                 return super().on_candle(candle, indicators)
 
         strategy_with_indicators = SMAStrategyWithIndicators(fast_period=10, slow_period=30)
