@@ -160,6 +160,7 @@ def apply_schema(db_url: str, schema_path: Path | None = None) -> None:
         capture_output=True,
         text=True,
         timeout=30,
+        env={**os.environ, "PGPASSWORD": DISPOSABLE_DB_PASSWORD},
     )
     if result.returncode != 0:
         raise RuntimeError(f"Schema application failed:\n{result.stderr}")
