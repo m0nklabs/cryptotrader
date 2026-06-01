@@ -54,9 +54,7 @@ class BacktestEngine:
     ):
         self.candle_store = candle_store
         self.initial_capital = initial_capital
-        self.position_size_config = position_size_config or PositionSize(
-            method="fixed", portfolio_percent=Decimal("1.0")
-        )
+        self.position_size_config = position_size_config
 
     def load_candles(
         self,
@@ -85,7 +83,11 @@ class BacktestEngine:
 
         Uses Kelly criterion when method is 'kelly', fixed fractional otherwise.
         The stop loss percentage determines risk per unit.
+        When no sizing config is provided, preserve the legacy fixed 1.0 unit size.
         """
+        if self.position_size_config is None:
+            return Decimal("1.0")
+
         portfolio_value = Decimal(str(equity))
         stop_loss_price = entry_price * Decimal(str(1 - stop_loss_pct))
 

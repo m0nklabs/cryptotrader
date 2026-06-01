@@ -240,6 +240,27 @@ class LookaheadStrategy:
         return Signal(side="HOLD", strength=0)
 
 
+class PastOnlyCandles:
+    """Sequence facade that raises when code reads beyond the current candle."""
+
+    def __init__(self, all_candles: Sequence[Candle]):
+        self._candles = all_candles
+        self.current_index = 0
+
+    def __iter__(self):
+        return iter(self._candles[: self.current_index + 1])
+
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            stop = len(self._candles) if key.stop is None else key.stop
+            if stop > self.current_index + 1:
+                raise IndexError("strategy attempted to read future candles")
+            return self._candles[key]
+        if key > self.current_index:
+            raise IndexError("strategy attempted to read future candles")
+        return self._candles[key]
+
+
 # ---------------------------------------------------------------------------
 # Validation run metadata persistence
 # ---------------------------------------------------------------------------
@@ -684,11 +705,12 @@ class TestLookaheadBias:
                     return Signal(side="BUY", strength=50)
                 return Signal(side="HOLD", strength=0)
 
-        strategy = FutureReadingStrategy(candles)
+        guarded_candles = PastOnlyCandles(candles)
+        strategy = FutureReadingStrategy(guarded_candles)
 
-        # This should work but produce different results than a no-lookahead version
-        result = BacktestEngine(candle_store=MockCandleStore(candles)).run(strategy, candles)
-        assert isinstance(result, BacktestResult)
+        guarded_candles.current_index = 5
+        with pytest.raises(IndexError, match="future candles"):
+            strategy.on_candle(candles[5], {})
 
     def test_rsi_lookahead_bias_with_future_window(self, candles):
         """RSI computed with future window introduces bias."""
@@ -1246,26 +1268,6 @@ class TestValidationPipeline:
     def test_acceptance_criteria_lookahead_bias(self, candles):
         """Acceptance: tests fail if strategy can read future candles."""
 
-        class PastOnlyCandles:
-            """Sequence facade that fails when strategy code reads future candles."""
-
-            def __init__(self, all_candles: Sequence[Candle]):
-                self._candles = all_candles
-                self.current_index = 0
-
-            def __iter__(self):
-                return iter(self._candles[: self.current_index + 1])
-
-            def __getitem__(self, key):
-                if isinstance(key, slice):
-                    stop = len(self._candles) if key.stop is None else key.stop
-                    if stop > self.current_index + 1:
-                        raise AssertionError("strategy attempted to read future candles")
-                    return self._candles[key]
-                if key > self.current_index:
-                    raise AssertionError("strategy attempted to read future candles")
-                return self._candles[key]
-
         # Create a strategy that reads future candles
         class FutureReadingStrategy:
             def __init__(self, all_candles):
@@ -1284,7 +1286,7 @@ class TestValidationPipeline:
         guarded_candles = PastOnlyCandles(candles)
         future_strategy = FutureReadingStrategy(guarded_candles)
 
-        with pytest.raises(AssertionError, match="future candles"):
+        with pytest.raises(IndexError, match="future candles"):
             for index, candle in enumerate(candles[:20]):
                 guarded_candles.current_index = index
                 future_strategy.on_candle(candle, {})
@@ -1312,9 +1314,9 @@ class TestValidationPipeline:
         # document the paper-only requirement
 
         # Check module docstring mentions paper/dry-run
-        from tests import test_backtest_validation as mod
+        module_doc = (__doc__ or "").lower()
 
-        assert "paper" in mod.__doc__.lower() or "dry-run" in mod.__doc__.lower()
+        assert "paper" in module_doc or "dry-run" in module_doc
 
         # Check key classes document lookahead bias
         assert "lookahead" in TestLookaheadBias.__doc__.lower()

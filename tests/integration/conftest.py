@@ -86,7 +86,8 @@ def _psql_available(port: int = 5433, retries: int = 10, delay: int = 2) -> bool
             if result.returncode == 0:
                 return True
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+            # Tooling may not be ready yet while the container is still starting.
+            continue
         time.sleep(delay)
     return False
 
@@ -98,7 +99,7 @@ def start_disposable_db(port: int = 5433) -> str:
     Returns the DATABASE_URL string.
     """
     if not _docker_available():
-        raise RuntimeError("Docker is not available for disposable PostgreSQL")
+        pytest.skip("Docker is not available for disposable PostgreSQL integration tests")
 
     # Ensure non-interactive psql calls can authenticate.
     os.environ.setdefault("PGPASSWORD", DISPOSABLE_DB_PASSWORD)

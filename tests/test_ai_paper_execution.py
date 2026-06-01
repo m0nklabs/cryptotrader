@@ -162,10 +162,7 @@ def test_pass_all_gates_buy(orchestrator, buy_consensus):
     assert all(gr.passed for gr in result.gate_results)
 
     # Verify all gates
-    gate_names = [
-        gr.gate.value if hasattr(gr.gate, "value") else str(gr.gate)
-        for gr in result.gate_results
-    ]
+    gate_names = [gr.gate.value if hasattr(gr.gate, "value") else str(gr.gate) for gr in result.gate_results]
     assert "veto" in gate_names
     assert "budget" in gate_names
     assert "exposure" in gate_names
@@ -241,9 +238,7 @@ def test_veto_blocks_order(orchestrator, veto_consensus):
     assert "VETO" in result.reason.upper() or "veto" in result.reason.lower()
 
     # VETO gate should be the first failing gate
-    veto_gate = next(
-        (gr for gr in result.gate_results if gr.gate.value == GateName.VETO), None
-    )
+    veto_gate = next((gr for gr in result.gate_results if gr.gate == GateName.VETO), None)
     assert veto_gate is not None
     assert veto_gate.passed is False
 
@@ -254,12 +249,8 @@ def test_neutral_consensus_becomes_rejected(orchestrator):
         final_action="NEUTRAL",
         final_confidence=0.0,
         verdicts=[
-            RoleVerdict(
-                role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""
-            ),
-            RoleVerdict(
-                role=RoleName.TACTICAL, action="SELL", confidence=0.8, reasoning=""
-            ),
+            RoleVerdict(role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""),
+            RoleVerdict(role=RoleName.TACTICAL, action="SELL", confidence=0.8, reasoning=""),
         ],
         reasoning="Tie between BUY and SELL",
     )
@@ -292,12 +283,8 @@ def test_budget_exceeded_daily(orchestrator):
         final_action="BUY",
         final_confidence=0.8,
         verdicts=[
-            RoleVerdict(
-                role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""
-            ),
-            RoleVerdict(
-                role=RoleName.TACTICAL, action="BUY", confidence=0.9, reasoning=""
-            ),
+            RoleVerdict(role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""),
+            RoleVerdict(role=RoleName.TACTICAL, action="BUY", confidence=0.9, reasoning=""),
         ],
     )
 
@@ -317,9 +304,7 @@ def test_budget_exceeded_daily(orchestrator):
     )
     assert result2.action == "REJECTED"
 
-    budget_gate = next(
-        (gr for gr in result2.gate_results if gr.gate.value == GateName.BUDGET), None
-    )
+    budget_gate = next((gr for gr in result2.gate_results if gr.gate == GateName.BUDGET), None)
     assert budget_gate is not None
     assert budget_gate.passed is False
 
@@ -336,9 +321,7 @@ def test_budget_exceeded_monthly(orchestrator):
         final_action="BUY",
         final_confidence=0.8,
         verdicts=[
-            RoleVerdict(
-                role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""
-            ),
+            RoleVerdict(role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""),
         ],
     )
 
@@ -349,9 +332,7 @@ def test_budget_exceeded_monthly(orchestrator):
     )
 
     assert result.action == "REJECTED"
-    budget_gate = next(
-        (gr for gr in result.gate_results if gr.gate.value == GateName.BUDGET), None
-    )
+    budget_gate = next((gr for gr in result.gate_results if gr.gate == GateName.BUDGET), None)
     assert budget_gate is not None
     assert budget_gate.passed is False
 
@@ -376,9 +357,7 @@ def test_exposure_limit_exceeded(orchestrator):
         final_action="BUY",
         final_confidence=0.8,
         verdicts=[
-            RoleVerdict(
-                role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""
-            ),
+            RoleVerdict(role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""),
         ],
     )
 
@@ -391,9 +370,7 @@ def test_exposure_limit_exceeded(orchestrator):
 
     # Should be rejected due to position size exceeding limit
     assert result.action == "REJECTED"
-    exposure_gate = next(
-        (gr for gr in result.gate_results if gr.gate.value == GateName.EXPOSURE), None
-    )
+    exposure_gate = next((gr for gr in result.gate_results if gr.gate == GateName.EXPOSURE), None)
     assert exposure_gate is not None
     assert exposure_gate.passed is False
 
@@ -409,9 +386,7 @@ def test_position_count_limit_exceeded(orchestrator):
         final_action="BUY",
         final_confidence=0.8,
         verdicts=[
-            RoleVerdict(
-                role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""
-            ),
+            RoleVerdict(role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""),
         ],
     )
 
@@ -423,9 +398,7 @@ def test_position_count_limit_exceeded(orchestrator):
     )
 
     assert result.action == "REJECTED"
-    exposure_gate = next(
-        (gr for gr in result.gate_results if gr.gate.value == GateName.EXPOSURE), None
-    )
+    exposure_gate = next((gr for gr in result.gate_results if gr.gate == GateName.EXPOSURE), None)
     assert exposure_gate is not None
     assert exposure_gate.passed is False
 
@@ -439,9 +412,7 @@ def test_risk_limit_calculation_success(orchestrator, buy_consensus):
         portfolio_value=Decimal("10000"),
     )
 
-    risk_gate = next(
-        (gr for gr in result.gate_results if gr.gate.value == GateName.RISK_LIMIT), None
-    )
+    risk_gate = next((gr for gr in result.gate_results if gr.gate == GateName.RISK_LIMIT), None)
     assert risk_gate is not None
     assert risk_gate.passed is True
 
@@ -457,9 +428,7 @@ def test_audit_log_tracks_all_decisions(orchestrator):
         final_action="BUY",
         final_confidence=0.8,
         verdicts=[
-            RoleVerdict(
-                role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""
-            ),
+            RoleVerdict(role=RoleName.SCREENER, action="BUY", confidence=0.8, reasoning=""),
         ],
     )
     veto = ConsensusDecision(
@@ -467,22 +436,16 @@ def test_audit_log_tracks_all_decisions(orchestrator):
         final_confidence=0.0,
         vetoed_by=RoleName.STRATEGIST,
         verdicts=[
-            RoleVerdict(
-                role=RoleName.STRATEGIST, action="VETO", confidence=1.0, reasoning=""
-            ),
+            RoleVerdict(role=RoleName.STRATEGIST, action="VETO", confidence=1.0, reasoning=""),
         ],
     )
 
     orch = ExecutionOrchestrator(paper_executor=PaperExecutor())
 
     # Execute a passing trade
-    orch.evaluate_and_execute(
-        consensus=buy, symbol="BTCUSD", market_price=Decimal("50000")
-    )
+    orch.evaluate_and_execute(consensus=buy, symbol="BTCUSD", market_price=Decimal("50000"))
     # Execute a vetoed trade
-    orch.evaluate_and_execute(
-        consensus=veto, symbol="ETHUSD", market_price=Decimal("3000")
-    )
+    orch.evaluate_and_execute(consensus=veto, symbol="ETHUSD", market_price=Decimal("3000"))
 
     all_entries = orch.get_audit_log()
     assert len(all_entries) == 2
@@ -507,9 +470,7 @@ def test_audit_log_has_gate_results(orchestrator):
         verdicts=[],
     )
 
-    orch.evaluate_and_execute(
-        consensus=consensus, symbol="BTCUSD", market_price=Decimal("50000")
-    )
+    orch.evaluate_and_execute(consensus=consensus, symbol="BTCUSD", market_price=Decimal("50000"))
 
     entries = orch.get_decision_path("BTCUSD")
     assert len(entries) >= 1
@@ -538,23 +499,17 @@ def test_budget_reset_clears_spend(orchestrator):
     )
 
     # First trade exhausts budget
-    orch.evaluate_and_execute(
-        consensus=consensus, symbol="BTCUSD", market_price=Decimal("50000")
-    )
+    orch.evaluate_and_execute(consensus=consensus, symbol="BTCUSD", market_price=Decimal("50000"))
 
     # Second trade should fail
-    result = orch.evaluate_and_execute(
-        consensus=consensus, symbol="ETHUSD", market_price=Decimal("3000")
-    )
+    result = orch.evaluate_and_execute(consensus=consensus, symbol="ETHUSD", market_price=Decimal("3000"))
     assert result.action == "REJECTED"
 
     # Reset budget
     orch.reset_budget()
 
     # Third trade should succeed again
-    result = orch.evaluate_and_execute(
-        consensus=consensus, symbol="SOLUSD", market_price=Decimal("100")
-    )
+    result = orch.evaluate_and_execute(consensus=consensus, symbol="SOLUSD", market_price=Decimal("100"))
     assert result.action == "EXECUTED"
 
 
@@ -612,18 +567,10 @@ def test_high_confidence_consensus(orchestrator):
         final_action="BUY",
         final_confidence=0.95,
         verdicts=[
-            RoleVerdict(
-                role=RoleName.SCREENER, action="BUY", confidence=0.95, reasoning=""
-            ),
-            RoleVerdict(
-                role=RoleName.TACTICAL, action="BUY", confidence=0.95, reasoning=""
-            ),
-            RoleVerdict(
-                role=RoleName.FUNDAMENTAL, action="BUY", confidence=0.95, reasoning=""
-            ),
-            RoleVerdict(
-                role=RoleName.STRATEGIST, action="BUY", confidence=0.95, reasoning=""
-            ),
+            RoleVerdict(role=RoleName.SCREENER, action="BUY", confidence=0.95, reasoning=""),
+            RoleVerdict(role=RoleName.TACTICAL, action="BUY", confidence=0.95, reasoning=""),
+            RoleVerdict(role=RoleName.FUNDAMENTAL, action="BUY", confidence=0.95, reasoning=""),
+            RoleVerdict(role=RoleName.STRATEGIST, action="BUY", confidence=0.95, reasoning=""),
         ],
     )
 

@@ -42,6 +42,8 @@ from tests.integration.conftest import (  # noqa: E402
     stop_disposable_db,
 )
 
+pytestmark = [pytest.mark.integration]
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -1339,8 +1341,10 @@ class TestPaperTrading:
                 "-t",
                 "-A",
                 "-c",
-                "INSERT INTO paper_orders (symbol, side, order_type, qty, status) "
-                "VALUES ('BTCUSD', 'BUY', 'MARKET', 0.5, 'PENDING')",
+                (
+                    "INSERT INTO paper_orders (symbol, side, order_type, qty, status) "
+                    + "VALUES ('BTCUSD', 'BUY', 'MARKET', 0.5, 'PENDING')"
+                ),
             ],
             capture_output=True,
             text=True,
