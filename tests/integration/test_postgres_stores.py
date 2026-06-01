@@ -893,8 +893,7 @@ class TestPortfolioSnapshots:
                 "-t",
                 "-A",
                 "-c",
-                "SELECT total_value FROM portfolio_snapshots "
-                "WHERE exchange = 'bitfinex' ORDER BY snapshot_time DESC LIMIT 1",
+                "SELECT total_value FROM portfolio_snapshots WHERE exchange = 'bitfinex' ORDER BY snapshot_time DESC LIMIT 1",
             ],
             capture_output=True,
             text=True,
