@@ -252,13 +252,27 @@ class PastOnlyCandles:
 
     def __getitem__(self, key):
         if isinstance(key, slice):
-            stop = len(self._candles) if key.stop is None else key.stop
-            if stop > self.current_index + 1:
+            start, stop, step = key.indices(len(self._candles))
+            if step == 0:
+                raise ValueError("slice step cannot be zero")
+
+            # Determine the highest index that would be accessed by this slice.
+            if step > 0:
+                last_index = stop - 1
+            else:
+                last_index = start
+
+            if start > self.current_index or last_index > self.current_index:
                 raise IndexError("strategy attempted to read future candles")
             return self._candles[key]
-        if key > self.current_index:
-            raise IndexError("strategy attempted to read future candles")
-        return self._candles[key]
+
+        if isinstance(key, int):
+            idx = key if key >= 0 else len(self._candles) + key
+            if idx > self.current_index:
+                raise IndexError("strategy attempted to read future candles")
+            return self._candles[key]
+
+        raise TypeError("indices must be integers or slices")
 
 
 # ---------------------------------------------------------------------------
