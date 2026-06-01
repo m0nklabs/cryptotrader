@@ -464,13 +464,16 @@ class ExecutionOrchestrator:
 
             # max_position_size_per_symbol is a quote-currency notional limit.
             max_position = self.exposure_checker.limits.max_position_size_per_symbol
+            proposed_position_value = market_price * position_size
             calc_position_value = market_price * calc_size
-            if max_position is not None and calc_position_value > max_position:
+            if max_position is not None and proposed_position_value > max_position:
                 return GateCheckResult(
                     gate=GateName.RISK_LIMIT,
                     passed=False,
-                    reason=(f"Calculated position value {calc_position_value} " f"exceeds max {max_position}"),
+                    reason=(f"Proposed position value {proposed_position_value} exceeds max {max_position}"),
                     details={
+                        "proposed_size": str(position_size),
+                        "proposed_value": str(proposed_position_value),
                         "calculated_size": str(calc_size),
                         "calculated_value": str(calc_position_value),
                         "max_position_value": str(max_position),
