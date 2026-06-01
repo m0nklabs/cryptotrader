@@ -193,6 +193,7 @@ def apply_migrations(db_url: str, migrations_dir: Path | None = None) -> int:
             capture_output=True,
             text=True,
             timeout=30,
+            env={**os.environ, "PGPASSWORD": DISPOSABLE_DB_PASSWORD},
         )
         if result.returncode != 0:
             raise RuntimeError(f"Migration {mf.name} failed:\n{result.stderr}")
