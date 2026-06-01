@@ -1209,8 +1209,6 @@ class TestValidationPipeline:
         config = WalkForwardConfig(
             train_size_days=7, test_size_days=3, step_size_days=3
         )
-        strategy = SimpleSMAStrategy(fast_period=10, slow_period=30)
-        wf_result = run_walk_forward(strategy, candles, config)
 
         # SMA strategy needs SMA indicators in the dict
         class SMAStrategyWithIndicators(SimpleSMAStrategy):
