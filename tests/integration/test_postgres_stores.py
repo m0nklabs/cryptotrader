@@ -1169,8 +1169,10 @@ class TestTradeHistory:
                 "-t",
                 "-A",
                 "-c",
-                "INSERT INTO trades (trade_id, exchange, symbol, side, quantity, price, quote_qty, order_id, execution_time) "
-                "VALUES ('trade-001', 'bitfinex', 'BTCUSD', 'BUY', 0.5, 40000.0, 20000.0, 'order-001', CURRENT_TIMESTAMP)",
+                (
+                    "INSERT INTO trades (trade_id, exchange, symbol, side, quantity, price, quote_qty, order_id, execution_time) "
+                    + "VALUES ('trade-001', 'bitfinex', 'BTCUSD', 'BUY', 0.5, 40000.0, 20000.0, 'order-001', CURRENT_TIMESTAMP)"
+                ),
             ],
             capture_output=True,
             text=True,
