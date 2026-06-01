@@ -121,9 +121,10 @@ def start_disposable_db(port: int = 5433) -> str:
         )
         raise RuntimeError(
             f"PostgreSQL did not become ready on port {port}.\n{logs.stdout[-500:]}"
-        )
-
-    return DISPOSABLE_DB_URL
+    return (
+        f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}"
+        f"@127.0.0.1:{port}/{DISPOSABLE_DB_NAME}"
+    )
 
 
 def stop_disposable_db() -> None:
