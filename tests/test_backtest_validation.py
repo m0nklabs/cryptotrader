@@ -534,7 +534,7 @@ class TestOutOfSampleValidation:
 
     @pytest.fixture
     def candles(self):
-        return generate_synthetic_candles(n=1000)
+        return generate_synthetic_candles(n=3000)
 
     def test_oos_split_produces_separate_metrics(self, candles):
         """OOS validation reports train and test metrics separately."""
