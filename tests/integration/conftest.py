@@ -167,7 +167,7 @@ def start_disposable_db(port: int = DISPOSABLE_DB_PORT) -> str:
                 f"POSTGRES_DB={DISPOSABLE_DB_NAME}",
                 "-e",
                 "POSTGRES_INITDB_ARGS=--encoding=UTF-8",
-                "postgres:16-alpine",
+                f"postgres:{os.environ.get('PG_VERSION', '16-alpine')}",
             ],
             capture_output=True,
             timeout=30,
