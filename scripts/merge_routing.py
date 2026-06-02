@@ -296,11 +296,9 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
     )
 
 
+# BLOCKED can be stale even when the PR no longer contains conflict markers.
 def resolve_block_status(pr_number: int) -> tuple[bool, str]:
-    """Resolve BLOCKED merge status without attempting automatic merge actions.
-
-    Returns a tuple of (resolved, message) for manual gatekeeper follow-up.
-    """
+    """Resolve BLOCKED merge status without automatic merge actions."""
     # Check if there are actual conflict markers in the files
     rc, out, _ = run_cmd(f"gh pr diff {pr_number}")
     if '"content"' in out or "<<<<<<" in out:
