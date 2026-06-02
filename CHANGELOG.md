@@ -59,6 +59,10 @@
 - Parameterize the backend, frontend, and legacy helper around a Copilot 50k-range default (`50000`, `50176`, `50787`) with documented Hermes 51k-range overrides (`51000`, `51176`, `51787`).
 - Add compose wiring, startup-script defaults, and dedicated systemd templates for Copilot and Hermes stacks while keeping `INGESTION_PORT` reserved for a future standalone market-data daemon.
 
+### Systemd Runtime Repair
+- Fix the Copilot and Hermes system-scope unit templates so they can access repo working directories under `/home/flip` instead of failing at `CHDIR`.
+- Document the runtime prerequisites for those units: a repo-local `.venv` plus installed frontend `node_modules` before enabling the services.
+
 ## 2026-02-05
 ### Multi-Brain AI Architecture (Epic 3 — #205)
 - Add `core/ai/` module skeleton — Role-Based Mixture of Agents architecture
