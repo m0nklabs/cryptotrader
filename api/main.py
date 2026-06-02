@@ -29,7 +29,7 @@ from decimal import Decimal
 from pathlib import Path as FilePath
 from typing import Any, Literal, Optional
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -72,30 +72,43 @@ from core.ratelimit import RateLimitMiddleware
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = FilePath(__file__).resolve().parents[1]
-_runtime_env_loaded = False
 
 
-def _load_runtime_env() -> None:
-    """Load repo-local runtime environment defaults once when needed."""
-    global _runtime_env_loaded
-    if _runtime_env_loaded:
-        return
+def _runtime_env_path() -> FilePath:
+    """Resolve the repo-local runtime environment file path."""
     env_path = os.environ.get("CRYPTOTRADER_ENV_FILE")
-    dotenv_path = FilePath(env_path).expanduser() if env_path else _REPO_ROOT / ".env"
+    return FilePath(env_path).expanduser() if env_path else _REPO_ROOT / ".env"
+
+
+def _load_runtime_env() -> dict[str, str]:
+    """Load repo-local runtime environment defaults and return parsed values."""
+    dotenv_path = _runtime_env_path()
     if dotenv_path.is_file():
         load_dotenv(dotenv_path=dotenv_path, override=False)
-    _runtime_env_loaded = True
+        return {key: value for key, value in dotenv_values(dotenv_path).items() if isinstance(value, str)}
+    return {}
 
 
 def _get_database_url() -> str:
     """Resolve DATABASE_URL from environment or the repo-local .env file."""
     database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        _load_runtime_env()
-        database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL environment variable is required")
-    return database_url
+    if database_url and database_url.strip():
+        return database_url
+
+    runtime_env = _load_runtime_env()
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url and database_url.strip():
+        return database_url
+
+    runtime_database_url = runtime_env.get("DATABASE_URL")
+    if runtime_database_url and runtime_database_url.strip():
+        return runtime_database_url
+
+    runtime_env_path = _runtime_env_path()
+    raise RuntimeError(
+        "DATABASE_URL environment variable is required "
+        f"(checked environment and runtime env file: {runtime_env_path})"
+    )
 
 
 @asynccontextmanager
