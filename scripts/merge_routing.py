@@ -176,31 +176,30 @@ def has_conflicts(pr: dict) -> bool:
 
 
 def count_dep_files(pr: dict) -> int:
-    """Count the number of dependency-related files changed."""
+    """Count the number of dependency manifest files changed."""
     files = pr.get("files", [])
     count = 0
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
         # Only count actual dependency manifest files
-        if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
+        if any(filename == p or filename.endswith("/" + p) for p in DEP_PATHS):
             count += 1
-        elif any(filename.startswith(p) for p in FRONTEND_PATHS):
+        elif filename in FRONTEND_PATHS or any(filename.startswith(p) for p in FRONTEND_PATHS if p.endswith("/")):
             count += 1
     return count
 
 
 def is_limited_scope(pr: dict) -> bool:
-    """Check if PR scope is limited to dependency paths."""
+    """Check if PR scope is limited to dependency manifest files."""
     files = pr.get("files", [])
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
-        # Check if file is in dependency paths
-        if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
-            continue
-        if any(filename.startswith(p) for p in FRONTEND_PATHS):
-            continue
-        # Any non-dependency path makes this false
-        return False
+        # Check if file is a dependency manifest file
+        is_dep_file = any(filename == p or filename.endswith("/" + p) for p in DEP_PATHS)
+        is_frontend_dep = filename in FRONTEND_PATHS or any(filename.startswith(p) for p in FRONTEND_PATHS if p.endswith("/"))
+        
+        if not (is_dep_file or is_frontend_dep):
+            return False  # Any non-dependency file makes this false
     return True  # All files are dependency-related
 
 
@@ -274,8 +273,8 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
             {"check_map": check_map, "ci_pass": ci_pass, "age_days": age_days, "num_files": num_files},
         )
 
-    # Tier 2: Auto-Approve
-    if ci_pass and not dep_conflicts and (age_days >= TIER1_MAX_AGE_DAYS or num_files >= 3):
+    # Tier 2: Auto-Approve (but never for drafts)
+    if ci_pass and not dep_conflicts and not is_draft(pr) and (age_days >= TIER1_MAX_AGE_DAYS or num_files >= 3):
         return MergeRoute(
             pr["number"],
             pr["title"],

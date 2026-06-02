@@ -148,25 +148,25 @@ def count_dep_files(pr: dict) -> int:
     count = 0
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
-        # Explicit dependency manifest and frontend path checking
-        if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
+        # Only count actual dependency manifest files
+        if any(filename == p or filename.endswith("/" + p) for p in DEP_PATHS):
             count += 1
-        elif any(filename.startswith(p) for p in FRONTEND_PATHS):
+        elif filename in FRONTEND_PATHS or any(filename.startswith(p) for p in FRONTEND_PATHS if p.endswith("/")):
             count += 1
     return count
 
 
 def is_limited_scope(pr: dict) -> bool:
-    """Check if PR scope is limited to dependency manifests and frontend paths."""
+    """Check if PR scope is limited to dependency manifest files."""
     files = pr.get("files", [])
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
-        # Explicit check: only dependency manifests and frontend paths allowed
-        if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
-            continue
-        if any(filename.startswith(p) for p in FRONTEND_PATHS):
-            continue
-        return False  # Has non-dependency files
+        # Check if file is a dependency manifest file
+        is_dep_file = any(filename == p or filename.endswith("/" + p) for p in DEP_PATHS)
+        is_frontend_dep = filename in FRONTEND_PATHS or any(filename.startswith(p) for p in FRONTEND_PATHS if p.endswith("/"))
+        
+        if not (is_dep_file or is_frontend_dep):
+            return False  # Any non-dependency file makes this false
     return True  # All files are dependency-related
 
 
@@ -245,7 +245,7 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> dict:
             age_days=age_days,
             num_files=num_files,
         )
-    elif is_dep and ci_pass and not has_conflicts(pr) and age_days < 7 and num_files <= 2 and is_limited_scope(pr):
+    elif is_dep and ci_pass and not has_conflicts(pr) and not is_draft(pr) and age_days < 7 and num_files <= 2 and is_limited_scope(pr):
         # Tier 1: Auto-Merge
         return _classification_result(
             pr,
@@ -257,7 +257,7 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> dict:
             age_days=age_days,
             num_files=num_files,
         )
-    elif ci_pass and not has_conflicts(pr) and (age_days >= 7 or num_files >= 3):
+    elif ci_pass and not has_conflicts(pr) and not is_draft(pr) and (age_days >= 7 or num_files >= 3):
         # Tier 2: Auto-Approve
         return _classification_result(
             pr,
