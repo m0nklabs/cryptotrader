@@ -297,9 +297,9 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
 
 
 def resolve_block_status(pr_number: int) -> tuple[bool, str]:
-    """Resolve BLOCKED merge status without attempting an automatic merge.
+    """Resolve BLOCKED merge status without attempting automatic merge actions.
 
-    Returns (resolved, message).
+    Returns a tuple of (resolved, message) for manual gatekeeper follow-up.
     """
     # Check if there are actual conflict markers in the files
     rc, out, _ = run_cmd(f"gh pr diff {pr_number}")
