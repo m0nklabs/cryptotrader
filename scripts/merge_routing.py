@@ -293,10 +293,7 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
         Action.COMMENT,
         "Does not meet auto-approval criteria",
         {"check_map": check_map, "ci_pass": ci_pass, "age_days": age_days, "num_files": num_files},
-    )
-
-
-# Fallback PRs with passing CI still need manual review when they miss fast-lane criteria.
+    )  # Manual review stays required outside the auto-approve fast lane.
 
 
 # BLOCKED can stay stale after conflict markers disappear from the PR diff.
