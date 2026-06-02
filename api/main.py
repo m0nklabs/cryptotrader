@@ -29,7 +29,11 @@ from decimal import Decimal
 from pathlib import Path as FilePath
 from typing import Any, Literal, Optional
 
-from dotenv import dotenv_values, load_dotenv
+try:
+    from dotenv import dotenv_values, load_dotenv
+except ImportError:  # pragma: no cover
+    dotenv_values = None  # type: ignore
+    load_dotenv = None  # type: ignore
 from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -82,6 +86,8 @@ def _runtime_env_path() -> FilePath:
 
 def _load_runtime_env() -> dict[str, str]:
     """Load repo-local runtime environment defaults and return parsed values."""
+    if load_dotenv is None or dotenv_values is None:  # pragma: no cover
+        return {}
     dotenv_path = _runtime_env_path()
     if dotenv_path.is_file():
         load_dotenv(dotenv_path=str(dotenv_path), override=False)
