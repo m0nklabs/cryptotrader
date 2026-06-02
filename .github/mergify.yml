@@ -144,11 +144,11 @@ pull_request_rules:
         add:
           - copilot
 
-  # ========== Auto-merge ==========
-  # NOTE: Branch deletion after merge is handled by GitHub's repository setting
-  # 'Automatically delete head branches', as the 'delete_head_branch' action is deprecated.
+  # ========== Manual merge gatekeeper ==========
+  # Automatic merge is intentionally disabled while the PR flow is audited.
+  # Mergify may mark candidates, but Flip merges manually.
 
-  - name: auto-merge-dependabot
+  - name: mark-manual-merge-candidate-dependabot
     conditions:
       - author=dependabot[bot]
       - check-success=Backend (ruff + pytest)
@@ -156,10 +156,11 @@ pull_request_rules:
       - -conflict
       - -draft
     actions:
-      merge:
-        method: squash
+      label:
+        add:
+          - ready-for-manual-merge
 
-  - name: auto-merge-copilot
+  - name: mark-manual-merge-candidate-copilot
     conditions:
       - or:
           - author=github-actions[bot]
@@ -184,12 +185,13 @@ pull_request_rules:
       - -label=do-not-merge
       - -label=work-in-progress
     actions:
-      merge:
-        method: squash
+      label:
+        add:
+          - ready-for-manual-merge
 
-  - name: auto-merge-approved
+  - name: mark-manual-merge-candidate-approved
     conditions:
-      - label=automerge
+      - label=manual-approved-by-flip
       - "#approved-reviews-by>=1"
       - check-success=Backend (ruff + pytest)
       - check-success=Pre-commit checks
@@ -198,8 +200,9 @@ pull_request_rules:
       - -draft
       - -label=do-not-merge
     actions:
-      merge:
-        method: squash
+      label:
+        add:
+          - ready-for-manual-merge
 
   - name: request-review-on-ready
     conditions:
