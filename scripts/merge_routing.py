@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Merge routing for dependency PRs in cryptotrader.
-    )
-# BLOCKED can remain stale even after conflict markers disappear from the PR diff.
+
+Routes dependency PRs into a manual gatekeeper lane.
+
 Usage:
     python merge_routing.py [--dry-run] [--pr <number>] [--verbose] [--route-only]
 
@@ -295,7 +296,7 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
     )
 
 
-# BLOCKED can remain stale even after conflict markers disappear from the PR diff.
+# BLOCKED can stay stale after conflict markers disappear from the PR diff.
 def resolve_block_status(pr_number: int) -> tuple[bool, str]:
     """Resolve BLOCKED merge status without automatic merge actions."""
     # Check if there are actual conflict markers in the files
