@@ -85,7 +85,8 @@ def _load_runtime_env() -> dict[str, str]:
     dotenv_path = _runtime_env_path()
     if dotenv_path.is_file():
         load_dotenv(dotenv_path=dotenv_path, override=False)
-        return {key: value for key, value in dotenv_values(dotenv_path).items() if isinstance(value, str)}
+        parsed_values = dotenv_values(dotenv_path)
+        return {key: value for key, value in parsed_values.items() if isinstance(value, str)}
     return {}
 
 
