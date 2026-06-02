@@ -285,14 +285,14 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
             {"check_map": check_map, "ci_pass": ci_pass, "age_days": age_days, "num_files": num_files},
         )
 
-    # Default Tier 3
+    # Fallback Tier 3 for PRs with passing CI that still miss fast-lane criteria.
     return MergeRoute(
         pr["number"],
         pr["title"],
         Tier.TIER_3,
         Action.COMMENT,
         "Does not meet auto-approval criteria",
-        {"check_map": check_map, "ci_pass": ci_pass},
+        {"check_map": check_map, "ci_pass": ci_pass, "age_days": age_days, "num_files": num_files},
     )
 
 

@@ -180,85 +180,107 @@ def get_pr_age_days(pr: dict) -> int:
     return (now - created_dt).days
 
 
+def _classification_result(
+    pr: dict,
+    *,
+    tier: int,
+    action: str,
+    reason: str,
+    ci_pass: bool,
+    check_map: dict[str, str],
+    age_days: int,
+    num_files: int,
+) -> dict:
+    return {
+        "pr": pr,
+        "tier": tier,
+        "action": action,
+        "reason": reason,
+        "ci_pass": ci_pass,
+        "check_map": check_map,
+        "age_days": age_days,
+        "num_files": num_files,
+    }
+
+
 def classify_pr(pr: dict, check_runs: list[dict]) -> dict:
     """Classify a PR for auto-review.
 
     Returns a dict with classification details.
     """
     ci_pass, check_map = check_ci_status(check_runs)
-    age_days = get_pr_age_days(pr)
-    num_files = count_dep_files(pr)
+    age_days, num_files = get_pr_age_days(pr), count_dep_files(pr)
     is_dep = is_dependabot_pr(pr)
 
     if not ci_pass:
-        return {
-            "pr": pr,
-            "tier": 3,
-            "action": "comment",
-            "reason": "CI checks not all passing",
-            "ci_pass": ci_pass,
-            "check_map": check_map,
-            "age_days": age_days,
-            "num_files": num_files,
-        }
+        return _classification_result(
+            pr,
+            tier=3,
+            action="comment",
+            reason="CI checks not all passing",
+            ci_pass=ci_pass,
+            check_map=check_map,
+            age_days=age_days,
+            num_files=num_files,
+        )
     elif has_conflicts(pr):
-        return {
-            "pr": pr,
-            "tier": 3,
-            "action": "comment",
-            "reason": "Merge conflicts detected",
-            "ci_pass": ci_pass,
-            "check_map": check_map,
-            "age_days": age_days,
-            "num_files": num_files,
-        }
+        return _classification_result(
+            pr,
+            tier=3,
+            action="comment",
+            reason="Merge conflicts detected",
+            ci_pass=ci_pass,
+            check_map=check_map,
+            age_days=age_days,
+            num_files=num_files,
+        )
     elif is_draft(pr):
-        return {
-            "pr": pr,
-            "tier": 3,
-            "action": "comment",
-            "reason": "PR is draft",
-            "ci_pass": ci_pass,
-            "check_map": check_map,
-            "age_days": age_days,
-            "num_files": num_files,
-        }
+        return _classification_result(
+            pr,
+            tier=3,
+            action="comment",
+            reason="PR is draft",
+            ci_pass=ci_pass,
+            check_map=check_map,
+            age_days=age_days,
+            num_files=num_files,
+        )
     elif is_dep and ci_pass and not has_conflicts(pr) and age_days < 7 and num_files <= 2 and is_limited_scope(pr):
         # Tier 1: Auto-Merge
-        return {
-            "pr": pr,
-            "tier": 1,
-            "action": "merge",
-            "reason": f"dependabot, CI pass, no conflicts, {age_days}d old, {num_files} file(s)",
-            "ci_pass": ci_pass,
-            "check_map": check_map,
-            "age_days": age_days,
-            "num_files": num_files,
-        }
+        return _classification_result(
+            pr,
+            tier=1,
+            action="merge",
+            reason=f"dependabot, CI pass, no conflicts, {age_days}d old, {num_files} file(s)",
+            ci_pass=ci_pass,
+            check_map=check_map,
+            age_days=age_days,
+            num_files=num_files,
+        )
     elif ci_pass and not has_conflicts(pr) and (age_days >= 7 or num_files >= 3):
         # Tier 2: Auto-Approve
-        return {
-            "pr": pr,
-            "tier": 2,
-            "action": "auto-approve",
-            "reason": f"CI pass, no conflicts, {age_days}d old, {num_files} file(s)",
-            "ci_pass": ci_pass,
-            "check_map": check_map,
-            "age_days": age_days,
-            "num_files": num_files,
-        }
+        return _classification_result(
+            pr,
+            tier=2,
+            action="auto-approve",
+            reason=f"CI pass, no conflicts, {age_days}d old, {num_files} file(s)",
+            ci_pass=ci_pass,
+            check_map=check_map,
+            age_days=age_days,
+            num_files=num_files,
+        )
     else:
         # Tier 3: Manual
-        return {
-            "pr": pr,
-            "tier": 3,
-            "action": "comment",
-            "reason": "Does not meet auto-approval criteria",
-            "ci_pass": ci_pass,
-            "check_map": check_map,
-            "age_days": age_days,
-            "num_files": num_files,
-        }
+        return _classification_result(
+            pr,
+            tier=3,
+            action="comment",
+            reason="Does not meet auto-approval criteria",
+            ci_pass=ci_pass,
+            check_map=check_map,
+            age_days=age_days,
+            num_files=num_files,
+        )
 
 
 def apply_action(pr_class: dict, dry_run: bool = False) -> str:
