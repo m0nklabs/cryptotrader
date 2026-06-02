@@ -171,7 +171,7 @@ pull_request_rules:
           - approved-reviews-by=m0nk1111
       # Copilot Reviewer must NOT have outstanding comments (state != COMMENTED)
       - or:
-          - -review-requested=copilot-pull-request-reviewer[bot]
+          - "-review-requested=copilot-pull-request-reviewer[bot]"
           - "#changes-requested-reviews-by=0"
       # Use Copilot CI check (push-triggered) instead of PR checks (which get blocked)
       - or:

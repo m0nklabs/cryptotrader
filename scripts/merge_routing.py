@@ -109,7 +109,8 @@ def get_open_prs() -> list[dict]:
     if rc != 0:
         print(f"Error getting PRs: {err}", file=sys.stderr)
         return []
-    return json.loads(out)
+    prs = json.loads(out)
+    return [pr for pr in prs if "dependabot" in pr.get("author", {}).get("login", "").lower()]
 
 
 def get_pr_check_runs(pr_number: int) -> list[dict]:
@@ -170,7 +171,7 @@ def is_draft(pr: dict) -> bool:
 
 def has_conflicts(pr: dict) -> bool:
     """Check if PR has merge conflicts."""
-    return pr.get("mergeStateStatus") != "CLEAN"
+    return str(pr.get("mergeStateStatus") or "").upper() == "DIRTY"
 
 
 def count_dep_files(pr: dict) -> int:
@@ -194,8 +195,6 @@ def is_limited_scope(pr: dict) -> bool:
         if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
             continue
         if any(filename.startswith(p) for p in FRONTEND_PATHS):
-            continue
-        if filename.startswith(("core/", "api/", "cex/", "db/")):
             continue
         return False  # non-dependency file found
     return True  # All files are dependency-related

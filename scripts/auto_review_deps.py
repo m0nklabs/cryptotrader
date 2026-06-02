@@ -138,7 +138,7 @@ def is_draft(pr: dict) -> bool:
 
 def has_conflicts(pr: dict) -> bool:
     """Check if PR has merge conflicts."""
-    return pr.get("mergeStateStatus") != "CLEAN"
+    return str(pr.get("mergeStateStatus") or "").upper() == "DIRTY"
 
 
 def count_dep_files(pr: dict) -> int:
@@ -163,9 +163,6 @@ def is_limited_scope(pr: dict) -> bool:
         if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
             continue
         if any(filename.startswith(p) for p in FRONTEND_PATHS):
-            continue
-        # If file is in core/ or api/ but it's a dependency update, still limited
-        if filename.startswith(("core/", "api/", "cex/", "db/")):
             continue
         return False  # Has non-dependency files
     return True  # All files are dependency-related
