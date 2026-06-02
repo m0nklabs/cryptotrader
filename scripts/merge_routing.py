@@ -296,6 +296,9 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
     )
 
 
+# Fallback PRs with passing CI still need manual review when they miss fast-lane criteria.
+
+
 # BLOCKED can stay stale after conflict markers disappear from the PR diff.
 def resolve_block_status(pr_number: int) -> tuple[bool, str]:
     """Resolve BLOCKED merge status without automatic merge actions."""
