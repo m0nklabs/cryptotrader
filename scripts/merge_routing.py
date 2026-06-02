@@ -183,8 +183,6 @@ def count_dep_files(pr: dict) -> int:
             count += 1
         elif any(filename.startswith(p) for p in FRONTEND_PATHS):
             count += 1
-        else:
-            count += 1  # Count all files for simplicity
     return count
 
 
@@ -199,8 +197,8 @@ def is_limited_scope(pr: dict) -> bool:
             continue
         if filename.startswith(("core/", "api/", "cex/", "db/")):
             continue
-        return True
-    return True
+        return False  # non-dependency file found
+    return True  # All files are dependency-related
 
 
 def get_pr_age_days(pr: dict) -> int:
@@ -256,7 +254,14 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
         )
 
     # Tier 1: Auto-Merge
-    if is_dep and ci_pass and not dep_conflicts and age_days < TIER1_MAX_AGE_DAYS and num_files <= TIER1_MAX_DEPS:
+    if (
+        is_dep
+        and ci_pass
+        and not dep_conflicts
+        and age_days < TIER1_MAX_AGE_DAYS
+        and num_files <= TIER1_MAX_DEPS
+        and is_limited_scope(pr)
+    ):
         return MergeRoute(
             pr["number"],
             pr["title"],

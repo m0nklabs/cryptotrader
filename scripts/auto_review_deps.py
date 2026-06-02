@@ -151,8 +151,6 @@ def count_dep_files(pr: dict) -> int:
             count += 1
         elif any(filename.startswith(p) for p in FRONTEND_PATHS):
             count += 1
-        else:
-            count += 1  # Count all files for simplicity
     return count
 
 
@@ -169,7 +167,7 @@ def is_limited_scope(pr: dict) -> bool:
         # If file is in core/ or api/ but it's a dependency update, still limited
         if filename.startswith(("core/", "api/", "cex/", "db/")):
             continue
-        return True  # Has non-dependency files
+        return False  # Has non-dependency files
     return True  # All files are dependency-related
 
 
@@ -211,7 +209,7 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> dict:
         is_dep = is_dependabot_pr(pr)
 
         # Tier 1: Auto-Merge
-        if is_dep and ci_pass and not has_conflicts(pr) and age_days < 7 and num_files <= 2:
+        if is_dep and ci_pass and not has_conflicts(pr) and age_days < 7 and num_files <= 2 and is_limited_scope(pr):
             tier = 1
             action = "merge"
             reason = f"dependabot, CI pass, no conflicts, {age_days}d old, {num_files} file(s)"
