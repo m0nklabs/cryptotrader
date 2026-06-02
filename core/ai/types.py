@@ -200,3 +200,70 @@ class UsageRecord:
     symbol: str = ""
     success: bool = True
     error: str | None = None  # Error message for failed requests
+
+
+# ---------------------------------------------------------------------------
+# Execution / Risk types
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RiskGateResult:
+    """Result of a single risk gate check."""
+
+    gate: str
+    passed: bool
+    reason: str = ""
+    details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RiskDecision:
+    """Complete risk-gate evaluation result for a symbol."""
+
+    symbol: str
+    timeframe: str
+    final_action: SignalAction
+    final_confidence: float
+    gate_results: list[RiskGateResult] = field(default_factory=list)
+    action: str = ""  # "EXECUTED" or "REJECTED"
+    reason: str = ""
+    paper_order: Any = None  # PaperOrder from core.execution.paper
+    market_price: Any = None  # Decimal
+    portfolio_value: Any = None  # Decimal
+    position_size: Any = None  # Decimal
+    position_value: Any = None  # Decimal
+    latency_ms: float = 0.0
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+    verdicts: list[RoleVerdict] = field(default_factory=list)
+    vetoed_by: RoleName | None = None
+    reasoning: str = ""
+
+
+@dataclass
+class PaperOrderIntent:
+    """Intent to create a paper order."""
+
+    symbol: str
+    side: SignalAction
+    qty: Any = None  # Decimal
+    order_type: str = "market"  # "market" or "limit"
+    limit_price: Any = None  # Decimal
+    market_price: Any = None  # Decimal
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AIDecision:
+    """AI decision record (consensus-driven trade decision)."""
+
+    symbol: str
+    timeframe: str
+    final_action: SignalAction
+    final_confidence: float
+    verdicts: list[RoleVerdict] = field(default_factory=list)
+    reasoning: str = ""
+    vetoed_by: RoleName | None = None
+    total_cost_usd: float = 0.0
+    total_latency_ms: float = 0.0
+    created_at: datetime = field(default_factory=datetime.utcnow)

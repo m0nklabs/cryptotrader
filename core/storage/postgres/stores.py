@@ -167,11 +167,11 @@ class PostgresStores(
                         ORDER BY open_time DESC
                     ) AS rn
                 FROM candles
-                WHERE exchange = ANY(:exchanges)
+                                WHERE exchange = ANY(CAST(:exchanges AS text[]))
                   AND timeframe = :timeframe
                   AND (
-                      cardinality(:symbols::text[]) = 0
-                      OR symbol = ANY(:symbols::text[])
+                                            cardinality(CAST(:symbols AS text[])) = 0
+                                            OR symbol = ANY(CAST(:symbols AS text[]))
                   )
             ) t
             WHERE rn = 1

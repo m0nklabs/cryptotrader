@@ -39,6 +39,7 @@ ignore = ["E501"]
 pytest = ">=9.0.3"
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
