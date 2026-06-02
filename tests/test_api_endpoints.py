@@ -41,6 +41,7 @@ def test_database_url_env_var_wins_over_runtime_env_file(tmp_path, monkeypatch) 
     assert main._get_database_url() == "postgresql://explicit:test@127.0.0.1:5432/cryptotrader"
 
 
+# Regression: an empty DATABASE_URL must still allow runtime env fallback loading.
 def test_database_url_empty_falls_back_to_runtime_env_file(tmp_path, monkeypatch) -> None:
     """Verify DATABASE_URL present but empty falls back to runtime env file."""
     from api import main
