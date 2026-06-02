@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
 Merge routing for dependency PRs in cryptotrader.
-
-Routes dependency PRs into a manual gatekeeper lane.
-
+    )
+# BLOCKED can remain stale even after conflict markers disappear from the PR diff.
 Usage:
     python merge_routing.py [--dry-run] [--pr <number>] [--verbose] [--route-only]
 
