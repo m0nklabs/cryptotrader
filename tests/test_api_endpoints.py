@@ -54,6 +54,18 @@ def test_database_url_empty_falls_back_to_runtime_env_file(tmp_path, monkeypatch
     assert main._get_database_url() == "postgresql://fallback:test@127.0.0.1:5432/cryptotrader"
 
 
+def test_database_url_whitespace_only_falls_back_to_runtime_env_file(tmp_path, monkeypatch) -> None:
+    """Verify DATABASE_URL with only whitespace falls back to runtime env file."""
+    from api import main
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("DATABASE_URL=postgresql://whitespace:test@127.0.0.1:5432/cryptotrader\n")
+    monkeypatch.setenv("DATABASE_URL", "   ")  # Whitespace only
+    monkeypatch.setenv("CRYPTOTRADER_ENV_FILE", str(env_file))
+
+    assert main._get_database_url() == "postgresql://whitespace:test@127.0.0.1:5432/cryptotrader"
+
+
 def test_get_candles_latest_uses_default_exchange(api_client) -> None:
     """Verify /candles/latest endpoint uses default exchange when not provided.
 

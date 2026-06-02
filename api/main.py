@@ -97,10 +97,6 @@ def _get_database_url() -> str:
         return database_url
 
     runtime_env = _load_runtime_env()
-    database_url = os.environ.get("DATABASE_URL")
-    if database_url and database_url.strip():
-        return database_url
-
     runtime_database_url = runtime_env.get("DATABASE_URL")
     if runtime_database_url and runtime_database_url.strip():
         return runtime_database_url
