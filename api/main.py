@@ -84,7 +84,7 @@ def _load_runtime_env() -> dict[str, str]:
     """Load repo-local runtime environment defaults and return parsed values."""
     dotenv_path = _runtime_env_path()
     if dotenv_path.is_file():
-        load_dotenv(dotenv_path=dotenv_path, override=False)
+        load_dotenv(dotenv_path=str(dotenv_path), override=False)
         parsed_values = dotenv_values(dotenv_path)
         return {key: value for key, value in parsed_values.items() if isinstance(value, str)}
     return {}
