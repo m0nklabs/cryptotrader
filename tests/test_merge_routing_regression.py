@@ -39,6 +39,21 @@ class TestDependencyFileHandling:
         assert count_dep_files(pr) == 3
         assert auto_count_dep_files(pr) == 3
 
+    def test_frontend_source_files_are_not_dependency_manifests(self):
+        """Frontend source files must not be treated as dependency-only scope."""
+        pr = {
+            "files": [
+                {"filename": "frontend/src/App.tsx"},
+                {"filename": "frontend/package.json"},
+                {"filename": "requirements.txt"},
+            ]
+        }
+
+        assert count_dep_files(pr) == 2
+        assert auto_count_dep_files(pr) == 2
+        assert is_limited_scope(pr) is False
+        assert auto_is_limited_scope(pr) is False
+
     def test_is_limited_scope_false_for_non_dependency(self):
         """Test that is_limited_scope returns False for any non-dependency path."""
         pr = {

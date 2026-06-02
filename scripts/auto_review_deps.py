@@ -48,8 +48,8 @@ DEP_PATHS = {
     "Makefile",
 }
 
-# Frontend paths
-FRONTEND_PATHS = {"frontend/", "frontend/package.json", "frontend/package-lock.json"}
+# Frontend dependency manifests
+FRONTEND_PATHS = {"frontend/package.json", "frontend/package-lock.json"}
 
 # Core dependency paths (major updates to these need manual review)
 CORE_DEPS = {"fastapi", "sqlalchemy", "pydantic", "numpy", "pandas", "uvicorn", "gunicorn"}
@@ -142,16 +142,17 @@ def has_conflicts(pr: dict) -> bool:
     return str(pr.get("mergeStateStatus") or "").upper() == "DIRTY"
 
 
+def _is_dependency_manifest_file(filename: str) -> bool:
+    return any(filename == path or filename.endswith("/" + path) for path in DEP_PATHS) or filename in FRONTEND_PATHS
+
+
 def count_dep_files(pr: dict) -> int:
     """Count the number of dependency manifest files changed."""
     files = pr.get("files", [])
     count = 0
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
-        # Only count actual dependency manifest files
-        if any(filename == p or filename.endswith("/" + p) for p in DEP_PATHS):
-            count += 1
-        elif filename in FRONTEND_PATHS or any(filename.startswith(p) for p in FRONTEND_PATHS if p.endswith("/")):
+        if _is_dependency_manifest_file(filename):
             count += 1
     return count
 
@@ -161,12 +162,8 @@ def is_limited_scope(pr: dict) -> bool:
     files = pr.get("files", [])
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
-        # Check if file is a dependency manifest file
-        is_dep_file = any(filename == p or filename.endswith("/" + p) for p in DEP_PATHS)
-        is_frontend_dep = filename in FRONTEND_PATHS or any(filename.startswith(p) for p in FRONTEND_PATHS if p.endswith("/"))
-        
-        if not (is_dep_file or is_frontend_dep):
-            return False  # Any non-dependency file makes this false
+        if not _is_dependency_manifest_file(filename):
+            return False
     return True  # All files are dependency-related
 
 
@@ -245,7 +242,15 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> dict:
             age_days=age_days,
             num_files=num_files,
         )
-    elif is_dep and ci_pass and not has_conflicts(pr) and not is_draft(pr) and age_days < 7 and num_files <= 2 and is_limited_scope(pr):
+    elif (
+        is_dep
+        and ci_pass
+        and not has_conflicts(pr)
+        and not is_draft(pr)
+        and age_days < 7
+        and num_files <= 2
+        and is_limited_scope(pr)
+    ):
         # Tier 1: Auto-Merge
         return _classification_result(
             pr,
