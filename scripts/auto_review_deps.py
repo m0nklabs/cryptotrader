@@ -330,6 +330,14 @@ def apply_action(pr_class: dict, dry_run: bool = False) -> str:
         run_cmd(f'gh pr comment {pr_num} --body "{comment}"')
         return f"PR #{pr_num}: Added comment (Tier {tier})"
 
+    elif action == "label":
+        label = str(pr_class.get("label") or "draft").strip()
+        if label:
+            labels = [label_info["name"] for label_info in pr.get("labels", [])]
+            if label not in labels:
+                run_cmd(f"gh pr edit {pr_num} --add-label {label}")
+            return f"PR #{pr_num}: Added label {label}"
+
     return f"PR #{pr_num}: No action needed"
 
 
@@ -351,12 +359,14 @@ def run_auto_review(dry_run: bool = False, pr_number: int = None, verbose: bool 
     print(f"\nFound {len(prs)} open dependabot PRs\n")
 
     results = []
+    classifications = []
     for pr in prs:
         # Get check runs
         check_runs = get_pr_check_runs(pr["number"])
 
         # Classify
         pr_class = classify_pr(pr, check_runs)
+        classifications.append(pr_class)
 
         if verbose:
             print(f"PR #{pr['number']}: {pr['title']}")
@@ -380,13 +390,9 @@ def run_auto_review(dry_run: bool = False, pr_number: int = None, verbose: bool 
     for r in results:
         print(f"  {r}")
 
-    # Print tier distribution without recomputing classifications
+    # Print tier distribution from the classifications that were actually applied.
     tiers = {}
-    classifications = []
-    for pr in prs:
-        check_runs = get_pr_check_runs(pr["number"])
-        pr_class = classify_pr(pr, check_runs)
-        classifications.append(pr_class)
+    for pr_class in classifications:
         tier = pr_class["tier"]
         tiers[tier] = tiers.get(tier, 0) + 1
 
