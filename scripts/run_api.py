@@ -13,7 +13,7 @@ Environment:
 
 Examples:
     python scripts/run_api.py
-    python scripts/run_api.py --host 0.0.0.0 --port 8000
+    python scripts/run_api.py --host 0.0.0.0 --port 50000
 """
 
 from __future__ import annotations
@@ -42,8 +42,8 @@ def main() -> int:
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="Port to bind to (default: 8000)",
+        default=int(os.environ.get("PORT", "50000")),
+        help="Port to bind to (default: PORT env var or 50000)",
     )
     parser.add_argument(
         "--reload",

@@ -91,18 +91,23 @@ git clone https://github.com/m0nklabs/cryptotrader.git
 cd cryptotrader
 cp docker-compose.env.example .env
 # Edit .env with your settings
+# Shared DB defaults for both cryptotrader_copilot and ../cryptotrader_hermes:
+# DB_PORT=50432, DB_DATA_PATH=/home/flip/postgres_data/shared, DB_NAME=cryptotrader_dev
+# Copilot app ports: PORT=50000, FRONTEND_PORT=50176, LEGACY_PORT=50787, INGESTION_PORT=50100
+# Hermes app ports: PORT=51000, FRONTEND_PORT=51176, LEGACY_PORT=51787, INGESTION_PORT=51100
 
 # Start all services
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
 # Access services
-# - Frontend: http://localhost:5176
-# - API (FastAPI, used by the frontend proxy): http://localhost:8000
-# - API Docs (FastAPI): http://localhost:8000/docs
-# - Legacy dashboard API (optional dev helper): http://localhost:8787
+# - Shared PostgreSQL for both workspaces: localhost:50432
+# - Copilot API: http://localhost:50000
+# - Copilot Frontend: http://localhost:50176
+# - Copilot Legacy helper: http://localhost:50787
+# - Hermes should use 51000 / 51176 / 51787 for its own app services.
 
 # Seed sample data (optional)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api bash -c "export DATABASE_URL=postgresql://cryptotrader:cryptotrader@postgres:5432/cryptotrader && ./scripts/seed-data.sh"
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api ./scripts/seed-data.sh
 ```
 
 See [docs/DOCKER.md](docs/DOCKER.md) for detailed Docker setup and troubleshooting.
@@ -125,30 +130,35 @@ cp .env.example .env
 pytest
 
 # Start backend
-python -m api.main
+PORT=50000 python scripts/run_api.py --host 0.0.0.0
 
 # (Optional) Start legacy dashboard API (old DB-backed helper)
-python scripts/api_server.py --host 127.0.0.1 --port 8787
+LEGACY_PORT=50787 python scripts/api_server.py --host 127.0.0.1
 
 # Frontend (separate terminal)
-cd frontend && npm install && npm run dev
+cd frontend && npm install && PORT=50000 FRONTEND_PORT=50176 npm run dev -- --host 0.0.0.0 --port 50176 --strictPort
 ```
 
 ### Running as Services (systemd)
 
-For production, run frontend and backend as systemd user services:
+For dual-stack installs on the shared server, use the system-scope templates in `deployment/systemd/`:
 
 ```bash
-# Install frontend service (Vite preview on port 5176)
-cp systemd/cryptotrader-frontend.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now cryptotrader-frontend.service
+# Install Copilot units
+sudo cp deployment/systemd/copilot/*.service /etc/systemd/system/
+
+# Install Hermes units
+sudo cp deployment/systemd/hermes/*.service /etc/systemd/system/
+
+# Reload and start only your own stack
+sudo systemctl daemon-reload
+sudo systemctl enable --now ct-backend-copilot ct-frontend-copilot ct-legacy-copilot
 
 # Check status
-systemctl --user status cryptotrader-frontend.service
+sudo systemctl status ct-backend-copilot ct-frontend-copilot ct-legacy-copilot
 
 # View logs
-journalctl --user -u cryptotrader-frontend.service -f
+journalctl -u ct-backend-copilot -u ct-frontend-copilot -u ct-legacy-copilot -f
 ```
 
 See [docs/OPERATIONS.md](docs/OPERATIONS.md) for full operational details.
@@ -165,7 +175,7 @@ cryptotrader supports ingesting candles for multiple timeframes:
 
 ```bash
 # Set up environment
-export DATABASE_URL="postgresql://user:pass@localhost:5432/cryptotrader"
+export DATABASE_URL="postgresql://user:pass@localhost:50432/cryptotrader_dev"
 
 # Backfill all timeframes for a symbol
 python -m scripts.ingest_multi_timeframe --symbol BTCUSD --start 2024-01-01

@@ -1,0 +1,27 @@
+[Unit]
+Description=CryptoTrader frontend preview (hermes stack)
+After=network-online.target ct-backend-hermes.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=flip
+Group=flip
+WorkingDirectory=/home/flip/cryptotrader_hermes
+EnvironmentFile=/home/flip/cryptotrader_hermes/.env
+Environment=PORT=51000
+Environment=FRONTEND_PORT=51176
+Environment=VITE_API_PROXY_TARGET=http://127.0.0.1:51000
+Environment=NODE_ENV=production
+ExecStartPre=/usr/bin/env npm --prefix /home/flip/cryptotrader_hermes/frontend run build
+ExecStart=/usr/bin/env bash -lc 'exec npm --prefix /home/flip/cryptotrader_hermes/frontend run preview -- --host 0.0.0.0 --port "${FRONTEND_PORT}" --strictPort'
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/flip/cryptotrader_hermes/frontend
+
+[Install]
+WantedBy=multi-user.target

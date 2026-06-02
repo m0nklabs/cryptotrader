@@ -50,6 +50,15 @@
 - Remove repo-local `.github/agents/` copies (`MARK1`, `monks`, `spock`, `trader`) and point the repo documentation at the canonical agents in `/home/flip/github-copilot-config/.github/agents/`.
 - Move the support repos under `related-repos/`, ignore that parent directory in the main repo, and treat `market-data` plus `wallets-data` as cryptotrader-owned sibling repos instead of loose home-root projects.
 
+## 2026-06-02
+### Shared Postgres Defaults
+- Pivot the Docker/Postgres defaults back to a single shared database for `cryptotrader_copilot` and `../cryptotrader_hermes`, using host port `50432`, shared storage at `/home/flip/postgres_data/shared`, and the same default database name.
+- Update the env templates and Docker-facing docs to describe the shared DB container plus the requirement to keep non-DB host ports separated by workspace.
+
+### Dual-Stack App Port Matrix
+- Parameterize the backend, frontend, and legacy helper around a Copilot 50k-range default (`50000`, `50176`, `50787`) with documented Hermes 51k-range overrides (`51000`, `51176`, `51787`).
+- Add compose wiring, startup-script defaults, and dedicated systemd templates for Copilot and Hermes stacks while keeping `INGESTION_PORT` reserved for a future standalone market-data daemon.
+
 ## 2026-02-05
 ### Multi-Brain AI Architecture (Epic 3 — #205)
 - Add `core/ai/` module skeleton — Role-Based Mixture of Agents architecture

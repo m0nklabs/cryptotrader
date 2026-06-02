@@ -1,0 +1,24 @@
+[Unit]
+Description=CryptoTrader legacy dashboard helper (copilot stack)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=flip
+Group=flip
+WorkingDirectory=/home/flip/cryptotrader_copilot
+EnvironmentFile=/home/flip/cryptotrader_copilot/.env
+Environment=PYTHONPATH=/home/flip/cryptotrader_copilot
+Environment=LEGACY_PORT=50787
+ExecStart=/usr/bin/env bash -lc 'exec /home/flip/cryptotrader_copilot/.venv/bin/python /home/flip/cryptotrader_copilot/scripts/api_server.py --host 127.0.0.1 --port "${LEGACY_PORT}"'
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/flip/cryptotrader_copilot
+
+[Install]
+WantedBy=multi-user.target

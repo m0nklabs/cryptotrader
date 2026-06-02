@@ -11,6 +11,12 @@ This document tracks ports used by this repository on the shared server to avoid
 
 | Service | Port | Proto | Notes |
 |--------|------|-------|-------|
-| Frontend dashboard (Vite preview via systemd) | 5176 | TCP | `cryptotrader-frontend.service` |
-| FastAPI backend API (primary, used by frontend proxy) | 8000 | TCP | `python -m api.main` |
-| Legacy dashboard API (optional helper) | 8787 | TCP | `python scripts/api_server.py` |
+| Shared PostgreSQL | 50432 | TCP | Shared DB container for `cryptotrader_copilot` and `../cryptotrader_hermes` |
+| FastAPI backend API (Copilot default) | 50000 | TCP | `scripts/run_api.py`, compose `api`, `ct-backend-copilot.service` |
+| Frontend dashboard (Copilot default) | 50176 | TCP | Vite dev/preview, compose `frontend`, `ct-frontend-copilot.service` |
+| Market data daemon (Copilot reserved) | 50100 | TCP | Reserved for a future standalone ingestion daemon; current repo still uses timer-based ingest workers |
+| Legacy dashboard API (Copilot default) | 50787 | TCP | `scripts/api_server.py`, compose `legacy`, `ct-legacy-copilot.service` |
+| FastAPI backend API (Hermes reserved) | 51000 | TCP | Reserved for `ct-backend-hermes.service` |
+| Frontend dashboard (Hermes reserved) | 51176 | TCP | Reserved for `ct-frontend-hermes.service` |
+| Market data daemon (Hermes reserved) | 51100 | TCP | Reserved for a future standalone ingestion daemon in `../cryptotrader_hermes` |
+| Legacy dashboard API (Hermes reserved) | 51787 | TCP | Reserved for `ct-legacy-hermes.service` |

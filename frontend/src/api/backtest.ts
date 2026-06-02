@@ -63,7 +63,7 @@ export type BacktestResult = {
 // API Functions
 // ---------------------------------------------------------------------------
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 /**
  * List available backtest strategies

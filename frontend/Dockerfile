@@ -13,7 +13,7 @@ RUN npm install
 COPY . .
 
 # Expose Vite dev server port
-EXPOSE 5176
+EXPOSE 50176
 
 # Run Vite dev server
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+CMD ["sh", "-lc", "exec npm run dev -- --host 0.0.0.0 --port ${FRONTEND_PORT:-50176} --strictPort"]

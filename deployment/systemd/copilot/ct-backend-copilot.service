@@ -1,0 +1,24 @@
+[Unit]
+Description=CryptoTrader backend API (copilot stack)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=flip
+Group=flip
+WorkingDirectory=/home/flip/cryptotrader_copilot
+EnvironmentFile=/home/flip/cryptotrader_copilot/.env
+Environment=PYTHONPATH=/home/flip/cryptotrader_copilot
+Environment=PORT=50000
+ExecStart=/usr/bin/env bash -lc 'exec /home/flip/cryptotrader_copilot/.venv/bin/python /home/flip/cryptotrader_copilot/scripts/run_api.py --host 0.0.0.0 --port "${PORT}"'
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/flip/cryptotrader_copilot
+
+[Install]
+WantedBy=multi-user.target

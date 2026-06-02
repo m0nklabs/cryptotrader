@@ -6,15 +6,18 @@ services:
     container_name: cryptotrader-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-cryptotrader}
-      POSTGRES_USER: ${POSTGRES_USER:-cryptotrader}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cryptotrader}
+      POSTGRES_DB: ${DB_NAME:-cryptotrader_dev}
+      POSTGRES_USER: ${DB_USER:-cryptotrader}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cryptotrader}
     ports:
       # Bind to all interfaces so external clients (e.g. Copilot agent) can connect.
       # IMPORTANT: Ensure strong password + firewall/router ACL to trusted IPs only.
-      - "0.0.0.0:5432:5432"
+      # Shared Postgres singleton for both `cryptotrader_copilot` and `../cryptotrader_hermes`.
+      # Both workspaces must use the same DB_PORT, DB_DATA_PATH, and DB_NAME values.
+      # Keep non-DB host ports separate: prefer 50xxx for Copilot and 51xxx for Hermes.
+      - "0.0.0.0:${DB_PORT:-50432}:5432"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ${DB_DATA_PATH:-/home/flip/postgres_data/shared}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
