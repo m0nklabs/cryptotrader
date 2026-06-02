@@ -296,7 +296,7 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
     )
 
 
-# BLOCKED can remain stale even when the PR no longer contains conflict markers.
+# BLOCKED can remain stale even after conflict markers disappear from the PR diff.
 def resolve_block_status(pr_number: int) -> tuple[bool, str]:
     """Resolve BLOCKED merge status without automatic merge actions."""
     # Check if there are actual conflict markers in the files
