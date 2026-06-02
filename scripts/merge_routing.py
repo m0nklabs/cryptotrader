@@ -300,8 +300,8 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
 def resolve_block_status(pr_number: int) -> tuple[bool, str]:
     """Resolve BLOCKED merge status without automatic merge actions."""
     # Check if there are actual conflict markers in the files
-    rc, out, _ = run_cmd(f"gh pr diff {pr_number}")
-    has_conflict_markers = '"content"' in out or "<<<<<<" in out
+    rc, diff_output, _ = run_cmd(f"gh pr diff {pr_number}")
+    has_conflict_markers = '"content"' in diff_output or "<<<<<<" in diff_output
     if has_conflict_markers:
         return False, f"PR #{pr_number} has real conflict markers and must be resolved by a human before manual merge."
     else:
