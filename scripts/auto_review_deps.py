@@ -72,6 +72,7 @@ def get_open_dependabot_prs() -> list[dict]:
         return []
 
     prs = json.loads(out)
+    # Explicit dependabot-only filtering
     return [p for p in prs if "dependabot" in p.get("author", {}).get("login", "")]
 
 
@@ -137,16 +138,17 @@ def is_draft(pr: dict) -> bool:
 
 
 def has_conflicts(pr: dict) -> bool:
-    """Check if PR has merge conflicts."""
+    """Check if PR has merge conflicts (DIRTY status only)."""
     return str(pr.get("mergeStateStatus") or "").upper() == "DIRTY"
 
 
 def count_dep_files(pr: dict) -> int:
-    """Count the number of dependency-related files changed."""
+    """Count the number of dependency manifest files changed."""
     files = pr.get("files", [])
     count = 0
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
+        # Explicit dependency manifest and frontend path checking
         if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
             count += 1
         elif any(filename.startswith(p) for p in FRONTEND_PATHS):
@@ -155,11 +157,11 @@ def count_dep_files(pr: dict) -> int:
 
 
 def is_limited_scope(pr: dict) -> bool:
-    """Check if PR scope is limited to dependency paths."""
+    """Check if PR scope is limited to dependency manifests and frontend paths."""
     files = pr.get("files", [])
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
-        # Check if file is in a dependency-related path
+        # Explicit check: only dependency manifests and frontend paths allowed
         if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
             continue
         if any(filename.startswith(p) for p in FRONTEND_PATHS):
@@ -184,60 +186,79 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> dict:
     Returns a dict with classification details.
     """
     ci_pass, check_map = check_ci_status(check_runs)
-    tier = 3  # Default to manual
-    action = "none"
-    reason = ""
+    age_days = get_pr_age_days(pr)
+    num_files = count_dep_files(pr)
+    is_dep = is_dependabot_pr(pr)
 
     if not ci_pass:
-        tier = 3
-        action = "comment"
-        reason = "CI checks not all passing"
+        return {
+            "pr": pr,
+            "tier": 3,
+            "action": "comment",
+            "reason": "CI checks not all passing",
+            "ci_pass": ci_pass,
+            "check_map": check_map,
+            "age_days": age_days,
+            "num_files": num_files,
+        }
     elif has_conflicts(pr):
-        tier = 3
-        action = "comment"
-        reason = "Merge conflicts detected"
+        return {
+            "pr": pr,
+            "tier": 3,
+            "action": "comment",
+            "reason": "Merge conflicts detected",
+            "ci_pass": ci_pass,
+            "check_map": check_map,
+            "age_days": age_days,
+            "num_files": num_files,
+        }
     elif is_draft(pr):
-        tier = 3
-        action = "label"
-        reason = "PR is draft"
-    else:
-        age_days = get_pr_age_days(pr)
-        num_files = count_dep_files(pr)
-        is_dep = is_dependabot_pr(pr)
-
+        return {
+            "pr": pr,
+            "tier": 3,
+            "action": "comment",
+            "reason": "PR is draft",
+            "ci_pass": ci_pass,
+            "check_map": check_map,
+            "age_days": age_days,
+            "num_files": num_files,
+        }
+    elif is_dep and ci_pass and not has_conflicts(pr) and age_days < 7 and num_files <= 2 and is_limited_scope(pr):
         # Tier 1: Auto-Merge
-        if is_dep and ci_pass and not has_conflicts(pr) and age_days < 7 and num_files <= 2 and is_limited_scope(pr):
-            tier = 1
-            action = "merge"
-            reason = f"dependabot, CI pass, no conflicts, {age_days}d old, {num_files} file(s)"
-
+        return {
+            "pr": pr,
+            "tier": 1,
+            "action": "merge",
+            "reason": f"dependabot, CI pass, no conflicts, {age_days}d old, {num_files} file(s)",
+            "ci_pass": ci_pass,
+            "check_map": check_map,
+            "age_days": age_days,
+            "num_files": num_files,
+        }
+    elif ci_pass and not has_conflicts(pr) and (age_days >= 7 or num_files >= 3):
         # Tier 2: Auto-Approve
-        elif ci_pass and not has_conflicts(pr):
-            if age_days >= 7 or num_files >= 3:
-                tier = 2
-                action = "auto-approve"
-                reason = f"CI pass, no conflicts, {age_days}d old, {num_files} file(s)"
-            else:
-                tier = 2
-                action = "auto-approve"
-                reason = f"CI pass, no conflicts, {age_days}d old"
-
+        return {
+            "pr": pr,
+            "tier": 2,
+            "action": "auto-approve",
+            "reason": f"CI pass, no conflicts, {age_days}d old, {num_files} file(s)",
+            "ci_pass": ci_pass,
+            "check_map": check_map,
+            "age_days": age_days,
+            "num_files": num_files,
+        }
+    else:
         # Tier 3: Manual
-        else:
-            tier = 3
-            action = "comment"
-            reason = "Does not meet auto-approval criteria"
-
-    return {
-        "pr": pr,
-        "tier": tier,
-        "action": action,
-        "reason": reason,
-        "ci_pass": ci_pass,
-        "check_map": check_map,
-        "age_days": get_pr_age_days(pr),
-        "num_files": count_dep_files(pr),
-    }
+        return {
+            "pr": pr,
+            "tier": 3,
+            "action": "comment",
+            "reason": "Does not meet auto-approval criteria",
+            "ci_pass": ci_pass,
+            "check_map": check_map,
+            "age_days": age_days,
+            "num_files": num_files,
+        }
 
 
 def apply_action(pr_class: dict, dry_run: bool = False) -> str:
@@ -269,11 +290,15 @@ def apply_action(pr_class: dict, dry_run: bool = False) -> str:
         return f"PR #{pr_num}: Ready for manual merge review"
 
     elif action == "comment":
-        # Add a comment
-        comment = f"🤖 Auto-review: Tier {tier} - {reason}\n\n"
-        comment += f"CI pass: {pr_class['ci_pass']}\n"
-        comment += f"Age: {pr_class['age_days']} days\n"
-        comment += f"Files changed: {pr_class['num_files']}\n"
+        # Add a comment - explicit draft handling
+        if is_draft(pr):
+            comment = f"🤖 Auto-review: Tier {tier} - Draft PR detected\n\n"
+            comment += "This PR is in draft status and will not be auto-approved.\n"
+        else:
+            comment = f"🤖 Auto-review: Tier {tier} - {reason}\n\n"
+            comment += f"CI pass: {pr_class['ci_pass']}\n"
+            comment += f"Age: {pr_class['age_days']} days\n"
+            comment += f"Files changed: {pr_class['num_files']}\n"
 
         run_cmd(f'gh pr comment {pr_num} --body "{comment}"')
         return f"PR #{pr_num}: Added comment (Tier {tier})"
@@ -328,15 +353,15 @@ def run_auto_review(dry_run: bool = False, pr_number: int = None, verbose: bool 
     for r in results:
         print(f"  {r}")
 
-    # Print tier distribution
+    # Print tier distribution without recomputing classifications
     tiers = {}
-    for r in results:
-        for i, pr in enumerate(prs):
-            if f"PR #{pr['number']}" in r:
-                pr_class = classify_pr(pr, get_pr_check_runs(pr["number"]))
-                tier = pr_class["tier"]
-                tiers[tier] = tiers.get(tier, 0) + 1
-                break
+    classifications = []
+    for pr in prs:
+        check_runs = get_pr_check_runs(pr["number"])
+        pr_class = classify_pr(pr, check_runs)
+        classifications.append(pr_class)
+        tier = pr_class["tier"]
+        tiers[tier] = tiers.get(tier, 0) + 1
 
     print(f"\nTier distribution: {tiers}")
     print(f"  Tier 1 (Manual-ready): {tiers.get(1, 0)}")

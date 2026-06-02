@@ -101,7 +101,7 @@ def run_cmd(cmd: str, cwd=None) -> tuple[int, str, str]:
 
 
 def get_open_prs() -> list[dict]:
-    """Get all open PRs with details."""
+    """Get all open dependabot PRs with details."""
     rc, out, err = run_cmd(
         "gh pr list --state open --json number,title,author,createdAt,updatedAt,state,"
         "mergeStateStatus,labels,commits,statusCheckRollup,files,isDraft,body"
@@ -110,6 +110,7 @@ def get_open_prs() -> list[dict]:
         print(f"Error getting PRs: {err}", file=sys.stderr)
         return []
     prs = json.loads(out)
+    # Filter to dependabot PRs only
     return [pr for pr in prs if "dependabot" in pr.get("author", {}).get("login", "").lower()]
 
 
@@ -180,6 +181,7 @@ def count_dep_files(pr: dict) -> int:
     count = 0
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
+        # Only count actual dependency manifest files
         if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
             count += 1
         elif any(filename.startswith(p) for p in FRONTEND_PATHS):
@@ -192,11 +194,13 @@ def is_limited_scope(pr: dict) -> bool:
     files = pr.get("files", [])
     for f in files:
         filename = f.get("filename", "") if isinstance(f, dict) else str(f)
+        # Check if file is in dependency paths
         if any(filename.startswith(p) or filename.endswith(p) for p in DEP_PATHS):
             continue
         if any(filename.startswith(p) for p in FRONTEND_PATHS):
             continue
-        return False  # non-dependency file found
+        # Any non-dependency path makes this false
+        return False
     return True  # All files are dependency-related
 
 
@@ -247,7 +251,7 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
             pr["number"],
             pr["title"],
             Tier.TIER_3,
-            Action.AUTO_APPROVE,
+            Action.COMMENT,
             "PR is draft",
             {"check_map": check_map, "ci_pass": ci_pass},
         )
@@ -271,25 +275,15 @@ def classify_pr(pr: dict, check_runs: list[dict]) -> MergeRoute:
         )
 
     # Tier 2: Auto-Approve
-    if ci_pass and not dep_conflicts:
-        if age_days >= TIER1_MAX_AGE_DAYS or num_files >= 3:
-            return MergeRoute(
-                pr["number"],
-                pr["title"],
-                Tier.TIER_2,
-                Action.AUTO_APPROVE,
-                f"CI pass, no conflicts, {age_days}d old, {num_files} file(s)",
-                {"check_map": check_map, "ci_pass": ci_pass, "age_days": age_days, "num_files": num_files},
-            )
-        else:
-            return MergeRoute(
-                pr["number"],
-                pr["title"],
-                Tier.TIER_2,
-                Action.AUTO_APPROVE,
-                f"CI pass, no conflicts, {age_days}d old",
-                {"check_map": check_map, "ci_pass": ci_pass, "age_days": age_days},
-            )
+    if ci_pass and not dep_conflicts and (age_days >= TIER1_MAX_AGE_DAYS or num_files >= 3):
+        return MergeRoute(
+            pr["number"],
+            pr["title"],
+            Tier.TIER_2,
+            Action.AUTO_APPROVE,
+            f"CI pass, no conflicts, {age_days}d old, {num_files} file(s)",
+            {"check_map": check_map, "ci_pass": ci_pass, "age_days": age_days, "num_files": num_files},
+        )
 
     # Default Tier 3
     return MergeRoute(
@@ -339,6 +333,7 @@ def apply_merge_route(route: MergeRoute, dry_run: bool = False) -> str:
         return f"PR #{pr_num}: Ready for manual merge review - {route.reason}"
 
     elif route.action == Action.AUTO_APPROVE:
+        # Never auto-approve drafts - they should be COMMENT action
         labels = [label["name"] for label in pr_get_labels(pr_num)]
         if MANUAL_MERGE_LABEL not in labels:
             run_cmd(f"gh pr edit {pr_num} --add-label {MANUAL_MERGE_LABEL}")
