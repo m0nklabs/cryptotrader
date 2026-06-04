@@ -8,7 +8,7 @@ All timestamps use timezone-aware UTC datetimes for consistency.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Protocol, Sequence
@@ -117,6 +117,33 @@ class CooldownCheck:
             )
 
         return SafetyResult(ok=True, reason="Cooldown period passed")
+
+    def is_cooldown_check_active(self, intent: OrderIntent) -> bool:
+        """Return True if cooldown is currently active for this intent."""
+        result = self.check(intent=intent)
+        return not result.ok
+
+
+class CooldownCheckReference:
+    """Optional reference to a CooldownCheck for unified cooldown tracking.
+
+    When provided, SignalDeduplication defers to this check for cooldown
+    boundary decisions, ensuring both mechanisms agree on whether cooldown
+    is active.
+    """
+
+    def __init__(self, cooldown_check: CooldownCheck) -> None:
+        self.cooldown_check = cooldown_check
+
+    def is_cooldown_active(self, *, intent: OrderIntent) -> bool:
+        """Return True if the referenced CooldownCheck says cooldown is active."""
+        result = self.cooldown_check.check(intent=intent)
+        return not result.ok
+
+    def get_cooldown_reason(self, *, intent: OrderIntent) -> str:
+        """Return the cooldown reason string from the referenced check."""
+        result = self.cooldown_check.check(intent=intent)
+        return result.reason
 
 
 @dataclass
@@ -272,29 +299,42 @@ class SignalDeduplication:
 
     last_signal is a class-level dict so it survives across instances
     (the orchestrator creates a new SignalDeduplication each iteration).
+
+    last_signal_id is a class-level dict for signal ID-based deduplication.
     """
 
-    # Class-level tracking dict — shared across all instances
-    last_signal: dict[str, tuple[str, datetime]] = field(default_factory=dict, init=False, repr=False)
+    # Class-level tracking dicts — shared across all instances
+    _last_signal: dict[str, tuple[str, datetime]] = {}
+    _last_signal_id: dict[str, datetime] = {}
 
     def __init__(
         self,
         config: AutomationConfig,
         trade_history: TradeHistory,
+        cooldown_check: CooldownCheck | None = None,
     ) -> None:
         self.config = config
         self.trade_history = trade_history
-        # Ensure class-level dict exists
+        self.cooldown_check = cooldown_check
+        self.min_edge: Decimal | None = None
+        # Ensure class-level dicts exist
         if not hasattr(SignalDeduplication, "_last_signal"):
-            SignalDeduplication._last_signal: dict[str, tuple[str, datetime]] = {}
+            SignalDeduplication._last_signal = {}
+        if not hasattr(SignalDeduplication, "_last_signal_id"):
+            SignalDeduplication._last_signal_id = {}
         # Alias to class-level for shared state
         self.last_signal = SignalDeduplication._last_signal
 
     @classmethod
+    def clear_all(cls) -> None:
+        """Clear all class-level state. Useful for testing and restart recovery."""
+        cls._last_signal.clear()
+        cls._last_signal_id.clear()
+
+    @classmethod
     def clear_last_signal(cls) -> None:
-        """Clear the shared last_signal dict. Useful for testing."""
-        if hasattr(cls, "_last_signal"):
-            cls._last_signal.clear()
+        """Alias for clear_all. Maintains backward compatibility."""
+        cls.clear_all()
 
     def check(self, *, intent: OrderIntent) -> SafetyResult:
         symbol_config = self.config.get_symbol_config(intent.symbol)
@@ -303,6 +343,11 @@ class SignalDeduplication:
             return SafetyResult(ok=True, reason="No cooldown configured")
 
         last_signal_time = self.trade_history.get_last_trade_time(intent.symbol)
+
+        # If a CooldownCheck reference is provided, use it for cooldown boundary
+        if self.cooldown_check is not None:
+            return self._check_with_cooldown_check(intent, last_signal_time)
+
         if last_signal_time is None:
             # No previous trades yet. Set last_time to current time.
             # place_order will record a trade after this signal passes,
@@ -317,6 +362,23 @@ class SignalDeduplication:
         if time_since_last < cooldown:
             remaining = cooldown - time_since_last
             key = intent.symbol
+
+            # Signal ID dedup: check for duplicate signal_id first
+            if intent.signal_id is not None:
+                sig_key = f"{intent.symbol}:{intent.signal_id}"
+                if sig_key in SignalDeduplication._last_signal_id:
+                    return SafetyResult(
+                        ok=False,
+                        reason=f"Signal deduplication: duplicate signal_id '{intent.signal_id}' for {intent.symbol} — {remaining.total_seconds():.0f}s remaining",
+                    )
+                SignalDeduplication._last_signal_id[sig_key] = datetime.now(timezone.utc)
+                # New signal_id — pass through (first occurrence by ID)
+                self.last_signal[key] = (intent.side, last_signal_time)
+                return SafetyResult(
+                    ok=True,
+                    reason=f"Signal deduplication: first {intent.side} for {intent.symbol} (new signal_id '{intent.signal_id}') — {remaining.total_seconds():.0f}s remaining",
+                )
+
             if key in self.last_signal:
                 last_side, last_time = self.last_signal[key]
                 if last_side == intent.side:
@@ -359,3 +421,61 @@ class SignalDeduplication:
         # will correctly be treated as a fresh start to a new cooldown cycle.
         self.last_signal.pop(intent.symbol, None)
         return SafetyResult(ok=True, reason="Signal deduplication: cooldown passed")
+
+    def _check_with_cooldown_check(
+        self,
+        intent: OrderIntent,
+        last_signal_time: datetime | None,
+    ) -> SafetyResult:
+        """Check with a unified CooldownCheck reference."""
+        symbol_config = self.config.get_symbol_config(intent.symbol)
+
+        if last_signal_time is None:
+            self.last_signal[intent.symbol] = (intent.side, datetime.now(timezone.utc))
+            return SafetyResult(ok=True, reason="No previous trades")
+
+        time_since_last = datetime.now(timezone.utc) - last_signal_time
+        cooldown = timedelta(seconds=symbol_config.cooldown_seconds)
+
+        if time_since_last < cooldown:
+            remaining = cooldown - time_since_last
+            key = intent.symbol
+
+            # Signal ID dedup: check for duplicate signal_id first
+            if hasattr(intent, "signal_id") and intent.signal_id is not None:
+                sig_key = f"{intent.symbol}:{intent.signal_id}"
+                if sig_key in SignalDeduplication._last_signal_id:
+                    return SafetyResult(
+                        ok=False,
+                        reason=f"Signal deduplication: duplicate signal_id '{intent.signal_id}' for {intent.symbol} — {remaining.total_seconds():.0f}s remaining",
+                    )
+                SignalDeduplication._last_signal_id[sig_key] = datetime.now(timezone.utc)
+
+            if key in self.last_signal:
+                last_side, last_time = self.last_signal[key]
+                if last_side == intent.side:
+                    if last_time > last_signal_time:
+                        self.last_signal[key] = (intent.side, last_signal_time)
+                        return SafetyResult(
+                            ok=True,
+                            reason=f"Signal deduplication (unified): first {intent.side} for {intent.symbol} within cooldown — {remaining.total_seconds():.0f}s remaining",
+                        )
+                    return SafetyResult(
+                        ok=False,
+                        reason=f"Signal deduplication (unified): duplicate {intent.side} for {intent.symbol} — {remaining.total_seconds():.0f}s remaining since last {last_side}",
+                    )
+                self.last_signal[key] = (intent.side, last_signal_time)
+                return SafetyResult(
+                    ok=True,
+                    reason=f"Signal deduplication (unified): {intent.side} for {intent.symbol} (different from last {last_side}) — {remaining.total_seconds():.0f}s remaining",
+                )
+
+            self.last_signal[key] = (intent.side, last_signal_time)
+            return SafetyResult(
+                ok=True,
+                reason=f"Signal deduplication (unified): first {intent.side} for {intent.symbol} within cooldown — {remaining.total_seconds():.0f}s remaining",
+            )
+
+        # Cooldown passed
+        self.last_signal.pop(intent.symbol, None)
+        return SafetyResult(ok=True, reason="Signal deduplication (unified): cooldown passed")

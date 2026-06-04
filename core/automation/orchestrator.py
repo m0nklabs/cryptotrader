@@ -196,6 +196,12 @@ class StrategyOrchestrator:
         # Update drawdown with current balance
         self.drawdown_monitor.update_balance(self.current_balance)
 
+        # Create CooldownCheck first so SignalDeduplication can reference it
+        cooldown = CooldownCheck(
+            config=self.automation_config,
+            trade_history=self.trade_history,
+        )
+
         return [
             KillSwitchCheck(config=self.automation_config),
             PositionSizeCheck(
@@ -203,13 +209,11 @@ class StrategyOrchestrator:
                 current_position_value=self.positions.get(symbol, Decimal("0")),
                 current_price=current_price,
             ),
-            CooldownCheck(
-                config=self.automation_config,
-                trade_history=self.trade_history,
-            ),
+            cooldown,
             SignalDeduplication(
                 config=self.automation_config,
                 trade_history=self.trade_history,
+                cooldown_check=cooldown,
             ),
             DailyTradeCountCheck(
                 config=self.automation_config,

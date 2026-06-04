@@ -1,0 +1,23 @@
+# CODEOWNERS for cryptotrader
+# These owners will be requested for review when someone opens a PR
+
+# Default owner for everything
+* @m0nk111
+
+# Core trading logic - requires extra review
+/core/execution/ @m0nk111
+/core/portfolio/ @m0nk111
+
+# API and exchange integrations
+/api/ @m0nk111
+
+# Frontend
+/frontend/ @m0nk111
+
+# Infrastructure and CI
+/.github/ @m0nk111
+/.devcontainer/ @m0nk111
+/docker-compose.yml @m0nk111
+
+# Documentation
+/docs/ @m0nk111

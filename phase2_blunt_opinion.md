@@ -40,7 +40,7 @@
 
 **Fixed position size in backtest.** The backtest uses `size=Decimal("1.0")` for all trades. Real-world position sizing varies based on account size, volatility, and signal strength. A fixed size of 1.0 doesn't reflect reality.
 
-**No walk-forward analysis.** The TODO marks this as pending. Without walk-forward analysis, backtest results could be overfitted to the specific time period.
+**Walk-forward analysis implemented.** `core/strategy_eval/walk_forward.py` provides rolling window backtest with train/test splits, warmup separation, OOS decay, and overfitting assessment. 33 walk-forward tests validate correctness.
 
 **Market regime sensitivity.** RSI mean reversion works well in ranging markets but bleeds money in strong trends. The system doesn't have explicit regime detection. A bull market crash could trigger repeated false signals.
 

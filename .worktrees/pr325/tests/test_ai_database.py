@@ -1,0 +1,794 @@
+"""Integration tests for AI database layer.
+
+Tests the full CRUD cycle for:
+- System prompts
+- Role configurations
+- Usage logging
+- Decision logging
+- PromptRegistry DB backend
+
+Requires DATABASE_URL to be set and PostgreSQL running.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import io
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Iterable
+from urllib.parse import urlsplit, urlunsplit
+
+import pytest
+import pytest_asyncio
+
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+
+from core.ai.types import RoleName
+from core.ai.prompts.registry import PromptRegistry
+from db.crud.ai import (
+    create_role_config,
+    get_role_config,
+    get_role_configs,
+    update_role_config,
+    create_prompt,
+    get_prompts,
+    get_active_prompt,
+    activate_prompt,
+    get_next_version,
+    get_daily_usage,
+    log_decision_with_usage,
+    log_usage,
+    get_usage_summary,
+    log_decision,
+    get_decisions,
+)
+from db.models.ai import AIDecision, AIUsageLog
+
+
+def _iter_sql_statements(sql: str) -> Iterable[str]:
+    """Split a SQL script into executable statements.
+
+    Supports:
+    - `--` line comments
+    - quoted strings (single and double quotes)
+
+    This is intentionally simple and designed for our migration SQL (no $$ quoting).
+    """
+
+    buf: list[str] = []
+    in_single = False
+    in_double = False
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+
+        # Handle -- comments (only when not in quotes)
+        if not in_single and not in_double and ch == "-" and i + 1 < len(sql) and sql[i + 1] == "-":
+            while i < len(sql) and sql[i] not in ("\n", "\r"):
+                i += 1
+            continue
+
+        if ch == "'" and not in_double:
+            # Toggle single quote state unless escaped by doubling ''
+            if in_single and i + 1 < len(sql) and sql[i + 1] == "'":
+                buf.append("''")
+                i += 2
+                continue
+            in_single = not in_single
+            buf.append(ch)
+            i += 1
+            continue
+
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            buf.append(ch)
+            i += 1
+            continue
+
+        if ch == ";" and not in_single and not in_double:
+            stmt = "".join(buf).strip()
+            buf = []
+            if stmt:
+                yield stmt
+            i += 1
+            continue
+
+        buf.append(ch)
+        i += 1
+
+    tail = "".join(buf).strip()
+    if tail:
+        yield tail
+
+
+def _redact_database_url(value: str) -> str:
+    """Redact credentials from a database URL for safe error messages."""
+    normalized = value
+    if "://" not in normalized:
+        normalized = f"postgresql+asyncpg://{normalized}"
+    try:
+        parts = urlsplit(normalized)
+    except ValueError:
+        return "***"
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = "***@" + netloc.split("@", 1)[1]
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
+def _normalize_database_url(database_url: str) -> str:
+    """Normalize DATABASE_URL to an async SQLAlchemy URL.
+
+    Supports:
+    - Bare: host:port/dbname or user:pass@host:port/dbname
+    - postgresql://
+    - postgres://
+    - postgresql+<driver>:// (e.g. psycopg2)
+    - postgresql+asyncpg://
+    """
+    if "://" not in database_url:
+        candidate = f"postgresql+asyncpg://{database_url}"
+        parsed = urlsplit(candidate)
+        if not parsed.netloc or parsed.path in {"", "/"}:
+            raise ValueError(
+                f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
+                "Expected host:port/dbname or user:pass@host:port/dbname"
+            )
+        database_url = candidate
+
+    if database_url.startswith("postgresql+asyncpg://"):
+        return database_url
+    if database_url.startswith("postgresql+"):
+        # Handle postgresql+psycopg2://, postgresql+psycopg://, etc.
+        return "postgresql+asyncpg://" + database_url.split("://", 1)[1]
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+
+    raise ValueError(
+        f"Unsupported DATABASE_URL format: {_redact_database_url(database_url)}. "
+        "Expected postgresql://, postgres://, postgresql+<driver>://, or postgresql+asyncpg://"
+    )
+
+
+def _get_test_database_url() -> str:
+    """Get DATABASE_URL normalized to asyncpg.
+
+    CI may use psycopg2 (sync) URL format, but these tests use SQLAlchemy async.
+    """
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        pytest.skip("DATABASE_URL not set")
+
+    # Convert to async URL if needed
+    # Ensure we always use postgresql+asyncpg:// scheme
+    try:
+        database_url = _normalize_database_url(database_url)
+    except ValueError as exc:
+        pytest.skip(str(exc))
+
+    # Verify asyncpg is importable (required for SQLAlchemy async engine)
+    try:
+        import asyncpg  # noqa: F401
+    except ImportError:
+        pytest.skip("asyncpg not installed — skipping async DB tests")
+
+    return database_url
+
+
+@pytest.fixture(autouse=True)
+def _reset_prompt_registry_state() -> None:
+    """Reset PromptRegistry global state between tests for isolation."""
+    PromptRegistry._prompts = {}
+    PromptRegistry._db_enabled = False
+    PromptRegistry._db_loaded = False
+    PromptRegistry._activation_lock = None
+
+
+def test_redact_database_url_masks_credentials() -> None:
+    assert (
+        _redact_database_url("postgresql+asyncpg://user:pass@localhost:5432/db")
+        == "postgresql+asyncpg://***@localhost:5432/db"
+    )
+
+
+def test_redact_database_url_without_credentials() -> None:
+    assert _redact_database_url("postgresql+asyncpg://localhost:5432/db") == "postgresql+asyncpg://localhost:5432/db"
+
+
+def test_redact_database_url_bare_format() -> None:
+    assert _redact_database_url("user:pass@localhost:5432/db") == "postgresql+asyncpg://***@localhost:5432/db"
+
+
+def test_normalize_database_url_accepts_bare_format() -> None:
+    assert _normalize_database_url("localhost:5432/testdb") == "postgresql+asyncpg://localhost:5432/testdb"
+
+
+@pytest.mark.parametrize("value", ["", "localhost:5432"])
+def test_normalize_database_url_rejects_empty_bare_format(value: str) -> None:
+    with pytest.raises(ValueError):
+        _normalize_database_url(value)
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Create an async database session for testing.
+
+    Creates a fresh engine per test to avoid event-loop cross-contamination
+    under pytest-asyncio strict mode (default loop scope is function).
+
+    Also applies the AI tables migration to the CI-created database.
+    """
+    database_url = _get_test_database_url()
+    engine = create_async_engine(database_url, echo=False)
+
+    migrations_sql_path = Path(__file__).resolve().parents[1] / "db" / "migrations" / "001_ai_tables.sql"
+    migration_sql = migrations_sql_path.read_text(encoding="utf-8")
+
+    async with engine.begin() as conn:
+        # Apply migration (idempotent)
+        for stmt in _iter_sql_statements(migration_sql):
+            await conn.execute(text(stmt))
+
+        # Ensure a clean DB state per test
+        await conn.execute(
+            text("TRUNCATE system_prompts, ai_role_configs, ai_usage_log, ai_decisions RESTART IDENTITY CASCADE")
+        )
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with async_session() as session:
+            # Seed defaults for tests that expect a baseline DB state.
+            from scripts.seed_ai_defaults import seed_role_configs, seed_system_prompts
+
+            # Silence stdout from seed scripts to reduce test log noise
+            with contextlib.redirect_stdout(io.StringIO()):
+                await seed_system_prompts(session)
+                await seed_role_configs(session)
+            yield session
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_role_config_crud(db_session):
+    """Test full CRUD cycle for role configurations."""
+    test_role = "test_screener"
+
+    # Delete if exists (cleanup from previous runs)
+    await db_session.execute(text("DELETE FROM ai_role_configs WHERE name = :name"), {"name": test_role})
+    await db_session.commit()
+
+    try:
+        config = await create_role_config(
+            db_session,
+            name=test_role,
+            provider="deepseek",
+            model="deepseek-chat",
+            temperature=0.0,
+            max_tokens=2048,
+            weight=0.8,
+            enabled=True,
+        )
+
+        assert config.name == test_role
+        assert config.provider == "deepseek"
+        assert config.model == "deepseek-chat"
+        assert abs(config.weight - 0.8) < 0.01  # Floating point comparison
+
+        # Read it back
+        retrieved = await get_role_config(db_session, test_role)
+        assert retrieved is not None
+        assert retrieved.name == test_role
+        assert retrieved.provider == "deepseek"
+
+        # Update it
+        updated = await update_role_config(
+            db_session,
+            test_role,
+            model="deepseek-reasoner",
+            weight=1.5,
+        )
+        assert updated is not None
+        assert updated.model == "deepseek-reasoner"
+        assert abs(updated.weight - 1.5) < 0.01  # Floating point comparison
+
+        # List all configs
+        all_configs = await get_role_configs(db_session)
+        assert len(all_configs) >= 5  # 4 defaults + our test one
+    finally:
+        try:
+            await db_session.execute(text("DELETE FROM ai_role_configs WHERE name = :name"), {"name": test_role})
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_prompt_versioning(db_session):
+    """Test prompt creation, versioning, and activation."""
+    test_role = "test_tactical"
+
+    try:
+        # Get next version (should start at 1 if no prompts exist for this role)
+        next_ver = await get_next_version(db_session, test_role)
+        assert next_ver >= 1
+
+        # Create first prompt
+        prompt1 = await create_prompt(
+            db_session,
+            prompt_id=f"{test_role}_v{next_ver}",
+            role=test_role,
+            version=next_ver,
+            content="Test prompt version 1",
+            description="First test prompt",
+            is_active=True,
+        )
+        assert prompt1.version == next_ver
+        assert prompt1.is_active is True
+
+        # Create second version
+        next_ver2 = await get_next_version(db_session, test_role)
+        assert next_ver2 == next_ver + 1
+
+        prompt2 = await create_prompt(
+            db_session,
+            prompt_id=f"{test_role}_v{next_ver2}",
+            role=test_role,
+            version=next_ver2,
+            content="Test prompt version 2",
+            description="Second test prompt",
+            is_active=False,
+        )
+        assert prompt2.version == next_ver2
+
+        # Get all prompts for the role
+        prompts = await get_prompts(db_session, role=test_role)
+        assert len(prompts) >= 2
+
+        # Get active prompt (should be v1)
+        active = await get_active_prompt(db_session, test_role)
+        assert active is not None
+        assert active.version == next_ver
+
+        # Activate v2
+        activated = await activate_prompt(db_session, prompt2.id)
+        assert activated is not None
+        assert activated.is_active is True
+
+        # Verify v1 is now inactive
+        active_now = await get_active_prompt(db_session, test_role)
+        assert active_now is not None
+        assert active_now.version == next_ver2
+    finally:
+        # Clean up
+        try:
+            await db_session.execute(text("DELETE FROM system_prompts WHERE role = :role"), {"role": test_role})
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_usage_logging(db_session):
+    """Test AI usage logging and summary."""
+    try:
+        # Log some usage
+        usage1 = await log_usage(
+            db_session,
+            role="tactical",
+            provider="deepseek",
+            model="deepseek-reasoner",
+            tokens_in=1000,
+            tokens_out=500,
+            cost_usd=0.005,
+            latency_ms=2500.0,
+            symbol="BTCUSD",
+            success=True,
+        )
+        assert usage1.role == "tactical"
+        assert abs(usage1.cost_usd - 0.005) < 0.001  # Floating point comparison
+
+        await log_usage(
+            db_session,
+            role="tactical",
+            provider="deepseek",
+            model="deepseek-reasoner",
+            tokens_in=800,
+            tokens_out=400,
+            cost_usd=0.004,
+            latency_ms=2000.0,
+            symbol="ETHUSD",
+            success=True,
+        )
+
+        # Get summary for tactical role
+        summary = await get_usage_summary(db_session, role="tactical")
+        assert summary["total_requests"] >= 2
+        assert summary["total_cost"] == pytest.approx(0.009, abs=1e-6)
+        assert summary["success_rate"] > 0.0
+
+        # Get summary for a specific symbol
+        symbol_summary = await get_usage_summary(db_session, symbol="BTCUSD")
+        assert symbol_summary["total_requests"] >= 1
+    finally:
+        # Rollback to avoid polluting database
+        await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_log_decision_with_usage_commits_rows(db_session):
+    """Ensure decision and usage rows commit together."""
+    try:
+        decision = await log_decision_with_usage(
+            db_session,
+            symbol="BTCUSD",
+            timeframe="1h",
+            final_action="BUY",
+            final_confidence=0.75,
+            verdicts=[{"role": "tactical", "action": "BUY", "confidence": 0.8}],
+            reasoning="Test decision",
+            vetoed_by=None,
+            total_cost_usd=0.01,
+            total_latency_ms=123.0,
+            usage_records=[
+                {
+                    "role": "tactical",
+                    "provider": "deepseek",
+                    "model": "deepseek-reasoner",
+                    "tokens_in": 100,
+                    "tokens_out": 50,
+                    "cost_usd": 0.01,
+                    "latency_ms": 123.0,
+                    "symbol": "BTCUSD",
+                    "success": True,
+                    "error": None,
+                }
+            ],
+        )
+        assert decision.id is not None
+
+        decision_count = await db_session.execute(select(func.count()).select_from(AIDecision))
+        usage_count = await db_session.execute(select(func.count()).select_from(AIUsageLog))
+        assert decision_count.scalar_one() == 1
+        assert usage_count.scalar_one() == 1
+    finally:
+        try:
+            await db_session.execute(text("TRUNCATE ai_usage_log, ai_decisions RESTART IDENTITY CASCADE"))
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_log_decision_with_usage_rolls_back_on_failure(db_session):
+    """Ensure invalid usage records roll back decision + usage writes."""
+    with pytest.raises(KeyError):
+        await log_decision_with_usage(
+            db_session,
+            symbol="ETHUSD",
+            timeframe="4h",
+            final_action="SELL",
+            final_confidence=0.65,
+            verdicts=[{"role": "tactical", "action": "SELL", "confidence": 0.7}],
+            reasoning="Bad usage payload",
+            vetoed_by=None,
+            total_cost_usd=0.02,
+            total_latency_ms=321.0,
+            usage_records=[
+                {
+                    "provider": "openai",
+                    "model": "o3-mini",
+                    "tokens_in": 10,
+                    "tokens_out": 5,
+                    "cost_usd": 0.02,
+                    "latency_ms": 321.0,
+                }
+            ],
+        )
+
+    decision_count = await db_session.execute(select(func.count()).select_from(AIDecision))
+    usage_count = await db_session.execute(select(func.count()).select_from(AIUsageLog))
+    assert decision_count.scalar_one() == 0
+    assert usage_count.scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_get_daily_usage_buckets_and_order(db_session):
+    """Validate UTC bucketing, ordering, and success_rate calculations."""
+    base = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+    day_one = base - timedelta(days=1)
+    day_two = base
+
+    db_session.add_all(
+        [
+            AIUsageLog(
+                role="tactical",
+                provider="deepseek",
+                model="deepseek-reasoner",
+                tokens_in=100,
+                tokens_out=50,
+                cost_usd=0.01,
+                latency_ms=100.0,
+                symbol="BTCUSD",
+                success=True,
+                created_at=day_one,
+            ),
+            AIUsageLog(
+                role="tactical",
+                provider="deepseek",
+                model="deepseek-reasoner",
+                tokens_in=200,
+                tokens_out=100,
+                cost_usd=0.02,
+                latency_ms=200.0,
+                symbol="BTCUSD",
+                success=True,
+                created_at=day_two,
+            ),
+            AIUsageLog(
+                role="tactical",
+                provider="deepseek",
+                model="deepseek-reasoner",
+                tokens_in=150,
+                tokens_out=75,
+                cost_usd=0.015,
+                latency_ms=150.0,
+                symbol="BTCUSD",
+                success=False,
+                created_at=day_two,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    rows = await get_daily_usage(db_session, days=3)
+    assert len(rows) == 2
+    assert rows[0]["date"] == day_two.date().isoformat()
+    assert rows[1]["date"] == day_one.date().isoformat()
+    assert rows[0]["success_rate"] == pytest.approx(0.5)
+    assert rows[1]["success_rate"] == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_decision_logging(db_session):
+    """Test AI decision logging and retrieval."""
+    test_symbol = "BTCUSD_TEST"
+    try:
+        # Log a decision
+        decision = await log_decision(
+            db_session,
+            symbol=test_symbol,
+            timeframe="1h",
+            final_action="BUY",
+            final_confidence=0.85,
+            verdicts=[
+                {"role": "tactical", "action": "BUY", "confidence": 0.9},
+                {"role": "fundamental", "action": "NEUTRAL", "confidence": 0.6},
+            ],
+            reasoning="Strong technical setup with neutral fundamentals",
+            total_cost_usd=0.034,
+            total_latency_ms=5000.0,
+        )
+        assert decision.symbol == test_symbol
+        assert decision.final_action == "BUY"
+        assert len(decision.verdicts) == 2
+
+        # Retrieve decisions for the symbol
+        decisions = await get_decisions(db_session, symbol=test_symbol, limit=10)
+        assert len(decisions) >= 1
+
+        # Retrieve BUY decisions
+        buy_decisions = await get_decisions(db_session, action="BUY", limit=10)
+        assert len(buy_decisions) >= 1
+    finally:
+        # Clean up test decisions to avoid DB pollution
+        try:
+            await db_session.execute(
+                text("DELETE FROM ai_decisions WHERE symbol = :symbol"),
+                {"symbol": test_symbol},
+            )
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_prompt_registry_db_backend(db_session):
+    """Test PromptRegistry with DB backend."""
+    # Clear registry first
+    PromptRegistry.clear()
+
+    # Load from DB
+    await PromptRegistry.load_from_db(db_session)
+    assert PromptRegistry.is_db_enabled()
+
+    # Should have loaded the 4 default prompts from the seeded DB
+    tactical = PromptRegistry.get_active(RoleName.TACTICAL)
+    assert tactical is not None
+    assert tactical.role == RoleName.TACTICAL
+    assert tactical.is_active is True
+
+    screener = PromptRegistry.get_active(RoleName.SCREENER)
+    assert screener is not None
+    assert screener.role == RoleName.SCREENER
+
+    # Create a new prompt version via registry
+    new_prompt = await PromptRegistry.create_prompt(
+        db_session,
+        role=RoleName.TACTICAL,
+        content="Test tactical prompt v2",
+        description="Test version",
+        is_active=False,
+    )
+    assert new_prompt.role == RoleName.TACTICAL
+    assert new_prompt.version >= 2
+
+    # Activate the new prompt
+    activated = await PromptRegistry.activate_prompt(db_session, new_prompt.id)
+    assert activated is not None
+    assert activated.is_active is True
+
+    # Verify it's now the active prompt in the registry
+    active = PromptRegistry.get_active(RoleName.TACTICAL)
+    assert active is not None
+    assert active.id == new_prompt.id
+
+    # List all versions for the role
+    versions = PromptRegistry.list_versions(RoleName.TACTICAL)
+    assert len(versions) >= 2  # At least v1 (default) and our new version
+
+    # Clean up
+    PromptRegistry.clear()
+
+
+@pytest.mark.asyncio
+async def test_seed_idempotency(db_session):
+    """Test that seeding is idempotent (can be run multiple times)."""
+    # Get current count of role configs
+    configs_before = await get_role_configs(db_session)
+    prompts_before = await get_prompts(db_session)
+
+    # Import seed functions (project root is already on sys.path via conftest/pytest)
+    from scripts.seed_ai_defaults import seed_role_configs, seed_system_prompts
+
+    # Seed again
+    await seed_system_prompts(db_session)
+    await seed_role_configs(db_session)
+
+    # Get counts after
+    configs_after = await get_role_configs(db_session)
+    prompts_after = await get_prompts(db_session)
+
+    # Should have the same counts (no duplicates)
+    assert len(configs_after) == len(configs_before)
+    assert len(prompts_after) == len(prompts_before)
+
+
+@pytest.mark.asyncio
+async def test_seed_does_not_clobber_existing_configs(db_session):
+    """Test that seeding preserves user modifications to role configs."""
+    from scripts.seed_ai_defaults import seed_role_configs
+
+    # Modify an existing role config (should have been seeded in the fixture)
+    screener_config = await get_role_config(db_session, "screener")
+    assert screener_config is not None
+
+    # Update the config with custom values
+    custom_model = "custom-model-v2"
+    custom_temperature = 0.7
+    custom_weight = 2.5
+
+    await update_role_config(
+        db_session,
+        "screener",
+        model=custom_model,
+        temperature=custom_temperature,
+        weight=custom_weight,
+    )
+
+    # Verify the update
+    updated_config = await get_role_config(db_session, "screener")
+    assert updated_config.model == custom_model
+    assert updated_config.temperature == custom_temperature
+    assert updated_config.weight == custom_weight
+
+    # Run seeding again
+    await seed_role_configs(db_session)
+
+    # Verify user changes are preserved (not clobbered)
+    after_seed_config = await get_role_config(db_session, "screener")
+    assert after_seed_config.model == custom_model, "Seeding clobbered user's model choice"
+    assert after_seed_config.temperature == custom_temperature, "Seeding clobbered user's temperature"
+    assert after_seed_config.weight == custom_weight, "Seeding clobbered user's weight"
+
+
+@pytest.mark.asyncio
+async def test_seed_does_not_clobber_existing_prompts(db_session):
+    """Test that seeding preserves user modifications to prompts."""
+    from scripts.seed_ai_defaults import seed_system_prompts
+
+    # Get an existing prompt
+    tactical_prompts = await get_prompts(db_session, role="tactical")
+    assert len(tactical_prompts) > 0
+
+    # Create a new version of the tactical prompt
+    custom_content = "Custom tactical prompt with user modifications"
+    await create_prompt(
+        db_session,
+        prompt_id="tactical_v2",
+        role="tactical",
+        version=2,
+        content=custom_content,
+        description="User-created custom tactical prompt",
+        is_active=False,
+    )
+
+    # Activate the new prompt (this will automatically deactivate tactical_v1)
+    await activate_prompt(db_session, "tactical_v2")
+
+    # Run seeding again
+    await seed_system_prompts(db_session)
+
+    # Verify the custom prompt still exists
+    tactical_prompts_after = await get_prompts(db_session, role="tactical")
+    custom_prompt_exists = any(p.id == "tactical_v2" and p.content == custom_content for p in tactical_prompts_after)
+    assert custom_prompt_exists, "Seeding removed user's custom prompt"
+
+    # Verify custom prompt is still active
+    active_prompt = await get_active_prompt(db_session, "tactical")
+    assert active_prompt is not None
+    assert active_prompt.id == "tactical_v2", "Seeding changed the active prompt"
+
+
+@pytest.mark.asyncio
+async def test_seed_ensures_one_active_prompt_per_role(db_session):
+    """Test that each role has exactly one active prompt after seeding."""
+    from scripts.seed_ai_defaults import seed_system_prompts
+    from core.ai.types import RoleName
+
+    # Seed prompts
+    await seed_system_prompts(db_session)
+
+    # Check each role has exactly one active prompt
+    for role in list(RoleName):
+        role_prompts = await get_prompts(db_session, role=role.value)
+        active_prompts = [p for p in role_prompts if p.is_active]
+
+        assert (
+            len(active_prompts) == 1
+        ), f"Role {role.value} should have exactly 1 active prompt, found {len(active_prompts)}"
+
+        # Also verify get_active_prompt works
+        active_prompt = await get_active_prompt(db_session, role.value)
+        assert active_prompt is not None, f"Role {role.value} has no active prompt via get_active_prompt"
+        assert active_prompt.is_active, f"Active prompt for {role.value} is not marked as active"
+
+
+@pytest.mark.asyncio
+async def test_seed_creates_all_default_roles(db_session):
+    """Test that seeding creates configs for all 4 roles."""
+    from scripts.seed_ai_defaults import seed_role_configs
+    from core.ai.types import RoleName
+
+    # Clear existing configs for this test
+    await db_session.execute(text("DELETE FROM ai_role_configs"))
+    await db_session.commit()
+
+    # Seed role configs
+    await seed_role_configs(db_session)
+
+    # Verify all 4 roles have configs
+    configs = await get_role_configs(db_session)
+    config_names = {c.name for c in configs}
+
+    assert RoleName.SCREENER.value in config_names, "Missing SCREENER config"
+    assert RoleName.TACTICAL.value in config_names, "Missing TACTICAL config"
+    assert RoleName.FUNDAMENTAL.value in config_names, "Missing FUNDAMENTAL config"
+    assert RoleName.STRATEGIST.value in config_names, "Missing STRATEGIST config"
+    assert len(configs) == 4, f"Expected 4 role configs, found {len(configs)}"

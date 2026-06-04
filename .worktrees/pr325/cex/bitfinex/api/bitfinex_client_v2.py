@@ -1,0 +1,775 @@
+"""
+Bitfinex API v2 Client - REST API Implementation
+=================================================
+
+Pure REST API client using requests library only.
+Provides backwards-compatible interface without external dependencies.
+
+Features:
+- Public API (tickers, orderbook, trades, candles)
+- Authenticated API (wallets, orders, trades)
+- Built on requests library only (no bfxapi dependency)
+
+Usage:
+    from bitfinex_client_v2 import BitfinexClient
+
+    client = BitfinexClient(api_key="...", api_secret="...")
+    wallets = client.get_wallets()
+    ticker = client.get_ticker("tBTCUSD")
+"""
+
+import logging
+import os
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
+
+import requests
+
+from .auth import build_auth_headers
+
+
+logger = logging.getLogger(__name__)
+
+
+class BitfinexClient:
+    """
+    Bitfinex API v2 REST Client
+
+    Pure REST API implementation using requests library.
+    Provides simple interface for both public and authenticated endpoints.
+    """
+
+    BASE_URL = "https://api-pub.bitfinex.com/v2"
+
+    def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None):
+        """
+        Initialize Bitfinex client.
+
+        Args:
+            api_key: API key for authenticated endpoints (optional for public API)
+            api_secret: API secret for authenticated endpoints (optional for public API)
+        """
+        self.api_key = (
+            api_key
+            or os.getenv("BITFINEX_API_KEY")
+            or os.getenv("BITFINEX_API_KEY_SUB")
+            or os.getenv("BITFINEX_API_KEY_MAIN")
+            or os.getenv("BITFINEX_API_KEY_TEST")
+        )
+        self.api_secret = (
+            api_secret
+            or os.getenv("BITFINEX_API_SECRET")
+            or os.getenv("BITFINEX_API_SECRET_SUB")
+            or os.getenv("BITFINEX_API_SECRET_MAIN")
+            or os.getenv("BITFINEX_API_SECRET_TEST")
+        )
+
+    # ==================== Public API Methods ====================
+
+    def get_trading_pairs(self) -> List[str]:
+        """
+        Get all available trading pairs on Bitfinex.
+
+        Returns:
+            List of trading pair symbols (e.g., ['BTCUSD', 'ETHUSD', 'LTCBTC', ...])
+
+        Example:
+            >>> client = BitfinexClient()
+            >>> pairs = client.get_trading_pairs()
+            >>> print(f"Found {len(pairs)} trading pairs")
+            Found 400+ trading pairs
+        """
+        try:
+            # Public API endpoint - no auth needed
+            response = requests.get("https://api-pub.bitfinex.com/v2/conf/pub:list:pair:exchange", timeout=10)
+            response.raise_for_status()
+
+            # Response format: [[pairs...]]
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+                return data[0]
+
+            return []
+
+        except Exception as e:
+            print(f"Error fetching Bitfinex trading pairs: {e}")
+            return []
+
+    def extract_unique_coins(self, trading_pairs: List[str]) -> List[str]:
+        """
+        Extract unique base coins from trading pair symbols.
+
+        Args:
+            trading_pairs: List of trading symbols (e.g., ['BTCUSD', 'ETHUSD', 'BTC:USD'])
+
+        Returns:
+            Sorted list of unique coin symbols (e.g., ['BTC', 'ETH', 'LTC', 'USD', ...])
+
+        Example:
+            >>> pairs = ['BTCUSD', 'ETHUSD', 'LTCBTC', 'XMR:USD']
+            >>> coins = client.extract_unique_coins(pairs)
+            >>> print(coins)
+            ['BTC', 'ETH', 'LTC', 'USD', 'XMR']
+        """
+        coins = set()
+
+        for pair in trading_pairs:
+            # Handle both formats: "BTCUSD" and "BTC:USD"
+            if ":" in pair:
+                parts = pair.split(":")
+                coins.update(parts)
+            else:
+                # Try to split by known quote currencies
+                quote_currencies = ["USD", "USDT", "EUR", "GBP", "JPY", "BTC", "ETH", "UST"]
+
+                for quote in quote_currencies:
+                    if pair.endswith(quote):
+                        base = pair[: -len(quote)]
+                        if base and base != quote:  # Ensure base is not empty or same as quote
+                            coins.add(base)
+                            coins.add(quote)
+                        break
+
+        return sorted(list(coins))
+
+    def get_ticker(self, symbol: str) -> Dict[str, Any]:
+        """
+        Get ticker for a trading pair.
+
+        Args:
+            symbol: Trading pair symbol (e.g., 'tBTCUSD')
+
+        Returns:
+            Dict with ticker data (bid, ask, last_price, volume, etc.)
+
+        Example:
+            >>> client = BitfinexClient()
+            >>> ticker = client.get_ticker('tBTCUSD')
+            >>> print(f"BTC/USD: ${ticker['last_price']:.2f}")
+        """
+        try:
+            # Ensure symbol starts with 't'
+            if not symbol.startswith("t"):
+                symbol = "t" + symbol
+
+            response = requests.get(f"{self.BASE_URL}/ticker/{symbol}", timeout=10)
+            response.raise_for_status()
+
+            # Response format: [BID, BID_SIZE, ASK, ASK_SIZE, DAILY_CHANGE, DAILY_CHANGE_RELATIVE, LAST_PRICE, VOLUME, HIGH, LOW]
+            data = response.json()
+
+            return {
+                "symbol": symbol,
+                "bid": float(data[0]),
+                "bid_size": float(data[1]),
+                "ask": float(data[2]),
+                "ask_size": float(data[3]),
+                "daily_change": float(data[4]),
+                "daily_change_relative": float(data[5]),
+                "last_price": float(data[6]),
+                "volume": float(data[7]),
+                "high": float(data[8]),
+                "low": float(data[9]),
+            }
+
+        except Exception as e:
+            print(f"Error fetching ticker for {symbol}: {e}")
+            # Return empty dict with symbol
+            return {"symbol": symbol, "bid": 0.0, "ask": 0.0, "last_price": 0.0, "error": str(e)}
+
+    def get_tickers(self, symbols: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get tickers for multiple trading pairs.
+
+        Args:
+            symbols: List of trading pair symbols (e.g., ['tBTCUSD', 'tETHUSD'])
+
+        Returns:
+            List of ticker dicts
+        """
+        if not symbols:
+            return []
+
+        normalized = [s if s.startswith("t") else f"t{s}" for s in symbols]
+        response = requests.get(
+            f"{self.BASE_URL}/tickers",
+            params={"symbols": ",".join(normalized)},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        tickers = []
+        for entry in data:
+            if isinstance(entry, list) and len(entry) > 9:
+                tickers.append(
+                    {
+                        "symbol": entry[0],
+                        "bid": float(entry[1]),
+                        "ask": float(entry[3]),
+                        "last_price": float(entry[7]),
+                        "volume": float(entry[8]),
+                        "daily_change": float(entry[5]),
+                        "daily_change_relative": float(entry[6]),
+                    }
+                )
+        return tickers
+
+    def get_orderbook(self, symbol: str, precision: str = "P0", length: int = 25) -> Dict[str, Any]:
+        """
+        Get orderbook for a trading pair.
+
+        Args:
+            symbol: Trading pair symbol (e.g., 'tBTCUSD')
+            precision: Price aggregation level (P0, P1, P2, P3, P4)
+            length: Number of price points (1, 25, or 100)
+
+        Returns:
+            Dict with bids and asks
+        """
+        # Map length to allowed values
+        if length <= 1:
+            len_param = 1
+        elif length <= 25:
+            len_param = 25
+        else:
+            len_param = 100
+
+        if not symbol.startswith("t"):
+            symbol = "t" + symbol
+
+        response = requests.get(
+            f"{self.BASE_URL}/book/{symbol}/{precision}",
+            params={"len": len_param},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        bids = []
+        asks = []
+
+        for entry in data:
+            if len(entry) < 3:
+                continue
+            price, count, amount = entry[0], entry[1], entry[2]
+            if amount > 0:
+                bids.append({"price": price, "count": count, "amount": amount})
+            else:
+                asks.append({"price": price, "count": count, "amount": abs(amount)})
+
+        return {
+            "symbol": symbol,
+            "bids": sorted(bids, key=lambda x: x["price"], reverse=True),
+            "asks": sorted(asks, key=lambda x: x["price"]),
+        }
+
+    def get_trades(
+        self, symbol: str, limit: int = 120, start: Optional[int] = None, end: Optional[int] = None, sort: int = -1
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent trades for a trading pair.
+
+        Args:
+            symbol: Trading pair symbol (e.g., 'tBTCUSD')
+            limit: Number of trades to return (default: 120, max: 10000)
+            start: Start timestamp in milliseconds
+            end: End timestamp in milliseconds
+            sort: Sort direction (1 = oldest first, -1 = newest first)
+
+        Returns:
+            List of trade dicts
+        """
+        # Build kwargs for optional parameters
+        kwargs = {}
+        # Bitfinex expects a positive limit; ignore zero/negative values.
+        if limit is not None:
+            if limit <= 0:
+                logger.warning("Ignoring non-positive limit for Bitfinex trades: %s", limit)
+            else:
+                kwargs["limit"] = limit
+        if start is not None:
+            kwargs["start"] = str(start)
+        if end is not None:
+            kwargs["end"] = str(end)
+        if sort is not None:
+            kwargs["sort"] = sort
+
+        if not symbol.startswith("t"):
+            symbol = "t" + symbol
+
+        response = requests.get(
+            f"{self.BASE_URL}/trades/{symbol}/hist",
+            params=kwargs,
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return [
+            {"id": t[0], "timestamp": t[1], "amount": t[2], "price": t[3]}
+            for t in data
+            if isinstance(t, list) and len(t) > 3
+        ]
+
+    def get_candles(
+        self,
+        timeframe: str,
+        symbol: str,
+        section: str = "hist",
+        limit: Optional[int] = None,
+        start: Optional[int] = None,
+        end: Optional[int] = None,
+        sort: int = -1,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get candlestick data (OHLCV) via pure REST API.
+
+        Args:
+            timeframe: Candle timeframe (1m, 5m, 15m, 30m, 1h, 3h, 6h, 12h, 1D, 7D, 14D, 1M)
+            symbol: Trading pair symbol (e.g., 'tBTCUSD')
+            section: 'hist' for historical or 'last' for last candle
+            limit: Number of candles to return (default 100, max 10000)
+            start: Start timestamp in milliseconds
+            end: End timestamp in milliseconds
+            sort: Sort direction (1 = oldest first, -1 = newest first)
+
+        Returns:
+            List of candle dicts with OHLCV data
+        """
+        try:
+            # Ensure symbol starts with 't'
+            if not symbol.startswith("t"):
+                symbol = "t" + symbol
+
+            # Build URL: /candles/trade:{timeframe}:{symbol}/{section}
+            url = f"{self.BASE_URL}/candles/trade:{timeframe}:{symbol}/{section}"
+
+            # Build query parameters
+            params = {}
+            if limit is not None:
+                params["limit"] = limit
+            if start is not None:
+                params["start"] = start
+            if end is not None:
+                params["end"] = end
+            if sort is not None:
+                params["sort"] = sort
+
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+
+            # Response format: [[MTS, OPEN, CLOSE, HIGH, LOW, VOLUME], ...]
+            data = response.json()
+
+            return [
+                {
+                    "timestamp": c[0],
+                    "open": float(c[1]),
+                    "close": float(c[2]),
+                    "high": float(c[3]),
+                    "low": float(c[4]),
+                    "volume": float(c[5]),
+                }
+                for c in data
+            ]
+
+        except Exception as e:
+            print(f"Error fetching candles for {symbol}: {e}")
+            return []
+
+    # ==================== Authenticated API Methods ====================
+
+    def get_wallets(self) -> List[Dict[str, Any]]:
+        """
+        Get all wallet balances (requires authentication).
+
+        Returns:
+            List of wallet dicts with balance info
+
+        Example:
+            >>> client = BitfinexClient(api_key="...", api_secret="...")
+            >>> wallets = client.get_wallets()
+            >>> for w in wallets:
+            ...     print(f"{w['currency']}: {w['balance']}")
+        """
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API key and secret required for authenticated endpoints")
+
+        path = "/auth/r/wallets"
+        signature_path = f"/v2{path}"
+        url = f"{self.BASE_URL}{path}"
+
+        # Build authentication headers
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path)
+
+        # Make authenticated request
+        response = requests.post(url, headers=headers, json={}, timeout=10)
+        response.raise_for_status()
+
+        # Parse response
+        # Response format: [[wallet_type, currency, balance, unsettled_interest, available_balance, ...], ...]
+        data = response.json()
+
+        wallets = []
+        for wallet_data in data:
+            if len(wallet_data) >= 5:
+                wallets.append(
+                    {
+                        "type": wallet_data[0],
+                        "currency": wallet_data[1],
+                        "balance": float(wallet_data[2]),
+                        "unsettled_interest": float(wallet_data[3]),
+                        "available_balance": float(wallet_data[4]) if wallet_data[4] is not None else None,
+                    }
+                )
+
+        return wallets
+
+    def get_active_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get all active orders (requires authentication).
+
+        Args:
+            symbol: Optional trading pair symbol to filter by
+
+        Returns:
+            List of active order dicts
+        """
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API key and secret required for authenticated endpoints")
+
+        path = "/auth/r/orders"
+        signature_path = f"/v2{path}"
+        url = f"{self.BASE_URL}{path}"
+        payload: Dict[str, Any] = {}
+        if symbol:
+            payload["symbol"] = symbol if symbol.startswith("t") else f"t{symbol}"
+
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        return [
+            {
+                "id": entry[0],
+                "symbol": entry[3],
+                "amount": entry[6],
+                "amount_orig": entry[7],
+                "type": entry[8],
+                "status": entry[13],
+                "price": entry[16] if len(entry) > 16 else None,
+                "created_at": entry[4],
+                "updated_at": entry[5],
+            }
+            for entry in data
+            if isinstance(entry, list) and len(entry) > 13
+        ]
+
+    def submit_order(
+        self,
+        symbol: str,
+        amount: str | float | Decimal,
+        price: str | float | Decimal | None = None,
+        order_type: str = "EXCHANGE LIMIT",
+        flags: int = 0,
+        cid: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Submit a new order (requires authentication).
+
+        Args:
+            symbol: Trading pair symbol (e.g., 'tBTCUSD')
+            amount: Order amount (positive for buy, negative for sell)
+            price: Order price (required for LIMIT orders)
+            order_type: Order type (EXCHANGE LIMIT, EXCHANGE MARKET, etc.)
+            flags: Order flags (bitfield)
+            cid: Client order ID (optional)
+
+        Returns:
+            Dict with order confirmation
+        """
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API key and secret required for authenticated endpoints")
+
+        path = "/auth/w/order/submit"
+        signature_path = "/v2/auth/w/order/submit"
+        url = f"{self.BASE_URL}{path}"
+
+        payload: Dict[str, Any] = {
+            "type": order_type,
+            "symbol": symbol if symbol.startswith("t") else f"t{symbol}",
+            "amount": str(amount),
+            "price": str(price) if price is not None else "0",
+            "flags": flags,
+        }
+        if cid is not None:
+            payload["cid"] = cid
+
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        # Expected Bitfinex submit order notification format:
+        # [
+        #   "notify",
+        #   "on-req",
+        #   <notification_id or None>,
+        #   None,
+        #   [
+        #     [
+        #       <order_id>, <gid>, <cid>, <symbol>, <create_time>, ...
+        #     ]
+        #   ]
+        # ]
+        order_id = None
+        if isinstance(data, list) and len(data) > 4:
+            orders_array = data[4]
+            if isinstance(orders_array, list) and orders_array:
+                first_order = orders_array[0]
+                if isinstance(first_order, list) and first_order:
+                    order_id = first_order[0]
+        if order_id is None:
+            logger.warning(
+                "Unexpected Bitfinex submit_order response format. symbol=%s, amount=%s, response=%s, payload=%s",
+                symbol,
+                amount,
+                data,
+                payload,
+            )
+
+        return {
+            "status": "success",
+            "order_id": order_id,
+            "data": data,
+        }
+
+    def cancel_order(self, order_id: int) -> Dict[str, Any]:
+        """
+        Cancel an active order (requires authentication).
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            Dict with cancellation confirmation
+        """
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API key and secret required for authenticated endpoints")
+
+        path = "/auth/w/order/cancel"
+        signature_path = "/v2/auth/w/order/cancel"
+        url = f"{self.BASE_URL}{path}"
+        payload = {"id": order_id}
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return {"status": "success", "order_id": order_id, "data": data}
+
+    def get_order_trades(self, symbol: str, order_id: int) -> List[Dict[str, Any]]:
+        """
+        Get trades for a specific order (requires authentication).
+
+        Args:
+            symbol: Trading pair symbol
+            order_id: Order ID
+
+        Returns:
+            List of trade dicts for this order
+        """
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API key and secret required for authenticated endpoints")
+
+        normalized_symbol = symbol if symbol.startswith("t") else f"t{symbol}"
+        path = f"/auth/r/order/{order_id}:{normalized_symbol}"
+        signature_path = f"/v2{path}"
+        url = f"{self.BASE_URL}{path}"
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, {})
+        response = requests.post(url, headers=headers, json={}, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        trades = []
+        for entry in data:
+            if isinstance(entry, list) and len(entry) > 6:
+                trades.append(
+                    {
+                        "id": entry[0],
+                        "symbol": entry[1],
+                        "mts_create": entry[2],
+                        "order_id": entry[3],
+                        "exec_amount": entry[4],
+                        "exec_price": entry[5],
+                        "fee": entry[6] if len(entry) > 6 else None,
+                        "fee_currency": entry[7] if len(entry) > 7 else None,
+                    }
+                )
+        if data and not trades:
+            logger.warning("Unexpected Bitfinex get_order_trades response format: %s", data)
+        return trades
+
+    def transfer_between_wallets(
+        self, from_wallet: str, to_wallet: str, currency: str, amount: float
+    ) -> Dict[str, Any]:
+        """
+        Transfer funds between wallet types within the same account (requires authentication).
+
+        Args:
+            from_wallet: Source wallet type ('exchange', 'margin', 'funding')
+            to_wallet: Destination wallet type ('exchange', 'margin', 'funding')
+            currency: Currency code (e.g., 'BTC', 'USD')
+            amount: Amount to transfer
+
+        Returns:
+            Dict with transfer confirmation
+
+        Example:
+            # Transfer 0.01 BTC from exchange to margin wallet
+            result = client.transfer_between_wallets('exchange', 'margin', 'BTC', 0.01)
+        """
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API key and secret required for authenticated endpoints")
+
+        path = "/auth/w/transfer"
+        signature_path = f"/v2{path}"
+        url = f"{self.BASE_URL}{path}"
+        payload = {
+            "from": from_wallet,
+            "to": to_wallet,
+            "currency": currency,
+            "currency_to": currency,
+            "amount": str(amount),
+        }
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        return {
+            "status": "success",
+            "from_wallet": from_wallet,
+            "to_wallet": to_wallet,
+            "currency": currency,
+            "amount": amount,
+            "data": data,
+        }
+
+    def get_orders_history(
+        self, symbol: Optional[str] = None, start: Optional[int] = None, end: Optional[int] = None, limit: int = 25
+    ) -> List[Dict[str, Any]]:
+        """
+        Get order history (requires authentication).
+
+        Args:
+            symbol: Optional trading pair symbol to filter by
+            start: Start timestamp in milliseconds
+            end: End timestamp in milliseconds
+            limit: Number of orders to return (default: 25, max: 2500)
+
+        Returns:
+            List of historical order dicts
+        """
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API key and secret required for authenticated endpoints")
+
+        # Build kwargs for optional parameters
+        kwargs = {}
+        if symbol:
+            kwargs["symbol"] = symbol
+        if start:
+            kwargs["start"] = str(start)
+        if end:
+            kwargs["end"] = str(end)
+        if limit is not None:
+            if limit <= 0:
+                logger.warning("Ignoring non-positive limit for Bitfinex orders history: %s", limit)
+            else:
+                kwargs["limit"] = limit
+
+        path = "/auth/r/orders/hist"
+        signature_path = "/v2/auth/r/orders/hist"
+        url = f"{self.BASE_URL}{path}"
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, kwargs or {})
+        response = requests.post(url, headers=headers, json=kwargs, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        # Response fields are positional per Bitfinex API docs (order history array).
+        orders = []
+        for entry in data:
+            if isinstance(entry, list) and len(entry) > 13:
+                orders.append(
+                    {
+                        "id": entry[0],
+                        "symbol": entry[3],
+                        "amount": entry[6],
+                        "amount_orig": entry[7],
+                        "type": entry[8],
+                        "status": entry[13],
+                        "price": entry[16] if len(entry) > 16 else None,
+                        "created_at": entry[4],
+                        "updated_at": entry[5],
+                    }
+                )
+        return orders
+
+    def get_deposit_address(self, wallet: str, method: str, op_renew: int = 0) -> Dict[str, Any]:
+        """
+        Get deposit address for a currency (requires authentication).
+
+        Args:
+            wallet: Wallet type ('exchange', 'margin', 'funding')
+            method: Deposit method/currency (e.g., 'bitcoin', 'litecoin', 'ethereum')
+            op_renew: Whether to generate new address (0 = use existing, 1 = generate new)
+
+        Returns:
+            Dict with deposit address info including address, method, currency
+
+        Example:
+            # Get LTC deposit address
+            result = client.get_deposit_address('exchange', 'litecoin')
+            print(result['address'])
+        """
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API key and secret required for authenticated endpoints")
+
+        path = "/auth/w/deposit/address"
+        signature_path = f"/v2{path}"
+        url = f"{self.BASE_URL}{path}"
+        payload = {"wallet": wallet, "method": method, "op_renew": op_renew}
+        headers = build_auth_headers(self.api_key, self.api_secret, signature_path, payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+
+        if isinstance(result, list):
+            return {
+                "wallet": result[0] if len(result) > 0 else wallet,
+                "method": result[1] if len(result) > 1 else method,
+                "address": result[2] if len(result) > 2 else None,
+                "pool_address": result[3] if len(result) > 3 else None,
+            }
+
+        return {
+            "wallet": wallet,
+            "method": method,
+            "address": result.get("address") if isinstance(result, dict) else None,
+            "pool_address": result.get("pool_address") if isinstance(result, dict) else None,
+        }
+
+
+# Convenience function for quick initialization
+def create_client(api_key: Optional[str] = None, api_secret: Optional[str] = None) -> BitfinexClient:
+    """
+    Create a BitfinexClient instance.
+
+    Args:
+        api_key: API key (optional, will use BITFINEX_API_KEY env var if not provided)
+        api_secret: API secret (optional, will use BITFINEX_API_SECRET env var if not provided)
+
+    Returns:
+        BitfinexClient instance
+    """
+    return BitfinexClient(api_key=api_key, api_secret=api_secret)

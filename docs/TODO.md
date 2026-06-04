@@ -47,10 +47,10 @@ This list reflects the May 2026 code audit. It deliberately does not call implem
 
 The backtest engine and metrics exist. The missing piece is robust validation:
 
-- ⏳ Walk-forward and out-of-sample validation.
-- ⏳ Lookahead-bias tests for indicators, signals, and candle loading.
-- ⏳ Cost-aware replay using fees, spread, slippage, and realistic fills.
-- ⏳ Persisted backtest run metadata for comparison over time.
+- ✅ Walk-forward and out-of-sample validation (`core/strategy_eval/walk_forward.py`, 33 walk-forward tests).
+- ✅ Lookahead-bias tests for indicators, signals, and candle loading.
+- ✅ Cost-aware replay using fees, spread, slippage, and realistic fills.
+- ✅ Persisted backtest run metadata for comparison over time.
 
 ### Priority 2: AI to Paper Execution
 

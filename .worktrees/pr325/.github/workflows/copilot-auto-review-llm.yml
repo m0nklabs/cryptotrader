@@ -1,0 +1,332 @@
+name: Copilot Auto-Review (LLM)
+
+# This workflow analyzes Copilot Reviewer feedback using an LLM and converts it
+# into actionable fix requests for the Copilot Coding Agent.
+# It runs after the CI checks have passed.
+
+on:
+  workflow_run:
+    workflows: ["Copilot Branch CI"]
+    types:
+      - completed
+
+permissions:
+  pull-requests: write
+  issues: write
+  contents: read
+
+jobs:
+  auto-review:
+    name: LLM Auto-Review
+    runs-on: [self-hosted, Linux, org]
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Run header
+        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
+        with:
+          title: "Copilot Auto-Review (LLM)"
+
+      - name: Find PR for this branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          PR=$(gh api repos/${{ github.repository }}/pulls \
+            --jq ".[] | select(.head.ref == \"$BRANCH\") | .number" | head -1)
+
+          if [ -z "$PR" ]; then
+            echo "No PR found for branch $BRANCH"
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "pr_number=$PR" >> $GITHUB_OUTPUT
+          echo "Found PR #$PR for branch $BRANCH"
+
+      - name: Check for Copilot Reviewer feedback
+        id: review
+        if: steps.pr.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+
+          # Get latest Copilot review (API returns "[bot]" suffix)
+          REVIEW=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last')
+
+          if [ -z "$REVIEW" ] || [ "$REVIEW" == "null" ]; then
+            echo "No Copilot review found"
+            echo "has_review=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          REVIEW_BODY=$(echo "$REVIEW" | jq -r '.body // ""')
+          echo "has_review=true" >> $GITHUB_OUTPUT
+          echo "review_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Count review comments (API returns "[bot]" suffix)
+          COMMENT_COUNT=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length')
+          echo "comment_count=$COMMENT_COUNT" >> $GITHUB_OUTPUT
+
+          # Get the review ID for fetching comments
+          REVIEW_ID=$(echo "$REVIEW" | jq -r '.id')
+          echo "review_id=$REVIEW_ID" >> $GITHUB_OUTPUT
+
+      - name: Get review comments
+        id: comments
+        if: steps.review.outputs.has_review == 'true' && steps.review.outputs.review_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+          REVIEW_ID="${{ steps.review.outputs.review_id }}"
+
+          COMMENTS=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews/$REVIEW_ID/comments" \
+            --jq '[.[] | {path: .path, body: .body}]')
+
+          echo "comments_json<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMENTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Decide with Local LLM (Ollama)
+        id: llm_decision
+        if: steps.review.outputs.has_review == 'true'
+        env:
+          REVIEW_BODY: ${{ steps.review.outputs.review_body }}
+          COMMENT_COUNT: ${{ steps.review.outputs.comment_count }}
+          # Local Ollama via guardian (auth identifies the app)
+          OLLAMA_HOST: "http://localhost:11434"
+          OLLAMA_USER: "copilot-review"
+          OLLAMA_MODEL: "qwen3-coder-30b-q4km-32k:latest"
+        run: |
+          set +e
+
+          PROMPT=$'You are a PR review triage assistant.\n\n'
+          PROMPT+=$'Inputs:\n- Copilot Reviewer review body (text)\n- Copilot Reviewer inline comment count (integer)\n\n'
+          PROMPT+=$'Task:\nDecide whether this PR should be marked as ready for human review or needs fixes.\n\n'
+          PROMPT+=$'Return EXACTLY one line of JSON with this schema:\n{"decision":"approve"|"request_fixes","reason":"short reason"}\n\n'
+          PROMPT+=$'Rules:\n- If the review indicates 0 issues / no new comments, decision=approve.\n- If there are any issues or ambiguity, decision=request_fixes.\n- Keep reason <= 80 characters.\n\n'
+          PROMPT+=$'Review body:\n'
+          PROMPT+="$REVIEW_BODY"
+          PROMPT+=$'\n\nInline comment count:\n'
+          PROMPT+="$COMMENT_COUNT"
+
+          RESPONSE=$(curl -s -u "${OLLAMA_USER}:" "${OLLAMA_HOST}/api/generate" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg m "$OLLAMA_MODEL" --arg p "$PROMPT" '{model:$m,prompt:$p,stream:false,options:{num_predict:200,temperature:0.1}}')")
+
+          TEXT=$(echo "$RESPONSE" | jq -r '.response // empty' | tr -d '\r')
+          JSON_LINE=$(echo "$TEXT" | grep -oP '\{.*\}' | head -1)
+
+          if [ -n "$JSON_LINE" ]; then
+            echo "$JSON_LINE" | jq -e . >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+              DECISION=$(echo "$JSON_LINE" | jq -r '.decision // empty')
+              REASON=$(echo "$JSON_LINE" | jq -r '.reason // empty')
+
+              if [ -n "$DECISION" ] && [ -n "$REASON" ]; then
+                echo "used_local_llm=true" >> $GITHUB_OUTPUT
+                echo "decision=$DECISION" >> $GITHUB_OUTPUT
+                echo "reason=$REASON" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            fi
+          fi
+
+          echo "used_local_llm=false" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Analyze and decide
+        id: decision
+        if: steps.review.outputs.has_review == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          REVIEW_BODY: ${{ steps.review.outputs.review_body }}
+          LLM_DECISION: ${{ steps.llm_decision.outputs.decision }}
+          LLM_REASON: ${{ steps.llm_decision.outputs.reason }}
+        run: |
+          # If Copilot Reviewer couldn't review any files, don't generate a fake fix request.
+          if echo "$REVIEW_BODY" | grep -qi "wasn't able to review any files"; then
+            echo "decision=skip" >> $GITHUB_OUTPUT
+            echo "reason=Copilot Reviewer couldn't review any files" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Prefer local LLM decision when available
+          if [ -n "$LLM_DECISION" ] && [ -n "$LLM_REASON" ]; then
+            echo "decision=$LLM_DECISION" >> $GITHUB_OUTPUT
+            echo "reason=$LLM_REASON" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if review indicates no issues
+          if echo "$REVIEW_BODY" | grep -qi "generated no new comments\|generated 0 comments\|no issues"; then
+            echo "decision=approve" >> $GITHUB_OUTPUT
+            echo "reason=Copilot Reviewer found no issues" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check comment count from review body (e.g., "generated 4 comments")
+          COMMENT_NUM=$(echo "$REVIEW_BODY" | grep -oP 'generated \K\d+(?= comment)' || echo "0")
+          if [ "$COMMENT_NUM" -eq 0 ]; then
+            echo "decision=approve" >> $GITHUB_OUTPUT
+            echo "reason=No review comments from Copilot Reviewer" >> $GITHUB_OUTPUT
+          else
+            echo "decision=request_fixes" >> $GITHUB_OUTPUT
+            echo "reason=Copilot Reviewer has $COMMENT_NUM comments to address" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate fix request with LLM
+        id: llm
+        if: steps.decision.outputs.decision == 'request_fixes' && steps.review.outputs.comment_count != '0'
+        env:
+          COMMENTS_JSON: ${{ steps.comments.outputs.comments_json }}
+          # Local Ollama via guardian (auth identifies the app)
+          OLLAMA_HOST: "http://localhost:11434"
+          OLLAMA_USER: "copilot-review"
+        run: |
+          if [ -z "$COMMENTS_JSON" ] || [ "$COMMENTS_JSON" = "[]" ]; then
+            echo "No inline review comments to convert; skipping fix request generation"
+            echo "fix_message=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          ALLOWED_PATHS=$(echo "$COMMENTS_JSON" | jq -r '.[].path' | sort -u | tr '\n' ' ')
+
+          # Build structured prompt for better Copilot fix requests
+          PROMPT="You are converting GitHub Copilot Reviewer feedback into actionable fix requests.
+
+          Create a well-structured comment for @copilot following this format:
+
+          @copilot Please address the following review feedback:
+
+          ## 1. [filename] - Brief title
+          **Problem:** What is wrong
+          **Fix:** Specific change needed
+          **Acceptance:** How to verify (tests pass, no lint errors, etc.)
+
+          Rules:
+          - Start with @copilot
+          - Be specific about files and changes
+          - Include code suggestions if provided in review
+          - Do not skip any review comments
+          - Do NOT invent file paths. Only reference paths from this allowed list: $ALLOWED_PATHS
+
+          Review comments to convert:
+          $COMMENTS_JSON"
+
+          # Call local Ollama via guardian (qwen3-coder-30b - excellent for code review, FREE)
+          RESPONSE=$(curl -s -u "${OLLAMA_USER}:" "${OLLAMA_HOST}/api/generate" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg p "$PROMPT" '{model:"qwen3-coder-30b-q4km-32k:latest",prompt:$p,stream:false,options:{num_predict:1500,temperature:0.2}}')")
+
+          FIX_MSG=$(echo "$RESPONSE" | jq -r '.response // empty')
+
+          if [ -z "$FIX_MSG" ]; then
+            echo "LLM response empty"
+            echo "fix_message=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "fix_message<<EOF" >> $GITHUB_OUTPUT
+          echo "$FIX_MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post note (Copilot Reviewer couldn't review)
+        if: steps.decision.outputs.decision == 'skip'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+          MARKER="<!-- mark1:auto-review:copilot-unable -->"
+
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+            --jq --arg m "$MARKER" '[.[] | select(.body | contains($m))] | length')
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Already posted unable-to-review note, skipping"
+            exit 0
+          fi
+
+          gh pr comment "$PR_NUMBER" --body "⚠️ **Auto Review**: Copilot Reviewer couldn't review any files.\n\nPlease re-request a Copilot Reviewer review (or push a small change) and check repo settings/permissions.\n\n$MARKER"
+
+      - name: Post fix request to Copilot
+        if: steps.llm.outputs.fix_message != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+
+          # Spam protection: check if Copilot already addressed the feedback
+          # Look for comments indicating work was done after the last fix request
+          LAST_FIX_REQUEST=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+            --jq '[.[] | select(.body | startswith("@copilot Please address"))] | last | .created_at // empty')
+
+          if [ -n "$LAST_FIX_REQUEST" ]; then
+            # Check if Copilot responded after our last fix request
+            COPILOT_RESPONSE=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+              --jq --arg since "$LAST_FIX_REQUEST" '[.[] | select(.user.login | test("copilot"; "i")) | select(.created_at > $since)] | length')
+
+            if [ "$COPILOT_RESPONSE" -gt 0 ]; then
+              echo "Copilot already responded to the last fix request, checking if new review comments exist..."
+
+              # Get last Copilot review timestamp
+              LAST_REVIEW=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
+                --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last | .submitted_at // empty')
+
+              # Get last Copilot coding agent commit/response
+              LAST_AGENT_RESPONSE=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+                --jq '[.[] | select(.user.login | test("copilot"; "i")) | select(.body | test("Fixed|implemented|commit|✅"; "i"))] | last | .created_at // empty')
+
+              if [ -n "$LAST_REVIEW" ] && [ -n "$LAST_AGENT_RESPONSE" ]; then
+                if [[ "$LAST_AGENT_RESPONSE" > "$LAST_REVIEW" ]]; then
+                  echo "Copilot already addressed the review (agent response: $LAST_AGENT_RESPONSE > review: $LAST_REVIEW)"
+                  echo "Skipping to avoid duplicate fix requests"
+                  exit 0
+                fi
+              fi
+            fi
+
+            # Also check time-based spam protection (1 hour)
+            AGE=$(( $(date +%s) - $(date -d "$LAST_FIX_REQUEST" +%s) ))
+            if [ "$AGE" -lt 3600 ]; then
+              echo "Already posted fix request within last hour, skipping"
+              exit 0
+            fi
+          fi
+
+          echo "Posting fix request to PR #$PR_NUMBER"
+          echo "${{ steps.llm.outputs.fix_message }}" > fix_request.md
+          gh pr comment "$PR_NUMBER" -F fix_request.md
+
+      - name: Record approve decision (no PR comment)
+        if: steps.decision.outputs.decision == 'approve'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
+          REASON="${{ steps.decision.outputs.reason }}"
+          USED_LOCAL_LLM="${{ steps.llm_decision.outputs.used_local_llm }}"
+
+          # NEVER auto-approve - only humans should approve Copilot PRs
+          # This prevents premature merges when Copilot Reviewer still has comments
+          echo "Skipping auto-approve - human review required for Copilot PRs"
+          echo "Reason that would have triggered approve: $REASON"
+
+          # Avoid noisy PR comments for "approve" decisions.
+          if [ "$USED_LOCAL_LLM" = "true" ]; then
+            REVIEWED_BY="Local LLM (Ollama: qwen3-coder-30b)"
+          else
+            REVIEWED_BY="Heuristics (local LLM unavailable)"
+          fi
+
+          echo "### Auto Review" >> $GITHUB_STEP_SUMMARY
+          echo "- PR: #$PR_NUMBER" >> $GITHUB_STEP_SUMMARY
+          echo "- Decision: approve" >> $GITHUB_STEP_SUMMARY
+          echo "- Reason: $REASON" >> $GITHUB_STEP_SUMMARY
+          echo "- Reviewed by: $REVIEWED_BY" >> $GITHUB_STEP_SUMMARY
+          echo "- Inputs: Copilot Reviewer feedback" >> $GITHUB_STEP_SUMMARY

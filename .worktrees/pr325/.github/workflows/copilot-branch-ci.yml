@@ -1,0 +1,220 @@
+name: Copilot Branch CI
+
+# This workflow runs for Copilot branches to bypass the "first-time contributor"
+# approval requirement. It triggers on push (not pull_request) so it runs as the
+# repo owner, not as Copilot.
+
+on:
+  push:
+    branches:
+      - 'copilot/**'
+
+concurrency:
+  group: copilot-branch-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  statuses: write
+  checks: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  ci:
+    name: Run CI checks
+    runs-on: [self-hosted, Linux, org]
+    env:
+      DATABASE_URL: postgresql+asyncpg://cryptotrader:cryptotrader@localhost:5432/cryptotrader_test
+      BITFINEX_API_KEY: ${{ secrets.BITFINEX_API_KEY }}
+      BITFINEX_API_SECRET: ${{ secrets.BITFINEX_API_SECRET }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      PAPER_TRADING: "true"
+    outputs:
+      ci_passed: ${{ steps.result.outputs.passed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run header
+        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
+        with:
+          title: "Copilot Branch CI"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Create test database
+        run: |
+          psql postgresql://cryptotrader:cryptotrader@localhost:5432/postgres -c "DROP DATABASE IF EXISTS cryptotrader_test;"
+          psql postgresql://cryptotrader:cryptotrader@localhost:5432/postgres -c "CREATE DATABASE cryptotrader_test;"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install pre-commit
+
+      - name: Pre-commit checks
+        id: precommit
+        run: |
+          set -o pipefail
+          pre-commit run --all-files 2>&1 | tee precommit.log
+        continue-on-error: true
+
+      - name: Ruff lint
+        id: ruff
+        run: |
+          set -o pipefail
+          ruff check . --output-format=github 2>&1 | tee ruff.log
+        continue-on-error: true
+
+      - name: Ruff format check
+        id: format
+        run: |
+          set -o pipefail
+          ruff format --check . 2>&1 | tee format.log
+        continue-on-error: true
+
+      - name: Run tests
+        id: tests
+        run: |
+          set -o pipefail
+          pytest tests/ -v --tb=short 2>&1 | tee pytest.log
+        continue-on-error: true
+
+      - name: Determine result
+        id: result
+        run: |
+          if [ "${{ steps.precommit.outcome }}" == "success" ] && \
+             [ "${{ steps.ruff.outcome }}" == "success" ] && \
+             [ "${{ steps.format.outcome }}" == "success" ] && \
+             [ "${{ steps.tests.outcome }}" == "success" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post status check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ github.sha }}"
+
+          if [ "${{ steps.result.outputs.passed }}" == "true" ]; then
+            STATE="success"
+            DESC="All CI checks passed"
+          else
+            STATE="failure"
+            DESC="Some checks failed"
+          fi
+
+          gh api repos/${{ github.repository }}/statuses/$SHA \
+            -f state="$STATE" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -f description="$DESC" \
+            -f context="Copilot CI"
+
+      - name: Post PR review comment (on failure)
+        if: steps.result.outputs.passed != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref_name }}"
+          SHA="${{ github.sha }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          PR_NUMBER="$(gh pr list --repo "$REPO" --state open --head "$BRANCH" --json number --jq '.[0].number // empty')"
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No open PR found for branch $BRANCH; skipping PR review comment."
+            exit 0
+          fi
+
+          MARKER="<!-- copilot-branch-ci:sha=$SHA -->"
+
+          # Deduplicate: if we've already posted for this SHA, do nothing.
+          if gh api "repos/$REPO/pulls/$PR_NUMBER/reviews?per_page=20" --jq '.[].body // ""' | grep -Fq "$MARKER"; then
+            echo "Review comment already posted for $SHA on PR #$PR_NUMBER; skipping."
+            exit 0
+          fi
+
+          summarize_outcome() {
+            local name="$1"
+            local outcome="$2"
+            if [ "$outcome" = "success" ]; then
+              echo "- $name: ✅ success"
+            else
+              echo "- $name: ❌ $outcome"
+            fi
+          }
+
+          BODY_FILE="ci-review-body.md"
+          {
+            echo "$MARKER"
+            echo "### CI failed for $BRANCH"
+            echo
+            echo "Run: $RUN_URL"
+            echo "SHA: $SHA"
+            echo
+            echo "**Summary**"
+            summarize_outcome "pre-commit" "${{ steps.precommit.outcome }}"
+            summarize_outcome "ruff" "${{ steps.ruff.outcome }}"
+            summarize_outcome "ruff format" "${{ steps.format.outcome }}"
+            summarize_outcome "pytest" "${{ steps.tests.outcome }}"
+            echo
+            echo "**Details (logs)**"
+            echo
+            for f in precommit.log ruff.log format.log pytest.log; do
+              if [ -f "$f" ]; then
+                echo "<details><summary>$f</summary>"
+                echo
+                echo "\`\`\`"
+                tail -n 200 "$f" || true
+                echo "\`\`\`"
+                echo
+                echo "</details>"
+                echo
+              fi
+            done
+          } > "$BODY_FILE"
+
+          gh pr review --repo "$REPO" "$PR_NUMBER" --comment --body-file "$BODY_FILE"
+
+          # Trigger Copilot Coding Agent to fix, but avoid spam/loops.
+          FIX_MARKER="<!-- copilot-ci-fix:sha=$SHA -->"
+
+          COMMENTS_BODIES="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" --jq '.[].body // ""')"
+          # If we've already requested a fix for this SHA, skip.
+          if echo "$COMMENTS_BODIES" | grep -Fq "$FIX_MARKER"; then
+            echo "Fix request already posted for $SHA on PR #$PR_NUMBER; skipping."
+            exit 0
+          fi
+
+          # Hard limit fix cycles to avoid infinite loops.
+          FIX_COUNT="$(echo "$COMMENTS_BODIES" | grep -c '<!-- copilot-ci-fix:sha=' || true)"
+          if [ "${FIX_COUNT:-0}" -ge 3 ]; then
+            echo "Fix request cycle limit reached ($FIX_COUNT); skipping @copilot trigger."
+            exit 0
+          fi
+
+          FIX_BODY_FILE="ci-fix-request.md"
+          {
+            echo "@copilot please fix the CI failures reported in the CI review comment above."
+            echo
+            echo "Run: $RUN_URL"
+            echo "SHA: $SHA"
+            echo
+            echo "$FIX_MARKER"
+          } > "$FIX_BODY_FILE"
+
+          gh pr comment --repo "$REPO" "$PR_NUMBER" --body-file "$FIX_BODY_FILE"
+
+      - name: Fail workflow if checks failed
+        if: steps.result.outputs.passed != 'true'
+        run: exit 1

@@ -1,0 +1,841 @@
+"""Async CRUD operations for Multi-Brain AI tables.
+
+Uses asyncpg/SQLAlchemy async sessions for database operations.
+All functions are designed to work with FastAPI dependency injection.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime  # used in get_usage_summary type hints
+from typing import Sequence
+
+from sqlalchemy import select, update, and_, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.models.ai import AIBudgetConfig, AIDecision, AIRoleConfig, AIUsageLog, SystemPrompt
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Role Config Operations
+# ---------------------------------------------------------------------------
+
+
+async def get_role_configs(db: AsyncSession) -> Sequence[AIRoleConfig]:
+    """Get all role configurations.
+
+    Returns:
+        Sequence of AIRoleConfig objects with all fields populated including
+        provider, model, system_prompt_id, temperature, max_tokens, weight,
+        enabled status, fallback settings, and updated_at timestamp.
+    """
+    result = await db.execute(select(AIRoleConfig))
+    return result.scalars().all()
+
+
+async def get_role_config(db: AsyncSession, role_name: str) -> AIRoleConfig | None:
+    """Get a specific role configuration.
+
+    Args:
+        role_name: Name of the role (e.g., "tactical", "screener")
+
+    Returns:
+        AIRoleConfig object if found, None otherwise. Contains all configuration
+        fields including provider assignment, model, and system prompt reference.
+    """
+    result = await db.execute(select(AIRoleConfig).where(AIRoleConfig.name == role_name))
+    return result.scalars().first()
+
+
+async def update_role_config(
+    db: AsyncSession,
+    role_name: str,
+    provider: str | None = None,
+    model: str | None = None,
+    system_prompt_id: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    weight: float | None = None,
+    enabled: bool | None = None,
+    fallback_provider: str | None = None,
+    fallback_model: str | None = None,
+) -> AIRoleConfig | None:
+    """Update a role configuration.
+
+    Only updates fields that are provided (not None).
+
+    Returns:
+        Updated AIRoleConfig with refreshed fields, or None if the role was not found.
+    """
+    values = {"updated_at": func.now()}
+    if provider is not None:
+        values["provider"] = provider
+    if model is not None:
+        values["model"] = model
+    if system_prompt_id is not None:
+        values["system_prompt_id"] = system_prompt_id
+    if temperature is not None:
+        values["temperature"] = temperature
+    if max_tokens is not None:
+        values["max_tokens"] = max_tokens
+    if weight is not None:
+        values["weight"] = weight
+    if enabled is not None:
+        values["enabled"] = enabled
+    if fallback_provider is not None:
+        values["fallback_provider"] = fallback_provider
+    if fallback_model is not None:
+        values["fallback_model"] = fallback_model
+
+    await db.execute(update(AIRoleConfig).where(AIRoleConfig.name == role_name).values(**values))
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    return await get_role_config(db, role_name)
+
+
+async def create_role_config(
+    db: AsyncSession,
+    name: str,
+    provider: str,
+    model: str,
+    system_prompt_id: str | None = None,
+    temperature: float = 0.0,
+    max_tokens: int = 4096,
+    weight: float = 1.0,
+    enabled: bool = True,
+    fallback_provider: str | None = None,
+    fallback_model: str | None = None,
+) -> AIRoleConfig:
+    """Create a new role configuration.
+
+    Args:
+        name: Role name (e.g., "tactical", "screener")
+        provider: Provider name (e.g., "deepseek", "openai")
+        model: Model identifier
+        system_prompt_id: Optional reference to system prompt
+        temperature: Sampling temperature (0.0-1.0)
+        max_tokens: Maximum tokens for generation
+        weight: Consensus weight for this role
+        enabled: Whether role is active
+        fallback_provider: Optional fallback provider
+        fallback_model: Optional fallback model
+
+    Returns:
+        Newly created AIRoleConfig with all fields populated including
+        auto-generated updated_at timestamp.
+    """
+    config = AIRoleConfig(
+        name=name,
+        provider=provider,
+        model=model,
+        system_prompt_id=system_prompt_id,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        weight=weight,
+        enabled=enabled,
+        fallback_provider=fallback_provider,
+        fallback_model=fallback_model,
+    )
+    db.add(config)
+    try:
+        await db.commit()
+        await db.refresh(config)
+    except Exception:
+        await db.rollback()
+        raise
+    return config
+
+
+# ---------------------------------------------------------------------------
+# System Prompt Operations
+# ---------------------------------------------------------------------------
+
+
+async def get_prompts(db: AsyncSession, role: str | None = None) -> Sequence[SystemPrompt]:
+    """Get all system prompts, optionally filtered by role."""
+    query = select(SystemPrompt)
+    if role:
+        query = query.where(SystemPrompt.role == role)
+    result = await db.execute(query.order_by(SystemPrompt.version.desc()))
+    return result.scalars().all()
+
+
+async def get_active_prompt(db: AsyncSession, role: str) -> SystemPrompt | None:
+    """Get the active prompt for a role (highest version with is_active=True)."""
+    result = await db.execute(
+        select(SystemPrompt)
+        .where(and_(SystemPrompt.role == role, SystemPrompt.is_active))
+        .order_by(SystemPrompt.version.desc())
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
+async def create_prompt(
+    db: AsyncSession,
+    prompt_id: str,
+    role: str,
+    version: int,
+    content: str,
+    description: str = "",
+    is_active: bool = True,
+) -> SystemPrompt:
+    """Create a new system prompt version.
+
+    Note: prompt_id should follow the format "{role}_v{version}" (e.g., "tactical_v1").
+    This convention ensures consistency across the system but is not strictly enforced.
+    """
+    prompt = SystemPrompt(
+        id=prompt_id,
+        role=role,
+        version=version,
+        content=content,
+        description=description,
+        is_active=is_active,
+    )
+    db.add(prompt)
+    try:
+        await db.commit()
+        await db.refresh(prompt)
+    except Exception:
+        await db.rollback()
+        raise
+    return prompt
+
+
+async def activate_prompt(db: AsyncSession, prompt_id: str) -> SystemPrompt | None:
+    """Activate a prompt and deactivate all others for the same role.
+
+    Returns the activated prompt or None if not found.
+    """
+    # First, get the prompt to find its role
+    result = await db.execute(select(SystemPrompt).where(SystemPrompt.id == prompt_id))
+    prompt = result.scalars().first()
+    if not prompt:
+        return None
+
+    # Deactivate all prompts for this role
+    await db.execute(update(SystemPrompt).where(SystemPrompt.role == prompt.role).values(is_active=False))
+
+    # Activate the target prompt
+    await db.execute(update(SystemPrompt).where(SystemPrompt.id == prompt_id).values(is_active=True))
+
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    # Refresh after successful commit
+    try:
+        await db.refresh(prompt)
+    except Exception:
+        # If refresh fails, log but don't fail the whole operation since commit succeeded
+        logger.warning("Failed to refresh prompt after activation, but DB commit succeeded")
+
+    return prompt
+
+
+async def get_next_version(db: AsyncSession, role: str) -> int:
+    """Get the next version number for a role's prompts."""
+    result = await db.execute(
+        select(SystemPrompt.version).where(SystemPrompt.role == role).order_by(SystemPrompt.version.desc()).limit(1)
+    )
+    max_version = result.scalars().first()
+    return (max_version or 0) + 1
+
+
+# ---------------------------------------------------------------------------
+# Usage Log Operations
+# ---------------------------------------------------------------------------
+
+
+async def log_usage(
+    db: AsyncSession,
+    role: str,
+    provider: str,
+    model: str,
+    tokens_in: int,
+    tokens_out: int,
+    cost_usd: float,
+    latency_ms: float,
+    symbol: str = "",
+    success: bool = True,
+    error: str | None = None,
+) -> AIUsageLog:
+    """Log AI usage (tokens, cost, latency).
+
+    Returns:
+        Newly created AIUsageLog with auto-generated id and created_at timestamp.
+    """
+    log = AIUsageLog(
+        role=role,
+        provider=provider,
+        model=model,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cost_usd=cost_usd,
+        latency_ms=latency_ms,
+        symbol=symbol,
+        success=success,
+        error=error,
+    )
+    db.add(log)
+    try:
+        await db.commit()
+        await db.refresh(log)
+    except Exception:
+        await db.rollback()
+        raise
+    return log
+
+
+async def get_usage_summary(
+    db: AsyncSession,
+    role: str | None = None,
+    provider: str | None = None,
+    symbol: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> dict:
+    """Get usage summary with filters.
+
+    Returns:
+        Dict with keys: total_requests, total_tokens_in, total_tokens_out,
+        total_cost_usd, avg_latency, success_rate, by_role, by_provider.
+        All values default to 0 when no matching records exist.
+    """
+    # Build base conditions for filtering
+    conditions = []
+    if role:
+        conditions.append(AIUsageLog.role == role)
+    if provider:
+        conditions.append(AIUsageLog.provider == provider)
+    if symbol:
+        conditions.append(AIUsageLog.symbol == symbol)
+    if start_date:
+        conditions.append(AIUsageLog.created_at >= start_date)
+    if end_date:
+        conditions.append(AIUsageLog.created_at <= end_date)
+
+    # Get overall totals
+    query = select(
+        func.count(AIUsageLog.id).label("total_requests"),
+        func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
+        func.sum(AIUsageLog.tokens_out).label("total_tokens_out"),
+        func.sum(AIUsageLog.cost_usd).label("total_cost_usd"),
+        func.avg(AIUsageLog.latency_ms).label("avg_latency"),
+        func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
+    )
+    if conditions:
+        query = query.where(and_(*conditions))
+
+    result = await db.execute(query)
+    row = result.first()
+
+    if not row or row.total_requests == 0:
+        return {
+            "total_requests": 0,
+            "total_tokens_in": 0,
+            "total_tokens_out": 0,
+            "total_cost_usd": 0.0,
+            "total_cost": 0.0,  # Backwards-compatible alias
+            "avg_latency": 0.0,
+            "success_rate": 0.0,
+            "by_role": {},
+            "by_provider": {},
+        }
+
+    # Get breakdown by role
+    by_role_query = select(
+        AIUsageLog.role,
+        func.count(AIUsageLog.id).label("requests"),
+        func.sum(AIUsageLog.tokens_in).label("tokens_in"),
+        func.sum(AIUsageLog.tokens_out).label("tokens_out"),
+        func.sum(AIUsageLog.cost_usd).label("cost_usd"),
+        func.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
+    ).group_by(AIUsageLog.role)
+    if conditions:
+        by_role_query = by_role_query.where(and_(*conditions))
+
+    by_role_result = await db.execute(by_role_query)
+    by_role = {
+        row.role: {
+            "requests": row.requests,
+            "tokens_in": row.tokens_in or 0,
+            "tokens_out": row.tokens_out or 0,
+            "cost_usd": float(row.cost_usd or 0.0),
+            "avg_latency_ms": float(row.avg_latency_ms or 0.0),
+        }
+        for row in by_role_result
+    }
+
+    # Get breakdown by provider
+    by_provider_query = select(
+        AIUsageLog.provider,
+        func.count(AIUsageLog.id).label("requests"),
+        func.sum(AIUsageLog.tokens_in).label("tokens_in"),
+        func.sum(AIUsageLog.tokens_out).label("tokens_out"),
+        func.sum(AIUsageLog.cost_usd).label("cost_usd"),
+    ).group_by(AIUsageLog.provider)
+    if conditions:
+        by_provider_query = by_provider_query.where(and_(*conditions))
+
+    by_provider_result = await db.execute(by_provider_query)
+    by_provider = {
+        row.provider: {
+            "requests": row.requests,
+            "tokens_in": row.tokens_in or 0,
+            "tokens_out": row.tokens_out or 0,
+            "cost_usd": float(row.cost_usd or 0.0),
+        }
+        for row in by_provider_result
+    }
+
+    return {
+        "total_requests": row.total_requests,
+        "total_tokens_in": row.total_tokens_in or 0,
+        "total_tokens_out": row.total_tokens_out or 0,
+        "total_cost_usd": float(row.total_cost_usd or 0.0),
+        "total_cost": float(row.total_cost_usd or 0.0),  # Backwards-compatible alias
+        "avg_latency": float(row.avg_latency or 0.0),
+        "success_rate": (row.successful_requests / row.total_requests) if row.total_requests > 0 else 0.0,
+        "by_role": by_role,
+        "by_provider": by_provider,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Decision Log Operations
+# ---------------------------------------------------------------------------
+
+
+async def log_decision(
+    db: AsyncSession,
+    symbol: str,
+    timeframe: str,
+    final_action: str,
+    final_confidence: float,
+    verdicts: list[dict],
+    reasoning: str = "",
+    vetoed_by: str | None = None,
+    total_cost_usd: float = 0.0,
+    total_latency_ms: float = 0.0,
+) -> AIDecision:
+    """Log an AI consensus decision.
+
+    Args:
+        final_action: Must be one of: BUY, SELL, NEUTRAL, VETO
+        final_confidence: Must be between 0.0 and 1.0
+
+    Returns:
+        Newly created AIDecision with auto-generated id and created_at timestamp.
+
+    Raises:
+        ValueError: If final_action or final_confidence are invalid.
+    """
+    # Validate final_action
+    valid_actions = {"BUY", "SELL", "NEUTRAL", "VETO"}
+    if final_action not in valid_actions:
+        raise ValueError(f"final_action must be one of {valid_actions}, got {final_action!r}")
+
+    # Validate final_confidence range
+    if not 0.0 <= final_confidence <= 1.0:
+        raise ValueError(f"final_confidence must be between 0.0 and 1.0, got {final_confidence!r}")
+
+    decision = AIDecision(
+        symbol=symbol,
+        timeframe=timeframe,
+        final_action=final_action,
+        final_confidence=final_confidence,
+        verdicts=verdicts,
+        reasoning=reasoning,
+        vetoed_by=vetoed_by,
+        total_cost_usd=total_cost_usd,
+        total_latency_ms=total_latency_ms,
+    )
+    db.add(decision)
+    try:
+        await db.commit()
+        await db.refresh(decision)
+    except Exception:
+        await db.rollback()
+        raise
+    return decision
+
+
+async def log_decision_with_usage(
+    db: AsyncSession,
+    symbol: str,
+    timeframe: str,
+    final_action: str,
+    final_confidence: float,
+    verdicts: list[dict],
+    reasoning: str = "",
+    vetoed_by: str | None = None,
+    total_cost_usd: float = 0.0,
+    total_latency_ms: float = 0.0,
+    usage_records: list[dict] | None = None,
+) -> AIDecision:
+    """Log an AI consensus decision with usage records in a single transaction.
+
+    This ensures atomicity: either both decision and all usage records are written,
+    or none are (on failure, the entire transaction is rolled back).
+
+    Args:
+        usage_records: List of dicts with keys: role, provider, model, tokens_in,
+            tokens_out, cost_usd, latency_ms, symbol, success, error
+
+    Returns:
+        Newly created AIDecision with auto-generated id and created_at timestamp.
+
+    Raises:
+        ValueError: If final_action or final_confidence are invalid.
+        KeyError: If required keys are missing from usage_records.
+    """
+    # Validate final_action
+    valid_actions = {"BUY", "SELL", "NEUTRAL", "VETO"}
+    if final_action not in valid_actions:
+        raise ValueError(f"final_action must be one of {valid_actions}, got {final_action!r}")
+
+    # Validate final_confidence range
+    if not 0.0 <= final_confidence <= 1.0:
+        raise ValueError(f"final_confidence must be between 0.0 and 1.0, got {final_confidence!r}")
+
+    if usage_records is None:
+        usage_records = []
+
+    # Validate required keys in usage records before touching the session
+    required_keys = {"role", "provider", "model", "tokens_in", "tokens_out", "cost_usd", "latency_ms"}
+    for idx, record in enumerate(usage_records):
+        missing = required_keys - record.keys()
+        if missing:
+            raise KeyError(f"usage_records[{idx}] missing required keys: {sorted(missing)}")
+
+    # Create decision
+    decision = AIDecision(
+        symbol=symbol,
+        timeframe=timeframe,
+        final_action=final_action,
+        final_confidence=final_confidence,
+        verdicts=verdicts,
+        reasoning=reasoning,
+        vetoed_by=vetoed_by,
+        total_cost_usd=total_cost_usd,
+        total_latency_ms=total_latency_ms,
+    )
+    db.add(decision)
+
+    # Create usage logs
+    for record in usage_records:
+        usage_log = AIUsageLog(
+            role=record["role"],
+            provider=record["provider"],
+            model=record["model"],
+            tokens_in=record["tokens_in"],
+            tokens_out=record["tokens_out"],
+            cost_usd=record["cost_usd"],
+            latency_ms=record["latency_ms"],
+            symbol=record.get("symbol", symbol),
+            success=record.get("success", True),
+            error=record.get("error"),
+        )
+        db.add(usage_log)
+
+    # Commit both decision + usage logs in one transaction
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    try:
+        await db.refresh(decision)
+    except Exception as exc:
+        logger.warning("Failed to refresh decision after commit: %s", exc)
+
+    return decision
+
+
+async def get_decisions(
+    db: AsyncSession,
+    symbol: str | None = None,
+    action: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> Sequence[AIDecision]:
+    """Get AI decisions with optional filters.
+
+    The number of returned records is capped to avoid excessive memory usage.
+    """
+    # Enforce a sensible upper bound to prevent memory exhaustion
+    max_limit = 1000
+    if limit < 1:
+        limit = 100
+    elif limit > max_limit:
+        limit = max_limit
+
+    query = select(AIDecision)
+
+    if symbol:
+        query = query.where(AIDecision.symbol == symbol)
+    if action:
+        query = query.where(AIDecision.final_action == action)
+
+    query = query.order_by(AIDecision.created_at.desc()).limit(limit).offset(offset)
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def get_daily_usage(
+    db: AsyncSession,
+    days: int = 30,
+) -> list[dict]:
+    """Get daily usage breakdown for the past N days.
+
+    Args:
+        days: Number of days to return (default 30)
+
+    Returns:
+        List of dicts with keys: date, total_requests, total_cost_usd,
+        total_tokens_in, total_tokens_out, avg_latency_ms, success_rate.
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import cast, Date
+
+    # Calculate start date (use timezone-aware UTC datetime)
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+
+    date_expr = cast(func.timezone("UTC", AIUsageLog.created_at), Date)
+
+    query = (
+        select(
+            date_expr.label("date"),
+            func.count(AIUsageLog.id).label("total_requests"),
+            func.sum(AIUsageLog.cost_usd).label("total_cost_usd"),
+            func.sum(AIUsageLog.tokens_in).label("total_tokens_in"),
+            func.sum(AIUsageLog.tokens_out).label("total_tokens_out"),
+            func.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
+            func.count(AIUsageLog.id).filter(AIUsageLog.success.is_(True)).label("successful_requests"),
+        )
+        .where(AIUsageLog.created_at >= start_date, AIUsageLog.created_at <= end_date)
+        .group_by(date_expr)
+        .order_by(date_expr.desc())
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    return [
+        {
+            "date": str(row.date),
+            "total_requests": row.total_requests,
+            "total_cost_usd": float(row.total_cost_usd or 0.0),
+            "total_tokens_in": row.total_tokens_in or 0,
+            "total_tokens_out": row.total_tokens_out or 0,
+            "avg_latency_ms": float(row.avg_latency_ms or 0.0),
+            "success_rate": (row.successful_requests / row.total_requests) if row.total_requests > 0 else 0.0,
+        }
+        for row in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Budget Configuration Operations
+# ---------------------------------------------------------------------------
+
+
+async def get_budget_config(db: AsyncSession, scope: str = "global") -> AIBudgetConfig | None:
+    """Get budget configuration for a specific scope.
+
+    Args:
+        scope: Budget scope - 'global' or a role name (screener|tactical|fundamental|strategist)
+
+    Returns:
+        AIBudgetConfig object if found, None otherwise.
+    """
+    result = await db.execute(select(AIBudgetConfig).where(AIBudgetConfig.id == scope))
+    return result.scalars().first()
+
+
+async def update_budget_config(
+    db: AsyncSession,
+    scope: str,
+    daily_limit_usd: float | None = None,
+    monthly_limit_usd: float | None = None,
+    enabled: bool | None = None,
+) -> AIBudgetConfig | None:
+    """Update budget configuration for a scope.
+
+    Args:
+        scope: Budget scope - 'global' or a role name
+        daily_limit_usd: Daily spend limit in USD (0.0 = unlimited)
+        monthly_limit_usd: Monthly spend limit in USD (0.0 = unlimited)
+        enabled: Whether budget enforcement is enabled
+
+    Returns:
+        Updated AIBudgetConfig or None if not found.
+    """
+    values = {"updated_at": func.now()}
+    if daily_limit_usd is not None:
+        values["daily_limit_usd"] = daily_limit_usd
+    if monthly_limit_usd is not None:
+        values["monthly_limit_usd"] = monthly_limit_usd
+    if enabled is not None:
+        values["enabled"] = enabled
+
+    await db.execute(update(AIBudgetConfig).where(AIBudgetConfig.id == scope).values(**values))
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    return await get_budget_config(db, scope)
+
+
+async def check_budget_exceeded(
+    db: AsyncSession,
+    scope: str = "global",
+    roles: list[str] | None = None,
+) -> dict:
+    """Check if budget limits are exceeded for a scope.
+
+    Args:
+        scope: Budget scope - 'global' or a role name
+        roles: List of role names to check (for global scope, checks all specified roles)
+
+    Returns:
+        Dict with keys:
+        - exceeded: bool - True if any limit is exceeded
+        - daily_exceeded: bool - True if daily limit exceeded
+        - monthly_exceeded: bool - True if monthly limit exceeded
+        - daily_spent: float - Amount spent today
+        - daily_limit: float - Daily limit (0.0 = unlimited)
+        - daily_remaining: float - Remaining daily budget (negative if exceeded)
+        - monthly_spent: float - Amount spent this month
+        - monthly_limit: float - Monthly limit (0.0 = unlimited)
+        - monthly_remaining: float - Remaining monthly budget (negative if exceeded)
+        - enabled: bool - Whether budget enforcement is enabled
+    """
+    from datetime import timezone
+
+    # Get budget config
+    config = await get_budget_config(db, scope)
+    if not config:
+        # No config found - budget enforcement disabled (logged as warning)
+        logger.warning(f"Budget config not found for scope '{scope}' - treating as unlimited")
+        return {
+            "exceeded": False,
+            "daily_exceeded": False,
+            "monthly_exceeded": False,
+            "daily_spent": 0.0,
+            "daily_limit": 0.0,
+            "daily_remaining": 0.0,
+            "monthly_spent": 0.0,
+            "monthly_limit": 0.0,
+            "monthly_remaining": 0.0,
+            "enabled": False,
+        }
+
+    # Calculate time boundaries (UTC)
+    now = datetime.now(timezone.utc)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Build query conditions
+    conditions = [AIUsageLog.created_at >= start_of_day]
+    if scope != "global":
+        # For role-specific scope, filter by role
+        conditions.append(AIUsageLog.role == scope)
+    elif roles:
+        # For global scope with specific roles, filter by those roles
+        conditions.append(AIUsageLog.role.in_(roles))
+
+    # Get daily spending
+    daily_query = select(func.sum(AIUsageLog.cost_usd).label("total_cost")).where(and_(*conditions))
+    daily_result = await db.execute(daily_query)
+    daily_spent = float(daily_result.scalar() or 0.0)
+
+    # Get monthly spending
+    monthly_conditions = conditions.copy()
+    monthly_conditions[0] = AIUsageLog.created_at >= start_of_month
+    monthly_query = select(func.sum(AIUsageLog.cost_usd).label("total_cost")).where(and_(*monthly_conditions))
+    monthly_result = await db.execute(monthly_query)
+    monthly_spent = float(monthly_result.scalar() or 0.0)
+
+    # If budget enforcement is disabled, still return actual spend but don't enforce
+    if not config.enabled:
+        # Calculate remaining budget for monitoring even when disabled
+        if config.daily_limit_usd > 0.0:
+            daily_remaining = config.daily_limit_usd - daily_spent
+        else:
+            daily_remaining = 0.0  # unlimited
+
+        if config.monthly_limit_usd > 0.0:
+            monthly_remaining = config.monthly_limit_usd - monthly_spent
+        else:
+            monthly_remaining = 0.0  # unlimited
+
+        return {
+            "exceeded": False,  # Never exceeded when disabled
+            "daily_exceeded": False,
+            "monthly_exceeded": False,
+            "daily_spent": daily_spent,
+            "daily_limit": config.daily_limit_usd,
+            "daily_remaining": daily_remaining,
+            "monthly_spent": monthly_spent,
+            "monthly_limit": config.monthly_limit_usd,
+            "monthly_remaining": monthly_remaining,
+            "enabled": False,
+        }
+
+    # Check if limits are exceeded (0.0 means unlimited)
+    daily_exceeded = config.daily_limit_usd > 0.0 and daily_spent >= config.daily_limit_usd
+    monthly_exceeded = config.monthly_limit_usd > 0.0 and monthly_spent >= config.monthly_limit_usd
+
+    # Calculate remaining budget
+    if config.daily_limit_usd > 0.0:
+        daily_remaining = config.daily_limit_usd - daily_spent
+    else:
+        daily_remaining = 0.0  # unlimited
+
+    if config.monthly_limit_usd > 0.0:
+        monthly_remaining = config.monthly_limit_usd - monthly_spent
+    else:
+        monthly_remaining = 0.0  # unlimited
+
+    return {
+        "exceeded": daily_exceeded or monthly_exceeded,
+        "daily_exceeded": daily_exceeded,
+        "monthly_exceeded": monthly_exceeded,
+        "daily_spent": daily_spent,
+        "daily_limit": config.daily_limit_usd,
+        "daily_remaining": daily_remaining,
+        "monthly_spent": monthly_spent,
+        "monthly_limit": config.monthly_limit_usd,
+        "monthly_remaining": monthly_remaining,
+        "enabled": config.enabled,
+    }
+
+
+async def get_budget_status(db: AsyncSession) -> dict:
+    """Get budget status for all scopes (global + all roles).
+
+    Returns:
+        Dict with keys 'global', 'screener', 'tactical', 'fundamental', 'strategist'.
+        Each value is a dict from check_budget_exceeded().
+    """
+    scopes = ["global", "screener", "tactical", "fundamental", "strategist"]
+    result = {}
+    for scope in scopes:
+        result[scope] = await check_budget_exceeded(db, scope)
+    return result

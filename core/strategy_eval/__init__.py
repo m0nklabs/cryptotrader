@@ -10,6 +10,14 @@ from __future__ import annotations
 from core.strategy_eval.types import *  # noqa: F401,F403
 from core.strategy_eval.walk_forward import WalkForwardResult, run_walk_forward  # noqa: F401
 from core.strategy_eval.regime import RegimeDetector, detect_regimes  # noqa: F401
+from core.strategy_eval.cost_aware_walk_forward import (  # noqa: F401
+    run_cost_aware_walk_forward_kelly_regime,
+    CostAwareWalkForwardResult,
+    CostAwareWalkForwardConfig,
+    CostAwareFold,
+    RegimeFoldBreakdown,
+    to_dict as wf_to_dict,
+)
 from core.strategy_eval.overfitting import (  # noqa: F401
     OverfittingCheck,
     check_overfitting,
@@ -42,4 +50,11 @@ __all__ = [
     "RejectionCriteria",
     "evaluate_rejection",
     "is_fake_alpha",
+    # Cost-aware walk-forward with Kelly and regimes
+    "run_cost_aware_walk_forward_kelly_regime",
+    "CostAwareWalkForwardResult",
+    "CostAwareWalkForwardConfig",
+    "CostAwareFold",
+    "RegimeFoldBreakdown",
+    "wf_to_dict",
 ]

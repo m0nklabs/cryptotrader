@@ -188,6 +188,46 @@ In addition to REST endpoints, the backend serves:
 - Candle streaming via SSE: `/candles/stream`
 - Live prices via WebSocket: `/ws/prices`
 
+#### Stale uvicorn processes
+
+After a crash or hard stop, a stale uvicorn process can hold port 8000.
+Resolve with:
+
+```bash
+# Normal restart (graceful)
+systemctl --user restart cryptotrader-api.service
+
+# If port is still in use, force-kill stale processes first
+systemctl --user stop cryptotrader-api.service
+pkill -f "uvicorn api.main"
+sleep 1
+systemctl --user start cryptotrader-api.service
+```
+
+Verify the port is free:
+
+```bash
+ss -tulpen | grep 8000
+```
+
+#### Validation commands
+
+After a restart, verify the service is healthy:
+
+```bash
+# systemd reports active
+systemctl --user is-active cryptotrader-api.service
+
+# Health endpoint returns 200
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health
+
+# Candle endpoint returns 200 (may return empty array if no data)
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000/candles/latest?symbol=BTCUSD&timeframe=1h"
+
+# Ingestion status
+curl -s "http://localhost:8000/ingestion/status?symbol=BTCUSD&timeframe=1h"
+```
+
 ## Legacy dashboard API service (optional)
 
 Older iterations used a separate DB-backed helper API. It is optional now.

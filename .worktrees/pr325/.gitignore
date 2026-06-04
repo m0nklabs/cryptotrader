@@ -1,0 +1,51 @@
+# Secrets / local env
+.env
+.env.*
+!.env.example
+.secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# Node
+node_modules/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/.vite/
+frontend/tsconfig.tsbuildinfo
+frontend/coverage/
+
+# Research (local scratch + imported specs)
+research/
+
+# Logs (keep directory but ignore log files)
+logs/*.log
+logs/*.log.*
+
+# Local DB files (Docker bind mount)
+data/postgres/
+data/postgres*/
+data/postgres.*
+
+# Local sqlite/db artifacts (never commit)
+data/*.db
+
+# Editor workspace files
+*.code-workspace
+
+# Nested related repos kept under the cryptotrader umbrella
+related-repos/
+
+# OS/Editor
+.DS_Store
+.vscode/
+.workflow-approver-state.json
+.aider*

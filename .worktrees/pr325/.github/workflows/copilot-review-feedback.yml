@@ -1,0 +1,166 @@
+name: Copilot Review Feedback
+
+on:
+  # Trigger after CI workflow completes - this runs with repo permissions
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to check'
+        required: true
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  forward-review-to-agent:
+    runs-on: [self-hosted, Linux, org]
+    # Only run if CI passed (or manual trigger)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Get PR info
+        id: pr-info
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # Get PR number
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          else
+            # Get PR from workflow run
+            HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+            PR_NUMBER=$(gh api repos/${{ github.repository }}/commits/$HEAD_SHA/pulls --jq '.[0].number // empty')
+          fi
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No PR found"
+            echo "has_pr=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "has_pr=true" >> $GITHUB_OUTPUT
+
+          # Check if PR is from Copilot
+          PR_AUTHOR=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER --jq '.user.login')
+          PR_AUTHOR_LOWER=$(echo "$PR_AUTHOR" | tr '[:upper:]' '[:lower:]')
+          HEAD_REF=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER --jq '.head.ref')
+          echo "author=$PR_AUTHOR" >> $GITHUB_OUTPUT
+          echo "head_ref=$HEAD_REF" >> $GITHUB_OUTPUT
+
+          # Check if Copilot PR (by author or branch name)
+          if [[ "$PR_AUTHOR_LOWER" == *"copilot"* ]] || [[ "$HEAD_REF" == copilot/* ]]; then
+            echo "is_copilot_pr=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_copilot_pr=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run header
+        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
+        with:
+          title: "Copilot Review Feedback"
+
+      - name: Check for unresolved review comments
+        if: steps.pr-info.outputs.has_pr == 'true' && steps.pr-info.outputs.is_copilot_pr == 'true'
+        id: check-comments
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr-info.outputs.number }}"
+          MARKER="<!-- mark1:review-feedback-summary:v2 -->"
+
+          # Get timestamp of Copilot's last "addressed" response
+          COPILOT_ADDRESSED_AT=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+            --jq '[.[] | select(.user.login | test("copilot"; "i")) | select(.body | test("addressed|no further action|complete"; "i"))] | last | .created_at // empty')
+
+          echo "Copilot last addressed at: $COPILOT_ADDRESSED_AT"
+
+          # Get review comments from Copilot reviewer that have suggestions
+          # Only count comments AFTER Copilot's last "addressed" response
+          if [ -n "$COPILOT_ADDRESSED_AT" ]; then
+            COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+              --jq --arg since "$COPILOT_ADDRESSED_AT" '[.[] | select(.user.login | test("copilot"; "i")) | select(.created_at > $since) | {path: .path, line: .line, body: .body, created_at: .created_at}]')
+          else
+            COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+              --jq '[.[] | select(.user.login | test("copilot"; "i")) | {path: .path, line: .line, body: .body, created_at: .created_at}]')
+          fi
+
+          COMMENT_COUNT=$(echo "$COMMENTS" | jq 'length')
+          echo "Found $COMMENT_COUNT new review comments"
+
+          LAST_REVIEW_COMMENT_AT=$(echo "$COMMENTS" | jq -r 'map(.created_at) | max // empty')
+          echo "last_review_comment_at=$LAST_REVIEW_COMMENT_AT" >> $GITHUB_OUTPUT
+
+          # Check if we already posted a summary after the latest review comment (avoid spam)
+          if [ "$COMMENT_COUNT" -gt 0 ] && [ -n "$LAST_REVIEW_COMMENT_AT" ]; then
+            LAST_SUMMARY=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+              --jq --arg m "$MARKER" '[.[] | select(.body | contains($m))] | last // empty')
+            if [ -n "$LAST_SUMMARY" ] && [ "$LAST_SUMMARY" != "null" ]; then
+              LAST_SUMMARY_AT=$(echo "$LAST_SUMMARY" | jq -r '.created_at // empty')
+              if [ -n "$LAST_SUMMARY_AT" ] && [[ "$LAST_SUMMARY_AT" > "$LAST_REVIEW_COMMENT_AT" ]]; then
+                echo "Already posted summary after latest review comment"
+                echo "should_notify=false" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            fi
+          fi
+
+          if [ "$COMMENT_COUNT" -gt 0 ]; then
+            echo "should_notify=true" >> $GITHUB_OUTPUT
+            echo "count=$COMMENT_COUNT" >> $GITHUB_OUTPUT
+
+            # Format for agent
+            FORMATTED=$(echo "$COMMENTS" | jq -r '.[] | "- \(.path):\(.line) - \(.body | split("\n")[0])"')
+            echo "formatted<<EOF" >> $GITHUB_OUTPUT
+            echo "$FORMATTED" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "should_notify=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post review suggestions summary (no agent trigger)
+        if: steps.check-comments.outputs.should_notify == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.pr-info.outputs.number }}"
+          MARKER="<!-- mark1:review-feedback-summary:v2 -->"
+          COUNT="${{ steps.check-comments.outputs.count }}"
+          FORMATTED="${{ steps.check-comments.outputs.formatted }}"
+
+          cat <<'COMMENT_EOF' > /tmp/comment.md
+          🧾 **Copilot Reviewer suggestions detected** (summary only; no auto-trigger)
+
+          If you want the coding agent to implement these, add a new comment starting with:
+          `@copilot please implement the Copilot Reviewer suggestions for PR #${PR_NUMBER}`
+
+          <!-- mark1:review-feedback-summary:v2 -->
+          COMMENT_EOF
+
+          {
+            echo "";
+            echo "Count: $COUNT";
+            echo "";
+            echo "$FORMATTED";
+          } >> /tmp/comment.md
+
+          gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body-file /tmp/comment.md
+          echo "Posted Copilot Reviewer suggestions summary on PR #$PR_NUMBER"
+
+      - name: Summary
+        run: |
+          echo "### Copilot Review Feedback" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.pr-info.outputs.has_pr }}" != "true" ]; then
+            echo "📭 No PR found for this commit" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.pr-info.outputs.is_copilot_pr }}" != "true" ]; then
+            echo "⏭️ PR #${{ steps.pr-info.outputs.number }} is not a Copilot PR (author: ${{ steps.pr-info.outputs.author }})" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.check-comments.outputs.should_notify }}" == "true" ]; then
+            echo "✅ Forwarded suggestions to Copilot on PR #${{ steps.pr-info.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✨ No new suggestions to forward on PR #${{ steps.pr-info.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+          fi

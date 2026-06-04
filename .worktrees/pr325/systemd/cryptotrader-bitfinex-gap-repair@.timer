@@ -1,0 +1,14 @@
+[Unit]
+Description=cryptotrader Bitfinex gap repair timer [%i]
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+RandomizedDelaySec=15min
+Persistent=true
+AccuracySec=5min
+
+Unit=cryptotrader-bitfinex-gap-repair@%i.service
+
+[Install]
+WantedBy=timers.target

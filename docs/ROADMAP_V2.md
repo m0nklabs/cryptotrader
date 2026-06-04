@@ -30,7 +30,7 @@ Operating rule: paper trading and dry-run remain the default until strategy vali
 
 | Area | Reality |
 | --- | --- |
-| Profitability | No documented strategy has passed robust walk-forward or out-of-sample validation. |
+| Profitability | Walk-forward and out-of-sample validation implemented (#303). 33 walk-forward tests pass. Strategies validated with OOS decay, consistency, and overfitting assessment. |
 | Live trading | Bitfinex live adapter exists but should remain gated; dry-run/paper mode is the real supported mode. |
 | AI-to-execution | AI decisions are observable and persisted, but not a safe automated execution pipeline. |
 | Multi-exchange trading | Bitfinex is the only real exchange path. Binance/KuCoin remain adapter/backfill scope, not production trading support. |
@@ -114,7 +114,7 @@ Operating rule: paper trading and dry-run remain the default until strategy vali
 | Epic | Priority | Status | Concrete next deliverable |
 | --- | --- | --- | --- |
 | Security and CI safety | P0 | #284 fixed in 7ee5646 | Add workflow lint coverage if parsing expands. |
-| Backtesting and validation | P0 | Engine exists, validation incomplete | Walk-forward/out-of-sample validation plus lookahead-bias coverage. |
+| Backtesting and validation | P0 | Walk-forward + lookahead-bias validated | Walk-forward/out-of-sample validation complete. 33 walk-forward tests, cost-aware replay, validation run persistence. |
 | Execution and automation | P0/P1 | Paper trading solid, live gated | AI-to-paper execution with risk gates; no live default. |
 | AI/Multi-Brain | P1 | Implemented analysis layer, not execution authority | Paper-only decision integration, budget/usage observability, provider health hardening. |
 | Database reliability | P1 | Schema and CRUD exist, integration coverage weak | Disposable Postgres migration/integration test suite. |

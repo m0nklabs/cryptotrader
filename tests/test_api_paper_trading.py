@@ -467,3 +467,77 @@ class TestCooldownDedup:
             },
         )
         assert r.status_code == 200
+
+    def test_unified_cooldown_dedup_path(self, client):
+        """Test that CooldownCheck and SignalDeduplication share state correctly.
+
+        When the CooldownCheck reference is wired into SignalDeduplication,
+        both mechanisms agree on cooldown boundaries. This prevents signals
+        from slipping through when they should be deduplicated.
+        """
+        from api.main import _get_cooldown_check, _get_signal_dedup
+        from core.types import OrderIntent
+
+        # Verify the unified path is active
+        dedup = _get_signal_dedup()
+        assert dedup.cooldown_check is not None, "CooldownCheck should be wired into SignalDeduplication"
+
+        # First BUY succeeds
+        r1 = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+        assert r1.status_code == 200
+
+        # Second BUY should be deduplicated (same side, within cooldown)
+        r2 = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+        assert r2.status_code == 409
+        assert r2.json()["detail"]["error"] == "safety_check_failed"
+
+        # Verify both CooldownCheck and SignalDeduplication agree
+        cooldown = _get_cooldown_check()
+        cooldown_result = cooldown.check(
+            intent=OrderIntent(symbol="BTCUSD", side="BUY", exchange="paper", amount=Decimal("1"))
+        )
+        assert not cooldown_result.ok, "CooldownCheck should say cooldown is active"
+
+        # SELL should pass through (different side)
+        r3 = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "SELL",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+        assert r3.status_code == 200
+
+        # Third BUY should pass through (after SELL updated tracking)
+        r4 = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "market",
+                "market_price": "50000",
+            },
+        )
+        assert r4.status_code == 200

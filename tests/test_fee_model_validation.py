@@ -223,8 +223,9 @@ class TestPaperExecutorIntegration:
         )
 
         total = executor.get_total_fees()
-        # Each order ~175, two orders ~350 (slight variation from slippage)
-        assert total > Decimal("350") and total < Decimal("351")
+        # Each order: trading fees ~175 + transfer fee ~0.0004 + funding fee ~6.85 = ~182
+        # Two orders ~364 (slight variation from slippage)
+        assert total > Decimal("360") and total < Decimal("370")
 
     def test_fee_model_in_summary(self):
         """Paper summary should include fee model details."""

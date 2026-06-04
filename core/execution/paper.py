@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 from core.execution.order_book import OrderBook
 from core.fees.model import FeeModel
 from core.types import ExecutionResult, OrderIntent
+
+if TYPE_CHECKING:
+    from core.fees.proof_gate import FundingRateModel, TransferFeeModel
 
 
 @dataclass
@@ -34,7 +37,9 @@ class PaperOrder:
     fill_price: Optional[Decimal] = None
     fill_qty: Optional[Decimal] = None  # For partial fills
     slippage_bps: Optional[Decimal] = None
-    fees: Decimal = Decimal("0")  # Fees paid on this order
+    fees: Decimal = Decimal("0")  # Trading fees (maker/taker + spread + slippage)
+    transfer_fee: Decimal = Decimal("0")  # Transfer/withdrawal fee
+    funding_fee: Decimal = Decimal("0")  # Funding rate fee for margin positions
     fill_ratio: Optional[Decimal] = None  # For partial fills: fill_qty / qty
     created_at: Optional[datetime] = None
     filled_at: Optional[datetime] = None
@@ -58,6 +63,8 @@ class PaperExecutor:
         *,
         database_url: Optional[str] = None,
         fee_model: Optional[FeeModel] = None,
+        transfer_fee_model: Optional[object] = None,
+        funding_rate_model: Optional[object] = None,
         default_slippage_bps: Decimal = Decimal("5"),
         partial_fill_prob: Decimal = Decimal("0.9"),  # 90% chance of partial fill
         missed_fill_prob: Decimal = Decimal("0.02"),  # 2% chance of missed fill
@@ -68,6 +75,8 @@ class PaperExecutor:
         Args:
             database_url: Optional PostgreSQL connection URL for persistence
             fee_model: Fee model for realistic cost estimation. Defaults to standard Bitfinex-like fees.
+            transfer_fee_model: Transfer/withdrawal/deposit fee model. Defaults to Bitfinex-like schedule.
+            funding_rate_model: Funding rate model for margin positions. Defaults to 5% annual rate.
             default_slippage_bps: Default slippage in basis points for market orders
             partial_fill_prob: Probability of a partial fill (0-1)
             missed_fill_prob: Probability of a missed fill (0-1)
@@ -75,6 +84,10 @@ class PaperExecutor:
         """
         self._database_url = database_url
         self._fee_model = fee_model or FeeModel()
+        # Lazy import to avoid circular dependency
+        from core.fees.proof_gate import FundingRateModel, TransferFeeModel
+        self._transfer_fee_model = transfer_fee_model or TransferFeeModel()
+        self._funding_rate_model = funding_rate_model or FundingRateModel()
         self._default_slippage_bps = default_slippage_bps
         self._partial_fill_prob = partial_fill_prob
         self._missed_fill_prob = missed_fill_prob
@@ -86,6 +99,8 @@ class PaperExecutor:
         self._next_order_id = 1
         self._total_fees: Decimal = Decimal("0")
         self._total_fees_by_symbol: dict[str, Decimal] = {}
+        self._total_transfer_fees: Decimal = Decimal("0")
+        self._total_funding_fees: Decimal = Decimal("0")
 
     def get_fee_model(self) -> FeeModel:
         """Return the current fee model."""
@@ -94,6 +109,22 @@ class PaperExecutor:
     def get_total_fees(self) -> Decimal:
         """Return total fees paid across all orders."""
         return self._total_fees
+
+    def get_total_transfer_fees(self) -> Decimal:
+        """Return total transfer/withdrawal fees paid across all orders."""
+        return self._total_transfer_fees
+
+    def get_total_funding_fees(self) -> Decimal:
+        """Return total funding rate fees paid across all orders."""
+        return self._total_funding_fees
+
+    def get_transfer_fee_model(self) -> TransferFeeModel:
+        """Return the current transfer fee model."""
+        return self._transfer_fee_model
+
+    def get_funding_rate_model(self) -> FundingRateModel:
+        """Return the current funding rate model."""
+        return self._funding_rate_model
 
     def get_fees_by_symbol(self, symbol: str) -> Decimal:
         """Return total fees for a specific symbol."""
@@ -130,6 +161,10 @@ class PaperExecutor:
         slippage_bps: Optional[Decimal] = None,
         fee_tier: Literal["maker", "taker"] = "taker",
         price_update_time: Optional[datetime] = None,
+        transfer_fee: Decimal = Decimal("0"),
+        funding_fee: Decimal = Decimal("0"),
+        days_held: Decimal = Decimal("1"),
+        currency: str = "USD",
     ) -> PaperOrder:
         """Execute a paper trading order.
 
@@ -146,6 +181,10 @@ class PaperExecutor:
                 If provided, used for created_at and filled_at instead of
                 datetime.now(), preventing lookahead bias when the order is
                 evaluated against a price update at a specific time.
+            transfer_fee: Transfer/withdrawal fee to include (optional, uses model if > 0).
+            funding_fee: Funding rate fee to include (optional, uses model if > 0).
+            days_held: Number of days the position is held (for funding calculations).
+            currency: Currency for transfer fee lookup (default: USD).
 
         Returns:
             PaperOrder with execution details
@@ -173,6 +212,8 @@ class PaperExecutor:
         fill_qty = qty
         status = "PENDING"
         fees = Decimal("0")
+        order_transfer_fee = Decimal("0")
+        order_funding_fee = Decimal("0")
 
         if order_type == "market":
             assert market_price is not None
@@ -191,6 +232,21 @@ class PaperExecutor:
                     taker=(fee_tier == "taker"),
                 )
                 fees = cost_estimate.estimated_total_cost
+
+            # Calculate transfer fee if not explicitly provided
+            if transfer_fee > 0:
+                order_transfer_fee = transfer_fee
+            else:
+                order_transfer_fee = self._transfer_fee_model.get_withdrawal_fee(currency)
+
+            # Calculate funding fee if not explicitly provided
+            if funding_fee > 0:
+                order_funding_fee = funding_fee
+            else:
+                self._funding_rate_model._days_held = days_held
+                # Use qty * fill_price for notional (even if fill_qty is 0 for missed fills)
+                notional_for_funding = fill_price * qty if fill_price and qty > 0 else fill_notional
+                order_funding_fee = self._funding_rate_model.get_funding_cost(notional_for_funding)
 
             if status in ("FILLED", "PARTIAL"):
                 self._update_position(symbol, side, qty, fill_price)
@@ -211,6 +267,19 @@ class PaperExecutor:
                 )
                 fees = cost_estimate.estimated_total_cost
 
+            # Calculate transfer fee for limit orders
+            if transfer_fee > 0:
+                order_transfer_fee = transfer_fee
+            else:
+                order_transfer_fee = self._transfer_fee_model.get_withdrawal_fee(currency)
+
+            # Calculate funding fee for limit orders
+            if funding_fee > 0:
+                order_funding_fee = funding_fee
+            else:
+                self._funding_rate_model._days_held = days_held
+                order_funding_fee = self._funding_rate_model.get_funding_cost(fill_notional)
+
         order = PaperOrder(
             order_id=order_id,
             symbol=symbol,
@@ -222,6 +291,8 @@ class PaperExecutor:
             fill_qty=fill_qty,
             slippage_bps=slippage,
             fees=fees,
+            transfer_fee=order_transfer_fee,
+            funding_fee=order_funding_fee,
             fill_ratio=fill_qty / qty if qty > 0 else Decimal("1"),
             status=status,
             created_at=now,
@@ -231,9 +302,12 @@ class PaperExecutor:
         self._orders[order_id] = order
 
         # Track fees
-        if fees > 0:
-            self._total_fees += fees
-            self._total_fees_by_symbol[symbol] = self._total_fees_by_symbol.get(symbol, Decimal("0")) + fees
+        total_order_fees = fees + order_transfer_fee + order_funding_fee
+        if total_order_fees > 0:
+            self._total_fees += total_order_fees
+            self._total_fees_by_symbol[symbol] = self._total_fees_by_symbol.get(symbol, Decimal("0")) + total_order_fees
+            self._total_transfer_fees += order_transfer_fee
+            self._total_funding_fees += order_funding_fee
 
         # Persist to database if configured
         if self._database_url:
@@ -422,6 +496,8 @@ class PaperExecutor:
 
         return {
             "total_fees": float(self._total_fees),
+            "total_transfer_fees": float(self._total_transfer_fees),
+            "total_funding_fees": float(self._total_funding_fees),
             "total_unrealized_pnl": float(total_unrealized),
             "positions": positions,
             "orders": {
@@ -437,6 +513,13 @@ class PaperExecutor:
                 "taker_fee": str(self._fee_model.breakdown.taker_fee_rate),
                 "spread_bps": self._fee_model.breakdown.assumed_spread_bps,
                 "slippage_bps": self._fee_model.breakdown.assumed_slippage_bps,
+            },
+            "transfer_fee_model": {
+                "schedule": {k: dict(v) for k, v in self._transfer_fee_model._schedule.items()},
+            },
+            "funding_rate_model": {
+                "annual_rate": str(self._funding_rate_model._annual_rate),
+                "days_held": str(self._funding_rate_model._days_held),
             },
         }
 

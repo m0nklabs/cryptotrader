@@ -591,24 +591,307 @@ def test_legacy_executor_compatibility():
 
 
 def test_get_last_price():
-    """Test that update_market_price stores the last price and get_last_price retrieves it."""
-    executor = PaperExecutor()
+  """Test that update_market_price stores the last price and get_last_price retrieves it."""
+  executor = PaperExecutor()
 
-    # Initially no price
-    assert executor.get_last_price("BTCUSD") is None
+  # Initially no price
+  assert executor.get_last_price("BTCUSD") is None
 
-    # Update price
-    executor.update_market_price("BTCUSD", Decimal("50000"))
-    assert executor.get_last_price("BTCUSD") == Decimal("50000")
+  # Update price
+  executor.update_market_price("BTCUSD", Decimal("50000"))
+  assert executor.get_last_price("BTCUSD") == Decimal("50000")
 
-    # Update again
-    executor.update_market_price("BTCUSD", Decimal("51000"))
-    assert executor.get_last_price("BTCUSD") == Decimal("51000")
+  # Update again
+  executor.update_market_price("BTCUSD", Decimal("51000"))
+  assert executor.get_last_price("BTCUSD") == Decimal("51000")
 
-    # Different symbol remains None
-    assert executor.get_last_price("ETHUSD") is None
+  # Different symbol remains None
+  assert executor.get_last_price("ETHUSD") is None
 
-    # Update second symbol
-    executor.update_market_price("ETHUSD", Decimal("3000"))
-    assert executor.get_last_price("ETHUSD") == Decimal("3000")
-    assert executor.get_last_price("BTCUSD") == Decimal("51000")  # Unchanged
+  # Update second symbol
+  executor.update_market_price("ETHUSD", Decimal("3000"))
+  assert executor.get_last_price("ETHUSD") == Decimal("3000")
+  assert executor.get_last_price("BTCUSD") == Decimal("51000")  # Unchanged
+
+
+def test_transfer_fee_in_market_order():
+  """Test that transfer fees are included in market orders."""
+  executor = PaperExecutor()
+
+  order = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      currency="BTC",
+  )
+
+  # Transfer fee for BTC withdrawal is 0.0004
+  assert order.transfer_fee > Decimal("0")
+  assert order.transfer_fee == Decimal("0.0004")
+
+
+def test_transfer_fee_in_limit_order():
+  """Test that transfer fees are included in limit orders."""
+  executor = PaperExecutor()
+
+  order = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="limit",
+      limit_price=Decimal("49000"),
+      currency="BTC",
+  )
+
+  assert order.transfer_fee > Decimal("0")
+  assert order.transfer_fee == Decimal("0.0004")
+
+
+def test_funding_fee_in_market_order():
+  """Test that funding fees are included in market orders."""
+  executor = PaperExecutor()
+
+  order = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      days_held=Decimal("30"),
+  )
+
+  # Funding fee = notional * (annual_rate / 365 * days_held)
+  # = 50000 * (0.05 / 365 * 30) = 50000 * 0.004109... = ~205.48
+  assert order.funding_fee > Decimal("0")
+
+
+def test_funding_fee_in_limit_order():
+  """Test that funding fees are included in limit orders."""
+  executor = PaperExecutor()
+
+  order = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="limit",
+      limit_price=Decimal("49000"),
+      days_held=Decimal("30"),
+  )
+
+  assert order.funding_fee > Decimal("0")
+
+
+def test_custom_transfer_fee():
+  """Test that custom transfer fee overrides model."""
+  executor = PaperExecutor()
+
+  order = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      transfer_fee=Decimal("1.50"),
+  )
+
+  assert order.transfer_fee == Decimal("1.50")
+
+
+def test_custom_funding_fee():
+  """Test that custom funding fee overrides model."""
+  executor = PaperExecutor()
+
+  order = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      funding_fee=Decimal("25.00"),
+  )
+
+  assert order.funding_fee == Decimal("25.00")
+
+
+def test_all_fee_types_in_order():
+  """Test that trading fees, transfer fees, and funding fees are all present."""
+  executor = PaperExecutor()
+
+  order = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      transfer_fee=Decimal("1.50"),
+      funding_fee=Decimal("25.00"),
+  )
+
+  # Trading fees (maker/taker + spread + slippage)
+  assert order.fees > Decimal("0")
+  # Transfer fee
+  assert order.transfer_fee == Decimal("1.50")
+  # Funding fee
+  assert order.funding_fee == Decimal("25.00")
+
+
+def test_total_fees_tracking():
+  """Test that total fees track transfer and funding fees."""
+  executor = PaperExecutor()
+
+  # First order with default fees
+  order1 = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      currency="BTC",
+  )
+
+  total1 = executor.get_total_fees()
+  transfer1 = executor.get_total_transfer_fees()
+  funding1 = executor.get_total_funding_fees()
+
+  assert total1 > Decimal("0")
+  assert transfer1 > Decimal("0")
+  assert funding1 > Decimal("0")
+
+  # Second order with custom fees
+  order2 = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="SELL",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("51000"),
+      transfer_fee=Decimal("2.00"),
+      funding_fee=Decimal("30.00"),
+  )
+
+  total2 = executor.get_total_fees()
+  transfer2 = executor.get_total_transfer_fees()
+  funding2 = executor.get_total_funding_fees()
+
+  # Totals should be higher after second order
+  assert total2 > total1
+  assert transfer2 > transfer1
+  assert funding2 > funding1
+
+
+def test_fee_models_accessible():
+  """Test that fee models are accessible via getter methods."""
+  executor = PaperExecutor()
+
+  assert executor.get_transfer_fee_model() is not None
+  assert executor.get_funding_rate_model() is not None
+  assert executor.get_fee_model() is not None
+
+
+def test_paper_summary_includes_fees():
+  """Test that paper summary includes transfer and funding fee info."""
+  executor = PaperExecutor()
+
+  executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      currency="BTC",
+  )
+
+  summary = executor.get_paper_summary()
+
+  assert "total_transfer_fees" in summary
+  assert "total_funding_fees" in summary
+  assert "transfer_fee_model" in summary
+  assert "funding_rate_model" in summary
+  assert summary["total_transfer_fees"] > 0
+  assert summary["total_funding_fees"] > 0
+
+
+def test_different_currency_transfer_fees():
+  """Test that different currencies have different transfer fees."""
+  executor = PaperExecutor()
+
+  btc_order = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      currency="BTC",
+  )
+
+  eth_order = executor.execute_paper_order(
+      symbol="ETHUSD",
+      side="BUY",
+      qty=Decimal("10.0"),
+      order_type="market",
+      market_price=Decimal("3000"),
+      currency="ETH",
+  )
+
+  usdt_order = executor.execute_paper_order(
+      symbol="USDTUSD",
+      side="BUY",
+      qty=Decimal("1000.0"),
+      order_type="market",
+      market_price=Decimal("1.0"),
+      currency="USDT",
+  )
+
+  # BTC withdrawal: 0.0004, ETH: 0.00135, USDT: 1.8
+  assert btc_order.transfer_fee == Decimal("0.0004")
+  assert eth_order.transfer_fee == Decimal("0.00135")
+  assert usdt_order.transfer_fee == Decimal("1.8")
+
+
+def test_days_held_affects_funding_fee():
+  """Test that days_held parameter affects funding fee calculation."""
+  executor = PaperExecutor()
+
+  order_1day = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      days_held=Decimal("1"),
+  )
+
+  order_30day = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      days_held=Decimal("30"),
+  )
+
+  # 30-day funding fee should be ~30x the 1-day fee
+  assert order_30day.funding_fee > order_1day.funding_fee
+  assert order_30day.funding_fee > order_1day.funding_fee * Decimal("25")
+
+
+def test_fees_zero_when_no_fill():
+  """Test that fees are still calculated even when fill is missed."""
+  executor = PaperExecutor(
+      partial_fill_prob=Decimal("0"),  # No partial fills
+      missed_fill_prob=Decimal("1.0"),  # Always missed
+  )
+
+  order = executor.execute_paper_order(
+      symbol="BTCUSD",
+      side="BUY",
+      qty=Decimal("1.0"),
+      order_type="market",
+      market_price=Decimal("50000"),
+      currency="BTC",
+  )
+
+  # Even missed orders should have transfer and funding fees
+  assert order.transfer_fee > Decimal("0")
+  assert order.funding_fee > Decimal("0")

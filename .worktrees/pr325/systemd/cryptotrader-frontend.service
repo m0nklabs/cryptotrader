@@ -1,0 +1,24 @@
+[Unit]
+Description=cryptotrader frontend (Vite dev)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/cryptotrader/frontend
+Environment=NODE_ENV=production
+
+# Run Vite preview (serves dist/) for speed (was dev server)
+# To revert to dev mode (hot reload), change this back to 'npm run dev'
+ExecStart=/usr/bin/env npm run preview -- --host 0.0.0.0 --port 5176 --strictPort
+
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/cryptotrader/frontend
+
+[Install]
+WantedBy=default.target

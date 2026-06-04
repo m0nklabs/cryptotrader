@@ -534,7 +534,12 @@ def _fetch_wallet_balances() -> list[dict[str, Any]]:
 def main() -> int:
     p = argparse.ArgumentParser(description="Minimal local API for the dashboard (DB-backed).")
     p.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
-    p.add_argument("--port", type=int, default=8787, help="Bind port (default: 8787)")
+    p.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("LEGACY_PORT", "50787")),
+        help="Bind port (default: LEGACY_PORT env var or 50787)",
+    )
     args = p.parse_args()
 
     database_url = os.environ.get("DATABASE_URL")

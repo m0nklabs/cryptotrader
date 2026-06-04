@@ -3,8 +3,6 @@ version: "3.9"
 
 services:
   postgres:
-    ports:
-      - "5432:5432"
     volumes:
       - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
 
@@ -12,13 +10,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cryptotrader-api
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:***@postgres:5432/${POSTGRES_DB:-cryptotrader}
+      - DATABASE_URL=postgresql://${DB_USER:-cryptotrader}:${DB_PASSWORD:-cryptotrader}@postgres:5432/${DB_NAME:-cryptotrader_dev}
+      - PORT=${PORT:-50000}
       - BITFINEX_API_KEY=${BITFINEX_API_KEY:-}
       - BITFINEX_API_SECRET=${BITFINEX_API_SECRET:-}
       - BITFINEX_TIMEOUT=${BITFINEX_TIMEOUT:-30}
@@ -28,13 +26,13 @@ services:
       - GUARDIAN_API_KEY=${GUARDIAN_API_KEY:-}
       - GUARDIAN_HOST=${GUARDIAN_HOST:-http://localhost:11434}
     ports:
-      - "8000:8000"
+      - "${PORT:-50000}:${PORT:-50000}"
     volumes:
       - ./api:/app/api:ro
       - ./core:/app/core:ro
       - ./db:/app/db:ro
       - ./scripts:/app/scripts:ro
-    command: ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "${PORT:-50000}", "--reload"]
     healthcheck:
       test: ["CMD", "python", "scripts/healthcheck.py"]
       interval: 30s
@@ -42,18 +40,39 @@ services:
       retries: 3
       start_period: 60s
 
+  legacy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-cryptotrader}:${DB_PASSWORD:-cryptotrader}@postgres:5432/${DB_NAME:-cryptotrader_dev}
+      - LEGACY_PORT=${LEGACY_PORT:-50787}
+    ports:
+      - "${LEGACY_PORT:-50787}:${LEGACY_PORT:-50787}"
+    volumes:
+      - ./api:/app/api:ro
+      - ./core:/app/core:ro
+      - ./db:/app/db:ro
+      - ./scripts:/app/scripts:ro
+    command: ["python", "scripts/api_server.py", "--host", "0.0.0.0", "--port", "${LEGACY_PORT:-50787}"]
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: cryptotrader-frontend
     restart: unless-stopped
     depends_on:
       - api
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - PORT=${PORT:-50000}
+      - FRONTEND_PORT=${FRONTEND_PORT:-50176}
+      - VITE_API_PROXY_TARGET=http://api:${PORT:-50000}
     ports:
-      - "5176:5176"
+      - "${FRONTEND_PORT:-50176}:${FRONTEND_PORT:-50176}"
     volumes:
       - ./frontend/src:/app/src:ro
       - ./frontend/public:/app/public:ro
@@ -63,5 +82,6 @@ services:
       - ./frontend/tsconfig.node.json:/app/tsconfig.node.json:ro
       - ./frontend/tailwind.config.js:/app/tailwind.config.js:ro
       - ./frontend/postcss.config.js:/app/postcss.config.js:ro
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "${FRONTEND_PORT:-50176}", "--strictPort"]
     stdin_open: true
     tty: true

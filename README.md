@@ -151,6 +151,42 @@ systemctl --user status cryptotrader-frontend.service
 journalctl --user -u cryptotrader-frontend.service -f
 ```
 
+#### Backend API service
+
+```bash
+# Install backend service
+cp systemd/cryptotrader-api.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now cryptotrader-api.service
+
+# Check status
+systemctl --user status cryptotrader-api.service
+
+# Restart (handles stale uvicorn processes)
+systemctl --user restart cryptotrader-api.service
+
+# If stuck, force-kill and restart
+systemctl --user stop cryptotrader-api.service
+pkill -f "uvicorn api.main"
+systemctl --user start cryptotrader-api.service
+```
+
+#### Validation after restart
+
+```bash
+# Verify systemd service is running
+systemctl --user is-active cryptotrader-api.service   # returns "active"
+
+# Verify health endpoint (expect 200)
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health
+
+# Verify candle endpoint (expect 200, may return empty array)
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000/candles/latest?symbol=BTCUSD&timeframe=1h"
+
+# Verify ingestion status
+curl -s "http://localhost:8000/ingestion/status?symbol=BTCUSD&timeframe=1h"
+```
+
 See [docs/OPERATIONS.md](docs/OPERATIONS.md) for full operational details.
 
 Or use **DevContainer** in VS Code for a pre-configured environment.

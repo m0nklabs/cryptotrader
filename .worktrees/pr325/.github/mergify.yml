@@ -1,0 +1,218 @@
+# Mergify configuration
+# https://docs.mergify.com/
+
+pull_request_rules:
+  # ========== Auto-labeling based on files changed ==========
+
+  - name: label-frontend
+    conditions:
+      - files~=^frontend/
+    actions:
+      label:
+        add:
+          - frontend
+
+  - name: label-backend
+    conditions:
+      - or:
+          - files~=^core/
+          - files~=^api/
+    actions:
+      label:
+        add:
+          - backend
+
+  - name: label-exchange
+    conditions:
+      - files~=^cex/
+    actions:
+      label:
+        add:
+          - exchange
+
+  - name: label-database
+    conditions:
+      - files~=^db/
+    actions:
+      label:
+        add:
+          - database
+
+  - name: label-tests
+    conditions:
+      - files~=^tests/
+    actions:
+      label:
+        add:
+          - tests
+
+  - name: label-ci
+    conditions:
+      - or:
+          - files~=^\.github/
+          - files~=^docker-compose\.yml$
+          - files~=^Makefile$
+          - files~=^\.devcontainer/
+    actions:
+      label:
+        add:
+          - ci
+
+  - name: label-docs
+    conditions:
+      - or:
+          - files~=^docs/
+          - files~=^README\.md$
+          - files~=^CHANGELOG\.md$
+          - files~=^CONTRIBUTING\.md$
+    actions:
+      label:
+        add:
+          - documentation
+
+  - name: label-config
+    conditions:
+      - or:
+          - files~=^pyproject\.toml$
+          - files~=^requirements.*\.txt$
+          - files~=^\.pre-commit-config\.yaml$
+          - files~=^\.editorconfig$
+    actions:
+      label:
+        add:
+          - config
+
+  # ========== Conflict detection ==========
+
+  - name: ping-author-on-conflicts
+    conditions:
+      - conflict
+    actions:
+      label:
+        add:
+          - needs-rebase
+      comment:
+        message: |
+          @{{author}} This PR has merge conflicts. Please rebase on master to resolve them.
+
+          \`\`\`bash
+          git fetch origin
+          git rebase origin/master
+          git push --force-with-lease
+          \`\`\`
+
+  - name: remove-needs-rebase-label
+    conditions:
+      - -conflict
+      - label=needs-rebase
+    actions:
+      label:
+        remove:
+          - needs-rebase
+
+  # ========== PR hygiene ==========
+
+  - name: label-wip
+    conditions:
+      - or:
+          - draft
+          - title~=^WIP
+          - title~=^\[WIP\]
+    actions:
+      label:
+        add:
+          - work-in-progress
+
+  - name: remove-wip-label
+    conditions:
+      - -draft
+      - -title~=^WIP
+      - -title~=^\[WIP\]
+      - label=work-in-progress
+    actions:
+      label:
+        remove:
+          - work-in-progress
+
+  - name: label-copilot
+    conditions:
+      - or:
+          - author=github-actions[bot]
+          - head~=^copilot/
+    actions:
+      label:
+        add:
+          - copilot
+
+  # ========== Auto-merge ==========
+  # NOTE: Branch deletion after merge is handled by GitHub's repository setting
+  # 'Automatically delete head branches', as the 'delete_head_branch' action is deprecated.
+
+  - name: auto-merge-dependabot
+    conditions:
+      - author=dependabot[bot]
+      - check-success=Backend (ruff + pytest)
+      - check-success=Pre-commit checks
+      - -conflict
+      - -draft
+    actions:
+      merge:
+        method: squash
+
+  - name: auto-merge-copilot
+    conditions:
+      - or:
+          - author=github-actions[bot]
+          - head~=^copilot/
+      # Require HUMAN approval (not bot) - at least one of m0nk111, m0nk1111
+      - or:
+          - approved-reviews-by=m0nk111
+          - approved-reviews-by=m0nk1111
+      # Copilot Reviewer must NOT have outstanding comments (state != COMMENTED)
+      - or:
+          - -review-requested=copilot-pull-request-reviewer[bot]
+          - "#changes-requested-reviews-by=0"
+      # Use Copilot CI check (push-triggered) instead of PR checks (which get blocked)
+      - or:
+          - check-success=Copilot CI
+          - and:
+              - check-success=Backend (ruff + pytest)
+              - check-success=Pre-commit checks
+      - check-success=Gitleaks
+      - -conflict
+      - -draft
+      - -label=do-not-merge
+      - -label=work-in-progress
+    actions:
+      merge:
+        method: squash
+
+  - name: auto-merge-approved
+    conditions:
+      - label=automerge
+      - "#approved-reviews-by>=1"
+      - check-success=Backend (ruff + pytest)
+      - check-success=Pre-commit checks
+      - check-success=Gitleaks
+      - -conflict
+      - -draft
+      - -label=do-not-merge
+    actions:
+      merge:
+        method: squash
+
+  - name: request-review-on-ready
+    conditions:
+      - -draft
+      - check-success=Backend (ruff + pytest)
+      - check-success=Pre-commit checks
+      - -conflict
+      - "#review-requested=0"
+      - "#approved-reviews-by=0"
+      - -author=dependabot[bot]
+    actions:
+      comment:
+        message: |
+          ✅ CI passed! This PR is ready for review.
+
+          @m0nk1111 please review when you have a moment.

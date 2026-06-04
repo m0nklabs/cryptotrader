@@ -1,0 +1,261 @@
+name: Auto-assign Copilot to Priority Issues
+
+on:
+  # Run every 5 minutes when no Copilot PR is active
+  schedule:
+    - cron: '*/5 * * * *'
+  # Manual trigger
+  workflow_dispatch:
+  # Run when a PR is closed (to assign next issue)
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+jobs:
+  assign-copilot:
+    runs-on: [self-hosted, Linux, org]
+    steps:
+      - name: Generate App Token
+        id: generate-token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Run header
+        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
+        with:
+          title: "Auto-assign Copilot"
+
+      - name: Check for active Copilot PRs
+        id: check-prs
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ steps.generate-token.outputs.token }}
+          script: |
+            // Find open PRs by Copilot
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            const copilotPRs = prs.filter(pr =>
+              pr.user.login === 'copilot[bot]' ||
+              pr.user.login === 'Copilot' ||
+              pr.user.login === 'app/copilot-swe-agent' ||
+              pr.user.login.toLowerCase().includes('copilot')
+            );
+
+            console.log(`Found ${copilotPRs.length} active Copilot PRs`);
+
+            if (copilotPRs.length > 0) {
+              console.log('Copilot is busy, skipping assignment');
+              core.setOutput('busy', 'true');
+              return;
+            }
+
+            core.setOutput('busy', 'false');
+
+      - name: Find highest priority unassigned issue
+        id: find-issue
+        if: steps.check-prs.outputs.busy == 'false'
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ steps.generate-token.outputs.token }}
+          script: |
+            // Priority order for EPICs (highest first)
+            const epicPriority = {
+              153: 1,  // Backtesting & Validation (Critical)
+              158: 2,  // Execution & Automation (High)
+              164: 3,  // AI & LLM Integration (Medium)
+              170: 4,  // Frontend Observability (Medium)
+              174: 5,  // Portfolio & Wallet (Low)
+              179: 6   // Infrastructure (Low)
+            };
+
+            // Priority labels (if present, use these)
+            const labelPriority = {
+              'priority: critical': 0,
+              'priority:critical': 0,
+              'copilot-ready': 0.5,     // Treat copilot-ready as very high priority
+              'priority: high': 1,
+              'priority:high': 1,
+              'priority: medium': 2,
+              'priority:medium': 2,
+              'priority: low': 3,
+              'priority:low': 3
+            };
+
+            // Get all open issues
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            // Filter: not a PR, not an EPIC, not already assigned to Copilot
+            const candidates = issues.filter(issue => {
+              // Skip PRs
+              if (issue.pull_request) return false;
+
+              // Skip EPICs (have 🎯 in title)
+              if (issue.title.includes('🎯') || issue.title.includes('EPIC')) return false;
+
+              // Skip if already assigned to Copilot
+              const assignees = issue.assignees.map(a => a.login.toLowerCase());
+              if (assignees.some(a => a.includes('copilot'))) return false;
+
+              // Must have 'copilot' label OR be unassigned with priority label
+              const labels = issue.labels.map(l => l.name.toLowerCase());
+              const hasCopilotLabel = labels.includes('copilot');
+              const hasPriorityLabel = labels.some(l => l.startsWith('priority:') || l.startsWith('priority: '));
+
+              // Eligible if: has copilot label, OR has priority label and no assignees
+              if (!hasCopilotLabel && !(hasPriorityLabel && issue.assignees.length === 0)) {
+                return false;
+              }
+
+              // Skip issues with [blocked] or [wip] in title
+              const titleLower = issue.title.toLowerCase();
+              if (titleLower.includes('[blocked]') || titleLower.includes('[wip]')) return false;
+
+              return true;
+            });
+
+            if (candidates.length === 0) {
+              console.log('No eligible issues found for Copilot assignment');
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            // Score each issue
+            const scoredIssues = candidates.map(issue => {
+              let score = 1000; // Base score
+
+              // Check for priority labels
+              for (const label of issue.labels) {
+                const labelName = label.name.toLowerCase();
+                if (labelPriority[labelName] !== undefined) {
+                  score = labelPriority[labelName] * 100;
+                  break;
+                }
+              }
+
+              // Check issue body for EPIC reference
+              const body = issue.body || '';
+              const epicMatch = body.match(/EPIC #(\d+)/i);
+              if (epicMatch) {
+                const epicNum = parseInt(epicMatch[1]);
+                if (epicPriority[epicNum]) {
+                  score += epicPriority[epicNum];
+                }
+              }
+
+              // Prefer older issues (lower number = older = higher priority)
+              // We add a small fraction so that higher numbers (newer) result in a higher score (lower priority)
+              score += issue.number / 100000;
+
+              return { issue, score };
+            });
+
+            // Sort by score (lowest = highest priority)
+            scoredIssues.sort((a, b) => a.score - b.score);
+
+            const topIssue = scoredIssues[0].issue;
+            console.log(`Selected issue #${topIssue.number}: ${topIssue.title}`);
+            console.log(`Score: ${scoredIssues[0].score}`);
+
+            core.setOutput('found', 'true');
+            core.setOutput('issue_number', topIssue.number);
+            core.setOutput('issue_title', topIssue.title);
+
+      - name: Assign Copilot to issue (GraphQL)
+        if: steps.check-prs.outputs.busy == 'false' && steps.find-issue.outputs.found == 'true'
+        env:
+          # Use PAT for Copilot assignment - GitHub App tokens cannot see copilot-swe-agent bot
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          ISSUE_NUMBER=${{ steps.find-issue.outputs.issue_number }}
+          echo "Assigning Copilot to issue #${ISSUE_NUMBER}"
+
+          # Step 1: Find the Copilot bot ID from suggested actors
+          COPILOT_BOT_ID=$(gh api graphql -f query='
+            query($owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) {
+                suggestedActors(first: 100, capabilities: CAN_BE_ASSIGNED) {
+                  nodes {
+                    ... on Bot {
+                      id
+                      login
+                    }
+                  }
+                }
+              }
+            }
+          ' -f owner="${{ github.repository_owner }}" -f name="${{ github.event.repository.name }}" \
+            --jq '.data.repository.suggestedActors.nodes[] | select(.login == "copilot-swe-agent") | .id')
+
+          if [ -z "$COPILOT_BOT_ID" ]; then
+            echo "::error::Copilot bot not found. Make sure Copilot is enabled and GH_PAT secret has correct scopes."
+            exit 1
+          fi
+
+          echo "Found Copilot bot with ID: $COPILOT_BOT_ID"
+
+          # Step 2: Get the issue's GraphQL ID
+          ISSUE_ID=$(gh api graphql -f query='
+            query($owner: String!, $name: String!, $number: Int!) {
+              repository(owner: $owner, name: $name) {
+                issue(number: $number) {
+                  id
+                }
+              }
+            }
+          ' -f owner="${{ github.repository_owner }}" -f name="${{ github.event.repository.name }}" -F number="$ISSUE_NUMBER" \
+            --jq '.data.repository.issue.id')
+
+          echo "Issue GraphQL ID: $ISSUE_ID"
+
+          # Step 3: Assign Copilot using replaceActorsForAssignable mutation
+          # Build JSON payload with printf (jq string concat has issues in YAML)
+          MUTATION_JSON=$(printf '{"query":"mutation { replaceActorsForAssignable(input: {assignableId: \\"%s\\", actorIds: [\\"%s\\"]}) { assignable { ... on Issue { assignees(first: 10) { nodes { login } } } } } }"}' "$ISSUE_ID" "$COPILOT_BOT_ID")
+          echo "Mutation JSON: $MUTATION_JSON"
+          RESULT=$(echo "$MUTATION_JSON" | gh api graphql --input - --jq '.data.replaceActorsForAssignable.assignable.assignees.nodes[].login')
+
+          echo "Successfully assigned! New assignees: $RESULT"
+          echo "assigned=true" >> $GITHUB_OUTPUT
+
+      - name: Mention Copilot on issue (as user)
+        if: steps.check-prs.outputs.busy == 'false' && steps.find-issue.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          ISSUE_NUMBER=${{ steps.find-issue.outputs.issue_number }}
+
+          # Post @copilot comment using PAT (Copilot only responds to user comments, not bot comments)
+          # Use --repo flag to avoid needing git checkout
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "@copilot Please implement this issue. Create a fresh branch from current master and open a PR when ready. _Auto-triggered by CI (no active Copilot PRs detected)_"
+
+          echo "Mentioned Copilot on issue #${ISSUE_NUMBER}"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Copilot Auto-Assignment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.check-prs.outputs.busy }}" == "true" ]; then
+            echo "⏳ Copilot is currently busy with an open PR" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.find-issue.outputs.found }}" == "true" ]; then
+            echo "✅ Assigned Copilot to issue #${{ steps.find-issue.outputs.issue_number }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**${{ steps.find-issue.outputs.issue_title }}**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "📭 No unassigned issues found" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -381,7 +381,7 @@ npm run dev
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Backtesting validation | Engine exists; validation incomplete | Add walk-forward, out-of-sample, lookahead-bias, and cost-aware replay before trusting strategy output. |
+| Backtesting validation | Engine with walk-forward, OOS, lookahead-bias, and cost-aware replay | 33 walk-forward tests pass. train/test split, warmup separation, OOS decay, overfitting assessment. |
 | AI/Multi-Brain | Analysis layer exists; execution integration incomplete | Providers, roles, router, consensus, API and UI exist. Next step is paper-only audited execution intent generation. |
 | Live Bitfinex execution | Adapter exists; live mode must stay gated | Dry-run/paper mode remains the supported default. |
 | Multi-exchange trading | Partial | Bitfinex is real. Binance/KuCoin are not production trading paths. |

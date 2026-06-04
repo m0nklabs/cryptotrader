@@ -19,6 +19,11 @@ This guide covers running cryptotrader with Docker Compose for development and p
    cd cryptotrader
    cp docker-compose.env.example .env
    # Edit .env with your settings
+   # Shared DB for both cryptotrader_copilot and ../cryptotrader_hermes:
+   # DB_PORT=50432
+   # DB_DATA_PATH=/home/flip/postgres_data/shared
+   # DB_NAME=cryptotrader_dev
+   # Keep non-DB host ports separate: prefer 50xxx for Copilot and 51xxx for Hermes.
    ```
 
 2. **Start all services**:
@@ -27,10 +32,11 @@ This guide covers running cryptotrader with Docker Compose for development and p
    ```
 
 3. **Access services**:
-   - Frontend: http://localhost:5176
-   - API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
-   - PostgreSQL: localhost:5432
+   - Shared PostgreSQL for both workspaces: `localhost:50432`
+   - Copilot API: `http://localhost:50000`
+   - Copilot Frontend: `http://localhost:50176`
+   - Copilot Legacy helper: `http://localhost:50787`
+   - Hermes should use `51000`, `51176`, and `51787` for its app services.
 
 4. **View logs**:
    ```bash
@@ -51,7 +57,7 @@ This guide covers running cryptotrader with Docker Compose for development and p
 After starting services, seed sample market data for testing:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api bash -c "export DATABASE_URL=postgresql://cryptotrader:cryptotrader@postgres:5432/cryptotrader && ./scripts/seed-data.sh"
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api ./scripts/seed-data.sh
 ```
 
 ## Service Details
@@ -59,14 +65,16 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api bash -c 
 ### PostgreSQL Database
 
 - **Image**: postgres:16-alpine
-- **Port**: 5432
-- **Data**: Persisted in `./data/postgres/`
+- **Port**: `DB_PORT` (default: `50432`)
+- **Data**: Persisted in `DB_DATA_PATH` (default: `/home/flip/postgres_data/shared`, outside the repo)
+- **Shared usage**: `cryptotrader_copilot` and `../cryptotrader_hermes` must use the same DB settings and connect to the same container/tables
+- **Non-DB ports**: keep API/frontend/ingestion host ports separate by workspace; prefer 50xxx for Copilot and 51xxx for Hermes
 - **Init**: Automatically runs `scripts/init-db.sh` and applies `db/schema.sql` on first start
 
 ### Backend API
 
 - **Image**: Built from root `Dockerfile`
-- **Port**: 8000
+- **Port**: `PORT` (default: `50000`)
 - **Hot-reload**: Enabled in dev mode via `--reload` flag
 - **Environment**: Configured via `.env` file
 - **Health**: `/health` endpoint for status checks
@@ -74,9 +82,16 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api bash -c 
 ### Frontend
 
 - **Image**: Built from `frontend/Dockerfile`
-- **Port**: 5176 (Vite dev server)
+- **Port**: `FRONTEND_PORT` (default: `50176`)
 - **Hot-reload**: Enabled via volume mounts
-- **API URL**: Configured via `VITE_API_URL` environment variable
+- **API proxy**: Configured via `VITE_API_PROXY_TARGET` or the backend `PORT`
+
+### Legacy Helper API
+
+- **Image**: Built from root `Dockerfile`
+- **Port**: `LEGACY_PORT` (default: `50787`)
+- **Purpose**: Optional DB-backed helper for older dashboard/API flows
+- **Hermes override**: Use `LEGACY_PORT=51787`
 
 ## Development Workflow
 
@@ -115,7 +130,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml exec frontend sh
 
 # Database shell
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec postgres psql -U cryptotrader -d cryptotrader
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
 ## Production Deployment
@@ -184,14 +199,11 @@ docker compose logs postgres
 
 ### Port Conflicts
 
-If ports 5432, 8000, or 5176 are in use:
+If ports `50432`, `50000`, `50176`, or `50787` are in use:
 
 1. Stop conflicting services
-2. Or modify port mappings in `docker-compose.dev.yml`:
-   ```yaml
-   ports:
-     - "8001:8000"  # Map to different host port
-   ```
+2. Or change `PORT`, `FRONTEND_PORT`, and `LEGACY_PORT` in `.env`
+3. Keep Hermes on `51000`, `51176`, and `51787` so it never collides with the Copilot stack
 
 ### Disk Space
 
@@ -216,8 +228,8 @@ To reset everything:
 # Stop and remove everything
 docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
 
-# Remove data directory
-rm -rf ./data/postgres
+# Remove the shared data directory (WARNING: affects both workspaces)
+rm -rf /home/flip/postgres_data/shared
 
 # Rebuild and start
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
