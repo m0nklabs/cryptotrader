@@ -356,6 +356,18 @@ async def health() -> dict[str, Any]:
     }
 
 
+@app.get("/ping")
+async def ping() -> dict[str, str]:
+    """Simple ping endpoint.
+
+    Returns a lightweight status check with no dependencies.
+
+    Returns:
+        JSON with status "pong".
+    """
+    return {"status": "pong"}
+
+
 @app.get("/ingestion/status")
 async def get_ingestion_status(
     exchange: str = Query("bitfinex", description="Exchange name"),
