@@ -50,21 +50,20 @@ def test_candles_endpoint_exists():
 
 @pytest.mark.asyncio
 async def test_health_endpoint_no_database():
-    """Test health endpoint behavior when DATABASE_URL is not set."""
-    from fastapi import HTTPException
-
+    """Test health endpoint works without database connection."""
     from api.main import health
 
     # Mock the stores to raise an error
     with patch("api.main._get_stores") as mock_get_stores:
         mock_get_stores.side_effect = RuntimeError("DATABASE_URL environment variable is required")
 
-        with pytest.raises(HTTPException) as exc_info:
-            await health()
+        # Should NOT raise — endpoint is DB-free
+        result = await health()
 
-        assert exc_info.value.status_code == 503
-        assert "connected" in exc_info.value.detail["database"]
-        assert exc_info.value.detail["database"]["connected"] is False
+        assert result["status"] == "ok"
+        assert result["version"] == "1.0.0"
+        assert isinstance(result["uptime_seconds"], int)
+        assert result["uptime_seconds"] >= 0
 
 
 def test_as_utc_helper():

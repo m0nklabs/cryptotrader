@@ -1,7 +1,7 @@
 """FastAPI application for candles, health, and paper trading endpoints.
 
 This module provides a minimal HTTP API service for:
-- GET /health - Database connectivity and schema check
+- GET /health - Simple status check (no DB dependency)
 - GET /candles/latest - Latest candles with query parameters
 - GET /ingestion/status - Ingestion freshness for UI/ops tools
 - POST /orders - Place paper order
@@ -10,8 +10,12 @@ This module provides a minimal HTTP API service for:
 - GET /positions - List open positions
 - GET /market-cap - Current market cap rankings from CoinGecko
 
+DATABASE_URL resolution (authoritative order):
+1. Process environment variable (systemd/container overrides win)
+2. Repo-local .env file (safe fallback via load_dotenv with override=False)
+
 Requirements:
-- DATABASE_URL must be set in environment
+- DATABASE_URL must be set (process env or .env fallback)
 - No authentication (local network only)
 """
 
@@ -20,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import pathlib
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -27,6 +32,15 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal, Optional
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None  # type: ignore[assignment]
+
+# Resolve .env relative to the project root (parent of api/)
+_PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_ENV_PATH = _PROJECT_ROOT / ".env"
 
 from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -202,12 +216,18 @@ def _get_cooldown_check() -> CooldownCheck:
 
 
 def _get_signal_dedup() -> SignalDeduplication:
-    """Get or initialize the shared signal deduplication."""
+    """Get or initialize the shared signal deduplication.
+
+    Wires up the CooldownCheck reference so that dedup uses the unified
+    cooldown path (_check_with_cooldown_check), ensuring both mechanisms
+    agree on cooldown boundaries and avoid false positives/negatives.
+    """
     global _signal_dedup
     if _signal_dedup is None:
         _signal_dedup = SignalDeduplication(
             config=_get_automation_config(),
             trade_history=_get_trade_history(),
+            cooldown_check=_get_cooldown_check(),
         )
     return _signal_dedup
 
@@ -252,10 +272,19 @@ _stores: PostgresStores | None = None
 
 
 def _get_stores() -> PostgresStores:
-    """Get or initialize the database stores."""
+    """Get or initialize the database stores.
+
+    DATABASE_URL resolution (authoritative order):
+    1. Process environment variable (systemd/container overrides win)
+    2. Repo-local .env file (safe fallback)
+    """
     global _stores
     if _stores is None:
         database_url = os.environ.get("DATABASE_URL")
+        if not database_url and load_dotenv is not None:
+            # Load .env as a safe fallback — does NOT overwrite existing env vars
+            load_dotenv(_ENV_PATH, override=False)
+            database_url = os.environ.get("DATABASE_URL")
         if not database_url:
             raise RuntimeError("DATABASE_URL environment variable is required")
         _stores = PostgresStores(config=PostgresConfig(database_url=database_url))
@@ -314,57 +343,17 @@ class FeesEstimateResponse(BaseModel):
 async def health() -> dict[str, Any]:
     """Health check endpoint.
 
+    Returns a simple status check with no database dependencies.
+
     Returns:
-        JSON with database connectivity status and schema information.
-
-    Raises:
-        HTTPException: If database connection fails.
+        JSON with status, version, and uptime_seconds.
     """
-    try:
-        stores = _get_stores()
-        engine = stores._get_engine()  # noqa: SLF001
-        _, text = stores._require_sqlalchemy()  # noqa: SLF001
-
-        # Check database connectivity and candles table
-        with engine.begin() as conn:
-            # Verify candles table exists
-            result = conn.execute(
-                text(
-                    """
-                    SELECT COUNT(*)
-                    FROM information_schema.tables
-                    WHERE table_name = 'candles'
-                    """
-                )
-            ).scalar()
-
-            candles_table_exists = result > 0
-
-            # Get total candle count if table exists
-            total_candles = 0
-            if candles_table_exists:
-                total_candles = conn.execute(text("SELECT COUNT(*) FROM candles")).scalar() or 0
-
-        return {
-            "status": "ok",
-            "database": {
-                "connected": True,
-                "candles_table_exists": candles_table_exists,
-                "total_candles": total_candles,
-            },
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "status": "error",
-                "database": {
-                    "connected": False,
-                    "error": str(e),
-                },
-            },
-        ) from e
+    uptime_seconds = int(time.time() - _app_start_time)
+    return {
+        "status": "ok",
+        "version": app.version,
+        "uptime_seconds": uptime_seconds,
+    }
 
 
 @app.get("/ingestion/status")

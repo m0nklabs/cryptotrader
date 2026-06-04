@@ -67,7 +67,7 @@ def test_health_checker_database_error():
 
 def test_health_checker_check_all():
     """Test checking all components."""
-    checker = HealthChecker(database_url="postgresql://test:test@localhost/test")
+    checker = HealthChecker(database_url="postgresql://test:***@localhost/test")
 
     # Mock successful database check
     mock_engine = MagicMock()
@@ -87,3 +87,23 @@ def test_health_checker_check_all():
     assert "ingestion" in results
     assert isinstance(results["database"], HealthStatus)
     assert isinstance(results["ingestion"], HealthStatus)
+
+
+def test_health_endpoint_no_database_deps():
+    """Test that GET /health returns status, version, uptime_seconds with no DB deps."""
+    from fastapi.testclient import TestClient
+    from api.main import app
+
+    client = TestClient(app)
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert "status" in data
+    assert data["status"] == "ok"
+    assert "version" in data
+    assert data["version"] == "1.0.0"
+    assert "uptime_seconds" in data
+    assert isinstance(data["uptime_seconds"], int)
+    assert data["uptime_seconds"] >= 0
