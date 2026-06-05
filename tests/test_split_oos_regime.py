@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import math
 from datetime import datetime, timezone
-
-import pytest
 
 from scripts.split_oos_regime import (
     RegimeLabel,
@@ -98,7 +95,7 @@ class TestSplitOOSData:
         candles = generate_synthetic_candles(1000)
         segments = split_oos_data(candles)
         for seg in segments:
-            assert seg.dominant_regime in RegimeLabel
+            assert isinstance(seg.dominant_regime, RegimeLabel)
             assert isinstance(seg.regime_breakdown, dict)
             assert len(seg.regime_breakdown) > 0
 
