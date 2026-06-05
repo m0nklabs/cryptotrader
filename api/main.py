@@ -309,6 +309,20 @@ class FeesEstimateResponse(BaseModel):
     minimum_edge_bps: Decimal
 
 
+@app.get("/version")
+async def version() -> dict[str, Any]:
+    """Get API version information. No database dependency.
+
+    Returns:
+        JSON with version, environment, and application name.
+    """
+    return {
+        "version": "1.0.0",
+        "environment": "paper",
+        "application": "CryptoTrader API",
+    }
+
+
 @app.get("/health")
 @app.get("/healthz")
 async def health() -> dict[str, Any]:
