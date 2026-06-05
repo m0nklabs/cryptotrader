@@ -23,7 +23,6 @@ from core.analysis.indicator_correlation import (
     RSI_CODE,
     MACD_CODE,
     STOCHASTIC_CODE,
-    CorrelationResult,
     check_correlation_threshold,
     compute_correlation_matrix,
     compute_signal_correlation,
