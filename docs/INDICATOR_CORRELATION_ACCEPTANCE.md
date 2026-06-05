@@ -118,19 +118,44 @@ The correlation analysis feeds into the AI consensus pipeline as follows:
 
 ## Test Suite Summary
 
-| Category | Tests | Status |
-|----------|-------|--------|
-| RSI/Stochastic correlation | 2 | PASS |
-| RSI/MACD correlation | 2 | PASS |
-| MACD/Stochastic correlation | 1 | PASS |
-| Correlation matrix | 5 | PASS |
-| Threshold checking | 5 | PASS |
-| Edge cases | 5 | PASS |
-| High/low regimes | 4 | PASS |
-| Signal detection integration | 2 | PASS |
-| **Total** | **26** | **26 PASS** |
+|| Category | Tests | Status |
+||----------|-------|--------|
+|| RSI/Stochastic correlation | 2 | PASS |
+|| RSI/MACD correlation | 2 | PASS |
+|| MACD/Stochastic correlation | 1 | PASS |
+|| Correlation matrix | 5 | PASS |
+|| Threshold checking | 5 | PASS |
+|| Edge cases | 5 | PASS |
+|| High/low regimes | 4 | PASS |
+|| Signal detection integration | 2 | PASS |
+|| **Total** | **26** | **26 PASS** |
 
 Run: `pytest tests/test_indicator_correlation.py -v`
+
+### Execution Results (2026-06-05)
+
+- **Total tests:** 26
+- **Passed:** 26
+- **Failed:** 0
+- **Execution time:** 5.28s
+- **All tolerance checks:** within +/-0.05 of expected values
+
+#### Key Correlation Values
+
+| Pair | Correlation | Threshold | Status |
+|------|------------|-----------|--------|
+| RSI / Stochastic | 0.8056 | 0.7 | ABOVE [!!] |
+| MACD / RSI | 0.6227 | 0.7 | BELOW |
+| MACD / Stochastic | 0.6798 | 0.7 | BELOW |
+
+#### Validation Script
+
+`validate_correlation.py` confirms all 3 expected values within tolerance:
+- RSI/Stochastic: 0.8056 (expected ~0.81, +/-0.05) — OK
+- MACD/RSI: 0.6227 (expected ~0.65, +/-0.05) — OK
+- MACD/Stochastic: 0.6798 (expected ~0.66, +/-0.05) — OK
+
+Risk level: **medium** (1 of 3 pairs over-correlated)
 
 ---
 
