@@ -8,8 +8,6 @@ import random
 import statistics
 import sys
 from pathlib import Path
-from unittest.mock import patch
-
 import pytest
 
 # Ensure project root is on path
@@ -31,7 +29,7 @@ from scripts.walk_forward_analysis import (
     build_regime_curves,
     _normal_cdf,
 )
-from core.backtest.metrics import Trade, calculate_sharpe_ratio, calculate_max_drawdown, calculate_win_rate, calculate_profit_factor
+from core.backtest.metrics import Trade, calculate_sharpe_ratio, calculate_win_rate, calculate_profit_factor
 from core.types import Candle
 from decimal import Decimal
 from datetime import datetime, timedelta
