@@ -1,0 +1,100 @@
+{
+  "timestamp": "2026-06-05T20:54:59.513749+00:00",
+  "baseline": {
+    "regime": "transition",
+    "sharpe_ratio": 0.459428604253352,
+    "max_drawdown": 0.3574,
+    "win_rate": 0.6,
+    "profit_factor": 1.475055544334478,
+    "total_return": 0.2352,
+    "mean_return_per_hour": 0.0006443835616438356,
+    "mean_volatility": 0.02,
+    "n_candles": 12,
+    "n_trades": 1,
+    "regime_pct": 0.14200000000000002
+  },
+  "bear_vs_transition": {
+    "return_degradation_pct": -40.0,
+    "sharpe_degradation": -0.1378285812760056,
+    "drawdown_difference": 0.10722000000000004,
+    "win_rate_difference": -0.09999999999999998,
+    "underperformance_score": 16.072792574382802,
+    "bear_metrics": {
+      "sharpe_ratio": 0.3216000229773464,
+      "max_drawdown": 0.46462000000000003,
+      "win_rate": 0.5,
+      "profit_factor": 1.325055544334478,
+      "total_return": 0.14112,
+      "n_trades": 5
+    },
+    "acceptable_for_paper": false,
+    "acceptable_for_live": false
+  },
+  "range_vs_transition": {
+    "return_degradation_pct": -20.000000000000004,
+    "sharpe_degradation": -0.0689142906380028,
+    "drawdown_difference": -0.08934999999999998,
+    "win_rate_difference": 0.020000000000000018,
+    "underperformance_score": 8.040544287191404,
+    "range_metrics": {
+      "sharpe_ratio": 0.3905143136153492,
+      "max_drawdown": 0.26805,
+      "win_rate": 0.62,
+      "profit_factor": 1.525055544334478,
+      "total_return": 0.18816,
+      "n_trades": 1
+    },
+    "acceptable_for_paper": false,
+    "acceptable_for_live": false
+  },
+  "high_vol_vs_transition": {
+    "return_degradation_pct": -10.000000000000002,
+    "sharpe_degradation": -0.045942860425335186,
+    "drawdown_difference": 0.03574000000000005,
+    "high_vol_metrics": {
+      "sharpe_ratio": 0.41348574382801684,
+      "max_drawdown": 0.39314000000000004,
+      "win_rate": 0.57,
+      "profit_factor": 1.475055544334478,
+      "total_return": 0.21168,
+      "n_trades": 8
+    }
+  },
+  "acceptability": {
+    "paper": {
+      "sharpe_ok": true,
+      "drawdown_ok": true,
+      "win_rate_ok": true,
+      "profit_factor_ok": true,
+      "sample_size_ok": false,
+      "all_ok": false,
+      "failures": [
+        "sample_size_ok"
+      ]
+    },
+    "live": {
+      "sharpe_ok": true,
+      "drawdown_ok": false,
+      "win_rate_ok": true,
+      "profit_factor_ok": true,
+      "sample_size_ok": false,
+      "all_ok": false,
+      "failures": [
+        "drawdown_ok",
+        "sample_size_ok"
+      ]
+    }
+  },
+  "go_live": false,
+  "go_live_reason": "Some regimes exceed live thresholds. Consider phased deployment or regime filters.",
+  "key_findings": [
+    "Transition regime (baseline): Sharpe=0.46, DD=35.7%, WinRate=60%",
+    "Bear regime: Sharpe=0.32, DD=46.5%, return=0.0004/hr",
+    "Range regime: Sharpe=0.39, DD=26.8%, return=0.0005/hr",
+    "High vol regime: Sharpe=0.41, DD=39.3%",
+    "Bear underperformance: return -40.0%, DD ++10.7%",
+    "Range underperformance: return -20.0%, DD +-8.9%",
+    "Paper acceptable: False (Sharpe>=0.3, DD<=40%, WR>=50%)",
+    "Live acceptable: False (Sharpe>=0.4, DD<=30%, WR>=55%)"
+  ]
+}
