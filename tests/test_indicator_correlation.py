@@ -14,7 +14,6 @@ Acceptance criteria:
 from __future__ import annotations
 
 import math
-from typing import Sequence
 
 import pytest
 
@@ -24,7 +23,6 @@ from core.analysis.indicator_correlation import (
     RSI_CODE,
     MACD_CODE,
     STOCHASTIC_CODE,
-    CorrelationMatrixResult,
     CorrelationResult,
     check_correlation_threshold,
     compute_correlation_matrix,

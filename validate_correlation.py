@@ -131,7 +131,6 @@ def print_validation_results(data: dict) -> None:
     print()
 
     # Risk assessment
-    within = data["matrix"].max_correlation_pair
     risk = "low" if len(data["matrix"].overcorrelated_pairs) == 0 else (
         "medium" if len(data["matrix"].overcorrelated_pairs) <= 1 else "high"
     )
