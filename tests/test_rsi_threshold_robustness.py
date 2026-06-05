@@ -7,8 +7,6 @@ import math
 import sys
 from pathlib import Path
 
-import pytest
-
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
@@ -28,8 +26,7 @@ from scripts.rsi_threshold_robustness import (
     run_rsi_sweep,
     save_results,
 )
-from core.types import Candle
-from scripts.walk_forward_analysis import Regime, generate_synthetic_candles
+from scripts.walk_forward_analysis import generate_synthetic_candles
 
 
 class TestRSISweep:
@@ -286,6 +283,7 @@ class TestIntegration:
 
         assert len(results) > 0
         assert len(sensitivity) > 0
+        assert len(optimal) > 0
 
     def test_results_consistency(self):
         """Results should be consistent across runs with same seed."""

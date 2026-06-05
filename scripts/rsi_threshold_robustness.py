@@ -12,13 +12,10 @@ Acceptance criteria:
 from __future__ import annotations
 
 import json
-import math
 import statistics
 import sys
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
-from decimal import Decimal
-from enum import Enum
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -27,7 +24,6 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from core.backtest.engine import BacktestEngine, RSIStrategy
-from core.backtest.metrics import Trade, calculate_sharpe_ratio, calculate_max_drawdown, calculate_win_rate
 from core.types import Candle
 from scripts.walk_forward_analysis import (
     Regime, classify_regime, generate_synthetic_candles, load_candles_from_file,
