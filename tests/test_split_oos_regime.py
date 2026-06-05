@@ -693,7 +693,6 @@ class TestEdgeCases:
         candles = _make_candles(50)
         segments = split_oos_data(candles)
         # All candles in order
-        all_candles = []
         for seg in segments:
             # Verify segment candles are contiguous in original
             pass
