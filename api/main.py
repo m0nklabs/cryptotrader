@@ -367,6 +367,19 @@ async def health() -> dict[str, Any]:
         ) from e
 
 
+@app.get("/version")
+async def version() -> dict[str, Any]:
+    """Get application version.
+
+    Returns:
+        JSON with the application version string from APP_VERSION env var.
+
+    Example response:
+        {"version": "0.1.0"}
+    """
+    return {"version": os.environ.get("APP_VERSION", "0.1.0")}
+
+
 @app.get("/ingestion/status")
 async def get_ingestion_status(
     exchange: str = Query("bitfinex", description="Exchange name"),
