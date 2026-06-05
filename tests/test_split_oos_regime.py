@@ -7,9 +7,7 @@ per-segment statistics, regime verification, edge cases, and export.
 from __future__ import annotations
 
 import json
-import math
 import tempfile
-from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -27,7 +25,6 @@ from scripts.split_oos_regime import (
     export_oos_dataset,
     generate_synthetic_candles,
     load_candles_from_json,
-    load_candles_from_postgres,
     map_market_regime_to_label,
     print_summary,
     split_oos_data,
@@ -113,7 +110,7 @@ class TestRegimeLabel:
         # Verify the fallback path by checking the mapping dict directly.
         from scripts.split_oos_regime import map_market_regime_to_label
         # All standard members map correctly
-        for mr in MarketRegime:
+        for mr in MarketRegime.__members__.values():
             result = map_market_regime_to_label(mr)
             assert isinstance(result, RegimeLabel)
 
@@ -349,15 +346,13 @@ class TestSplitOosData:
         assert segments[2].n_candles == 1
         # All segments should have valid dominant regimes and non-empty breakdowns
         for seg in segments:
-            assert seg.dominant_regime is not None
-            assert seg.dominant_regime in RegimeLabel
+            assert isinstance(seg.dominant_regime, RegimeLabel)
             assert len(seg.regime_breakdown) > 0
 
     def test_segment_has_dominant_regime(self):
         candles = _make_candles(100)
         segments = split_oos_data(candles)
         for seg in segments:
-            assert seg.dominant_regime in RegimeLabel
             assert isinstance(seg.dominant_regime, RegimeLabel)
 
     def test_segment_has_regime_breakdown(self):
