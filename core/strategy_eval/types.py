@@ -31,7 +31,11 @@ class MarketRegime(str, Enum):
 
 @dataclass
 class WalkForwardFold:
-    """One fold (window) in a walk-forward evaluation."""
+    """One fold (window) in a walk-forward evaluation.
+
+    Each fold has a training period for parameter optimization and a
+    test (OOS = out-of-sample) period for performance validation.
+    """
 
     train_start: datetime
     train_end: datetime
@@ -44,11 +48,17 @@ class WalkForwardFold:
     test_win_rate: float = 0.0
     test_trades: int = 0
     oos_decay: float = 0.0  # test_return / train_return (0-1 = good, >1 = overfitted)
+    oos_returns: list[float] = field(default_factory=list)  # per-trade OOS returns in this fold (PnL %)
+    oos_trades: list[dict] = field(default_factory=list)  # per-trade OOS trade dicts (entry/exit price, side, PnL)
+    oos_is_partial: bool = False  # fold's OOS period extends beyond available data
 
 
 @dataclass
 class WalkForwardResult:
-    """Aggregated walk-forward evaluation results."""
+    """Aggregated walk-forward evaluation results.
+
+    Combines metrics across all folds to produce a unified OOS assessment.
+    """
 
     folds: list[WalkForwardFold]
     n_folds: int
@@ -61,6 +71,9 @@ class WalkForwardResult:
     oos_max_dd: float  # worst test drawdown
     oos_win_rate: float  # mean test win rate
     overfitting_risk: str  # "low", "medium", "high"
+    oos_returns: list[float] = field(default_factory=list)  # aggregate OOS returns across all folds (PnL %)
+    oos_trades: list[dict] = field(default_factory=list)  # all OOS trade dicts across all folds
+    total_oos_trades: int = 0  # total count of OOS trades across all folds
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +83,11 @@ class WalkForwardResult:
 
 @dataclass
 class RegimePerformance:
-    """Strategy performance within a specific regime."""
+    """Strategy performance within a specific regime.
+
+    Each regime (e.g., TRENDING_UP, RANGING) gets its own performance
+    summary including OOS-specific metrics.
+    """
 
     regime: MarketRegime
     n_candles: int
@@ -80,6 +97,8 @@ class RegimePerformance:
     max_dd: float
     win_rate: float
     avg_trade_pnl: float
+    oos_trades: int = 0  # count of OOS trades in this regime
+    oos_returns: list[float] = field(default_factory=list)  # per-trade OOS returns in this regime (PnL %)
 
 
 # ---------------------------------------------------------------------------

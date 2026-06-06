@@ -1,0 +1,43 @@
+{
+  "oos_trades": [],
+  "per_fold": [
+    {
+      "train_start": "2025-01-01 00:00:00+00:00",
+      "train_end": "2025-04-01 00:00:00+00:00",
+      "test_start": "2025-04-01 00:00:00+00:00",
+      "test_end": "2025-05-01 00:00:00+00:00",
+      "oos_is_partial": false,
+      "oos_trades": [],
+      "oos_returns": [],
+      "n_oos_trades": 0,
+      "total_oos_return": 1.1713533620879335
+    },
+    {
+      "train_start": "2025-04-16 00:00:00+00:00",
+      "train_end": "2025-07-15 00:00:00+00:00",
+      "test_start": "2025-07-15 00:00:00+00:00",
+      "test_end": "2025-08-14 00:00:00+00:00",
+      "oos_is_partial": false,
+      "oos_trades": [],
+      "oos_returns": [],
+      "n_oos_trades": 0,
+      "total_oos_return": 4.1508596033979845
+    },
+    {
+      "train_start": "2025-07-30 00:00:00+00:00",
+      "train_end": "2025-10-28 00:00:00+00:00",
+      "test_start": "2025-10-28 00:00:00+00:00",
+      "test_end": "2025-11-27 00:00:00+00:00",
+      "oos_is_partial": false,
+      "oos_trades": [],
+      "oos_returns": [],
+      "n_oos_trades": 0,
+      "total_oos_return": 3.7924155334390672
+    }
+  ],
+  "aggregate": {
+    "total_folds": 3,
+    "total_oos_trades": 0,
+    "total_oos_return": 9.114628498924986
+  }
+}
