@@ -149,6 +149,8 @@ class WalkForwardFoldResponse(BaseModel):
     test_win_rate: float
     test_trades: int
     oos_decay: float
+    oos_trades: list[dict] = Field(default_factory=list)
+    oos_returns: list[float] = Field(default_factory=list)
 
 
 class WalkForwardResponse(BaseModel):
@@ -164,6 +166,9 @@ class WalkForwardResponse(BaseModel):
     oos_max_dd: float
     oos_win_rate: float
     overfitting_risk: str
+    oos_trades: list[dict] = Field(default_factory=list)
+    oos_returns: list[float] = Field(default_factory=list)
+    total_oos_trades: int = 0
     folds: list[WalkForwardFoldResponse]
 
 
@@ -324,6 +329,9 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
             oos_max_dd=wf_result.oos_max_dd,
             oos_win_rate=wf_result.oos_win_rate,
             overfitting_risk=wf_result.overfitting_risk,
+            oos_trades=wf_result.oos_trades,
+            oos_returns=wf_result.oos_returns,
+            total_oos_trades=wf_result.total_oos_trades,
             folds=[
                 WalkForwardFoldResponse(
                     train_start=f.train_start.isoformat(),
@@ -337,6 +345,8 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
                     test_win_rate=f.test_win_rate,
                     test_trades=f.test_trades,
                     oos_decay=f.oos_decay,
+                    oos_trades=f.oos_trades,
+                    oos_returns=f.oos_returns,
                 )
                 for f in wf_result.folds
             ],
