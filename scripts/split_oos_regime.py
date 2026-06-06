@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import random
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -214,11 +213,19 @@ class OSOSegment:
     regime_labels: list[str] = field(default_factory=list)  # per-candle labels
 
 
-def compute_regime_breakdown(candles: Sequence[Candle], detector: RegimeDetector) -> dict[str, float]:
-    """Compute the distribution of regimes across candles."""
-    regimes = detect_regimes(candles, detector)
+def compute_regime_breakdown(regimes: Sequence[MarketRegime]) -> dict[str, float]:
+    """Compute the distribution of regimes from a list of MarketRegime values.
+
+    Args:
+        regimes: Sequence of MarketRegime values (already detected).
+
+    Returns:
+        Dictionary mapping regime label string -> percentage (0-100).
+    """
     labels = [map_market_regime_to_label(r).value for r in regimes]
     total = len(labels)
+    if total == 0:
+        return {}
 
     breakdown: dict[str, float] = {}
     for label in set(labels):
@@ -281,8 +288,8 @@ def split_oos_data(
         regimes = detect_regimes(seg_candles, detector)
         labels = [map_market_regime_to_label(r) for r in regimes]
 
-        # Compute breakdown
-        breakdown = compute_regime_breakdown(seg_candles, detector)
+        # Compute breakdown from the already detected regimes
+        breakdown = compute_regime_breakdown(regimes)
         dominant = detect_dominant_regime(breakdown)
 
         # Compute statistics
@@ -331,17 +338,22 @@ def verify_regime_distribution(segments: list[OSOSegment]) -> dict:
     """
     # Aggregate regime distribution across all segments
     total_candles = sum(s.n_candles for s in segments)
+    if total_candles == 0:
+        return {}
+
+    # All regimes we want to track
+    expected_regimes = ["bull", "bear", "range", "high_vol", "low_vol", "transition"]
+
     aggregated: dict[str, float] = {}
+    for regime in expected_regimes:
+        aggregated[regime] = 0.0
 
     for seg in segments:
-        for regime, pct in seg.regime_breakdown.items():
-            weighted = pct * seg.n_candles / total_candles
-            aggregated[regime] = aggregated.get(regime, 0.0) + weighted
+        for regime in expected_regimes:
+            pct = seg.regime_breakdown.get(regime, 0.0)
+            aggregated[regime] += pct * seg.n_candles / total_candles
 
-    # Normalize
-    total = sum(aggregated.values())
-    if total > 0:
-        aggregated = {k: v / total * 100 for k, v in aggregated.items()}
+    # No re-normalization needed; aggregated values are already weighted percentages.
 
     # Check against historical expectations (adjusted for detector behavior)
     # The detector returns HIGH_VOL when vol is high, overriding trend direction
