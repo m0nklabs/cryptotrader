@@ -44,6 +44,9 @@ class WalkForwardFold:
     test_win_rate: float = 0.0
     test_trades: int = 0
     oos_decay: float = 0.0  # test_return / train_return (0-1 = good, >1 = overfitted)
+    oos_trades: list[dict] = field(default_factory=list)  # actual OOS trade objects
+    oos_returns: list[float] = field(default_factory=list)  # per-trade OOS returns
+    oos_is_partial: bool = False  # True if test_end extends beyond end_date
 
 
 @dataclass
@@ -61,6 +64,9 @@ class WalkForwardResult:
     oos_max_dd: float  # worst test drawdown
     oos_win_rate: float  # mean test win rate
     overfitting_risk: str  # "low", "medium", "high"
+    oos_trades: list[dict] = field(default_factory=list)  # aggregate of all OOS trades
+    oos_returns: list[float] = field(default_factory=list)  # aggregate OOS returns
+    total_oos_trades: int = 0  # total trade count across all folds
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +86,8 @@ class RegimePerformance:
     max_dd: float
     win_rate: float
     avg_trade_pnl: float
+    oos_trades: int = 0  # trades in OOS period for this regime
+    oos_returns: list[float] = field(default_factory=list)  # per-trade OOS returns for this regime
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +136,7 @@ class RejectionCriteria:
     min_profit_factor: float = 1.2
     min_net_return: float = 0.02  # 2% minimum net return
     max_drawdown_limit: float = 0.15  # 15% max drawdown
-    min_trade_count_per_regime: int = 5
+    min_trade_count_per_regime: int = 3  # lowered from 5 for multi-regime support
     significance_level: float = 0.05  # p-value threshold
 
 
