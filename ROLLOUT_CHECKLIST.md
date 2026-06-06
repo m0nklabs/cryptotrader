@@ -38,7 +38,7 @@
 
 | Check | Status | Details |
 |-------|--------|---------|
-| Kelly default full (1.0) | ⚠️ | Aggressive sizing — acceptable for paper |
+| Kelly default 0.5 (half-Kelly) | ✅ | Deliberate: half-Kelly = more conservative sizing. Full-Kelly (1.0) would double position sizes. |
 | Live drawdown signal | ⚠️ | Tracked but not actively used as signal |
 | Circuit breaker state | ⚠️ | Ephemeral (in-memory) |
 | Minimum edge filter | ✅ | 35 bps taker, 25 bps maker |
@@ -70,7 +70,7 @@
 
 ## 6. Known Gaps (non-blocking for limited-live)
 
-1. **Kelly full (1.0)** — aggressive but fine for paper. Monitor in first 48h.
+1. **Kelly 0.5 (half-Kelly)** — deliberate: half-Kelly = conservative sizing (positions ~50% of full-Kelly). More headroom in volatile markets.
 2. **No live data latency validation** — paper uses cached candles, not real-time latency.
 3. **No depth simulation** — fixed 5bps slippage regardless of order size.
 4. **Circuit breaker ephemeral** — restart loses state. Acceptable for paper.
