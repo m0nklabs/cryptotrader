@@ -14,7 +14,7 @@ import json
 import statistics
 import sys
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -429,7 +429,7 @@ def oos_data_to_candles(
                 close=Decimal(str(close_price)),
                 volume=Decimal(str(random.uniform(100, 1000))),
             ))
-            base_time += __import__("datetime").timedelta(hours=1)
+            base_time += timedelta(hours=1)
             price = close_price
 
     return candles
@@ -572,7 +572,7 @@ def generate_synthetic_candles(
             close=Decimal(str(close)),
             volume=Decimal(str(volume)),
         ))
-        base_time += __import__("datetime").timedelta(hours=1)
+        base_time += timedelta(hours=1)
         base_price = close
 
     return candles

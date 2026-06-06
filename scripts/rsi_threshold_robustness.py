@@ -171,8 +171,8 @@ def generate_synthetic_candles(n: int = 720, seed: int = 42) -> list[Candle]:
             symbol="BTC/USDT",
             exchange="bitfinex",
             timeframe="1h",
-            open_time=base_time + timedelta(hours=i),
-            close_time=base_time + timedelta(hours=i + 1),
+            open_time=base_time,
+            close_time=base_time,
             open=Decimal(str(open_price)),
             high=Decimal(str(high)),
             low=Decimal(str(low)),
@@ -180,6 +180,7 @@ def generate_synthetic_candles(n: int = 720, seed: int = 42) -> list[Candle]:
             volume=Decimal(str(volume)),
         )
         candles.append(candle)
+        base_time += timedelta(hours=1)
         base_price = close
 
     return candles
