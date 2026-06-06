@@ -1471,6 +1471,206 @@ class TestOOSTradeCapture:
 
 
 # ---------------------------------------------------------------------------
+# RegimePerformance OOS field tests
+# ---------------------------------------------------------------------------
+
+
+class TestRegimePerformanceOOS:
+    """Tests for oos_trades and oos_returns in RegimePerformance."""
+
+    def test_regime_performance_default_oos_fields(self):
+        """RegimePerformance defaults: oos_trades=0, oos_returns=[]."""
+        from core.strategy_eval.types import MarketRegime, RegimePerformance
+
+        rp = RegimePerformance(
+            regime=MarketRegime.TRENDING_UP,
+            n_candles=100,
+            n_trades=10,
+            return_pct=0.05,
+            sharpe=1.2,
+            max_dd=0.03,
+            win_rate=0.55,
+            avg_trade_pnl=100.0,
+        )
+
+        assert rp.oos_trades == 0
+        assert rp.oos_returns == []
+        assert isinstance(rp.oos_trades, int)
+        assert isinstance(rp.oos_returns, list)
+
+    def test_regime_performance_populated_oos_fields(self):
+        """RegimePerformance can hold populated oos_trades and oos_returns."""
+        from core.strategy_eval.types import MarketRegime, RegimePerformance
+
+        oos_returns = [0.01, -0.005, 0.02, 0.003, -0.01]
+        oos_trades_data = 5  # count of OOS trades
+
+        rp = RegimePerformance(
+            regime=MarketRegime.TRENDING_DOWN,
+            n_candles=200,
+            n_trades=15,
+            return_pct=-0.02,
+            sharpe=-0.5,
+            max_dd=0.08,
+            win_rate=0.4,
+            avg_trade_pnl=-50.0,
+            oos_trades=oos_trades_data,
+            oos_returns=oos_returns,
+        )
+
+        assert rp.oos_trades == 5
+        assert rp.oos_returns == oos_returns
+        assert isinstance(rp.oos_trades, int)
+        assert isinstance(rp.oos_returns, list)
+        assert len(rp.oos_returns) == 5
+        for ret in rp.oos_returns:
+            assert isinstance(ret, float)
+
+    def test_regime_performance_oos_returns_empty_list(self):
+        """oos_returns is an empty list when no OOS data."""
+        from core.strategy_eval.types import MarketRegime, RegimePerformance
+
+        rp = RegimePerformance(
+            regime=MarketRegime.RANGING,
+            n_candles=50,
+            n_trades=0,
+            return_pct=0.0,
+            sharpe=0.0,
+            max_dd=0.0,
+            win_rate=0.0,
+            avg_trade_pnl=0.0,
+            oos_returns=[],
+        )
+
+        assert rp.oos_returns == []
+        assert isinstance(rp.oos_returns, list)
+
+    def test_regime_performance_oos_trades_zero_vs_positive(self):
+        """oos_trades distinguishes zero from positive counts."""
+        from core.strategy_eval.types import MarketRegime, RegimePerformance
+
+        rp_zero = RegimePerformance(
+            regime=MarketRegime.HIGH_VOL,
+            n_candles=100,
+            n_trades=5,
+            return_pct=0.01,
+            sharpe=0.8,
+            max_dd=0.04,
+            win_rate=0.6,
+            avg_trade_pnl=75.0,
+            oos_trades=0,
+        )
+
+        rp_positive = RegimePerformance(
+            regime=MarketRegime.HIGH_VOL,
+            n_candles=100,
+            n_trades=5,
+            return_pct=0.01,
+            sharpe=0.8,
+            max_dd=0.04,
+            win_rate=0.6,
+            avg_trade_pnl=75.0,
+            oos_trades=3,
+        )
+
+        assert rp_zero.oos_trades == 0
+        assert rp_positive.oos_trades == 3
+        assert rp_zero.oos_trades != rp_positive.oos_trades
+
+    def test_regime_performance_oos_returns_types(self):
+        """oos_returns contains only floats, all finite."""
+        from core.strategy_eval.types import MarketRegime, RegimePerformance
+
+        oos_returns = [0.01, -0.005, 0.02, 0.003, -0.01, 0.0, -0.1]
+        rp = RegimePerformance(
+            regime=MarketRegime.LOW_VOL,
+            n_candles=150,
+            n_trades=8,
+            return_pct=0.03,
+            sharpe=1.0,
+            max_dd=0.05,
+            win_rate=0.625,
+            avg_trade_pnl=50.0,
+            oos_returns=oos_returns,
+        )
+
+        for ret in rp.oos_returns:
+            assert isinstance(ret, float)
+            assert math.isfinite(ret)
+            assert ret != float("nan")
+
+    def test_regime_performance_oos_returns_match_trade_count(self):
+        """oos_returns length corresponds to oos_trades count."""
+        from core.strategy_eval.types import MarketRegime, RegimePerformance
+
+        for expected_count in [0, 1, 5, 10, 25]:
+            oos_returns = [round(0.01 * (i % 3 - 1), 4) for i in range(expected_count)]
+            rp = RegimePerformance(
+                regime=MarketRegime.TRANSITION,
+                n_candles=100,
+                n_trades=expected_count,
+                return_pct=0.0,
+                sharpe=0.0,
+                max_dd=0.0,
+                win_rate=0.0,
+                avg_trade_pnl=0.0,
+                oos_trades=expected_count,
+                oos_returns=oos_returns,
+            )
+
+            assert rp.oos_trades == expected_count
+            assert len(rp.oos_returns) == expected_count
+
+    def test_regime_performance_oos_with_large_values(self):
+        """oos_fields handle large return values without overflow."""
+        from core.strategy_eval.types import MarketRegime, RegimePerformance
+
+        large_returns = [100.0, -50.5, 250.75, -10.25, 0.001]
+        rp = RegimePerformance(
+            regime=MarketRegime.HIGH_VOL,
+            n_candles=300,
+            n_trades=5,
+            return_pct=390.251,
+            sharpe=2.5,
+            max_dd=0.15,
+            win_rate=0.8,
+            avg_trade_pnl=78.0,
+            oos_trades=5,
+            oos_returns=large_returns,
+        )
+
+        assert rp.oos_trades == 5
+        assert rp.oos_returns == large_returns
+        for ret in rp.oos_returns:
+            assert math.isfinite(ret)
+
+    def test_regime_performance_oos_immutability(self):
+        """Modifying returned oos_returns list doesn't affect the instance."""
+        from core.strategy_eval.types import MarketRegime, RegimePerformance
+
+        rp = RegimePerformance(
+            regime=MarketRegime.TRENDING_UP,
+            n_candles=100,
+            n_trades=5,
+            return_pct=0.05,
+            sharpe=1.0,
+            max_dd=0.03,
+            win_rate=0.6,
+            avg_trade_pnl=100.0,
+            oos_returns=[0.01, 0.02, 0.03],
+            oos_trades=3,
+        )
+
+        original_returns = list(rp.oos_returns)
+        rp.oos_returns.append(0.04)
+        rp.oos_trades += 1
+
+        # List should be mutable (appended)
+        assert len(rp.oos_returns) == 4
+        assert rp.oos_trades == 4
+
+
+# ---------------------------------------------------------------------------
 # Edge case tests
 # ---------------------------------------------------------------------------
 
