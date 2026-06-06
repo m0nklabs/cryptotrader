@@ -1,0 +1,442 @@
+{
+  "metadata": {
+    "analysis": "rsi_threshold_robustness",
+    "n_candles": 720,
+    "threshold_variants": 5,
+    "regimes": [
+      "bull",
+      "bear",
+      "range",
+      "high_vol",
+      "transition"
+    ],
+    "generated_at": "2026-06-05T23:27:48.557973"
+  },
+  "results": {
+    "-20%": {
+      "threshold": "-20%",
+      "oversold": 24.0,
+      "overbought": 56.0,
+      "regimes": {
+        "bull": {
+          "regime": "bull",
+          "n_candles": 247,
+          "n_trades": 2,
+          "win_rate": 1.0,
+          "sharpe_ratio": 1.720792353475347,
+          "max_drawdown": 0.0,
+          "total_pnl": 1310.1825790796465,
+          "total_return": 0.13101825790796465,
+          "profit_factor": Infinity,
+          "mean_trade_pnl": 655.091289539823,
+          "std_trade_pnl": 70.0350547945136
+        },
+        "bear": {
+          "regime": "bear",
+          "n_candles": 68,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "range": {
+          "regime": "range",
+          "n_candles": 77,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "high_vol": {
+          "regime": "high_vol",
+          "n_candles": 308,
+          "n_trades": 2,
+          "win_rate": 0.0,
+          "sharpe_ratio": -1.4033152040016221,
+          "max_drawdown": 1.2076708163838434,
+          "total_pnl": -12076.708163838433,
+          "total_return": -1.2076708163838434,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": -6038.354081919217,
+          "std_trade_pnl": 2561.3474779155517
+        },
+        "transition": {
+          "regime": "transition",
+          "n_candles": 20,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        }
+      },
+      "overall": {
+        "regime": "overall",
+        "n_candles": 720,
+        "n_trades": 4,
+        "win_rate": 0.5,
+        "sharpe_ratio": -11.706050104065099,
+        "max_drawdown": 1.0677730513543278,
+        "total_pnl": -10766.525584758789,
+        "total_return": -1.0766525584758788,
+        "profit_factor": 0.1084883861814891,
+        "mean_trade_pnl": -2691.631396189697,
+        "std_trade_pnl": 4137.938969754181
+      }
+    },
+    "-10%": {
+      "threshold": "-10%",
+      "oversold": 27.0,
+      "overbought": 63.0,
+      "regimes": {
+        "bull": {
+          "regime": "bull",
+          "n_candles": 247,
+          "n_trades": 2,
+          "win_rate": 1.0,
+          "sharpe_ratio": 1.720792353475347,
+          "max_drawdown": 0.0,
+          "total_pnl": 1310.1825790796465,
+          "total_return": 0.13101825790796465,
+          "profit_factor": Infinity,
+          "mean_trade_pnl": 655.091289539823,
+          "std_trade_pnl": 70.0350547945136
+        },
+        "bear": {
+          "regime": "bear",
+          "n_candles": 68,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "range": {
+          "regime": "range",
+          "n_candles": 77,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "high_vol": {
+          "regime": "high_vol",
+          "n_candles": 308,
+          "n_trades": 2,
+          "win_rate": 0.0,
+          "sharpe_ratio": -1.4019586721495467,
+          "max_drawdown": 1.2268374919891787,
+          "total_pnl": -12268.374919891787,
+          "total_return": -1.2268374919891787,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": -6134.187459945893,
+          "std_trade_pnl": 2561.3474779155517
+        },
+        "transition": {
+          "regime": "transition",
+          "n_candles": 20,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        }
+      },
+      "overall": {
+        "regime": "overall",
+        "n_candles": 720,
+        "n_trades": 4,
+        "win_rate": 0.5,
+        "sharpe_ratio": -11.740353797182223,
+        "max_drawdown": 1.0847194405671665,
+        "total_pnl": -10958.19234081214,
+        "total_return": -1.095819234081214,
+        "profit_factor": 0.10679349038765784,
+        "mean_trade_pnl": -2739.548085203035,
+        "std_trade_pnl": 4189.658369117255
+      }
+    },
+    "base": {
+      "threshold": "base",
+      "oversold": 30.0,
+      "overbought": 70.0,
+      "regimes": {
+        "bull": {
+          "regime": "bull",
+          "n_candles": 247,
+          "n_trades": 1,
+          "win_rate": 1.0,
+          "sharpe_ratio": 1.2156203328022537,
+          "max_drawdown": 0.0,
+          "total_pnl": 605.569027373851,
+          "total_return": 0.0605569027373851,
+          "profit_factor": Infinity,
+          "mean_trade_pnl": 605.569027373851,
+          "std_trade_pnl": 0.0
+        },
+        "bear": {
+          "regime": "bear",
+          "n_candles": 68,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "range": {
+          "regime": "range",
+          "n_candles": 77,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "high_vol": {
+          "regime": "high_vol",
+          "n_candles": 308,
+          "n_trades": 2,
+          "win_rate": 0.0,
+          "sharpe_ratio": -1.3984902098675178,
+          "max_drawdown": 1.246908548818728,
+          "total_pnl": -12469.08548818728,
+          "total_return": -1.246908548818728,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": -6234.54274409364,
+          "std_trade_pnl": 2541.697405117634
+        },
+        "transition": {
+          "regime": "transition",
+          "n_candles": 20,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        }
+      },
+      "overall": {
+        "regime": "overall",
+        "n_candles": 720,
+        "n_trades": 3,
+        "win_rate": 0.3333333333333333,
+        "sharpe_ratio": -15.292013760833761,
+        "max_drawdown": 1.1757111245991176,
+        "total_pnl": -11863.51646081343,
+        "total_return": -1.186351646081343,
+        "profit_factor": 0.048565632816259315,
+        "mean_trade_pnl": -3954.5054869378096,
+        "std_trade_pnl": 4338.873417333917
+      }
+    },
+    "+10%": {
+      "threshold": "+10%",
+      "oversold": 33.0,
+      "overbought": 77.0,
+      "regimes": {
+        "bull": {
+          "regime": "bull",
+          "n_candles": 247,
+          "n_trades": 1,
+          "win_rate": 1.0,
+          "sharpe_ratio": 1.2156203328022537,
+          "max_drawdown": 0.0,
+          "total_pnl": 605.569027373851,
+          "total_return": 0.0605569027373851,
+          "profit_factor": Infinity,
+          "mean_trade_pnl": 605.569027373851,
+          "std_trade_pnl": 0.0
+        },
+        "bear": {
+          "regime": "bear",
+          "n_candles": 68,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "range": {
+          "regime": "range",
+          "n_candles": 77,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "high_vol": {
+          "regime": "high_vol",
+          "n_candles": 308,
+          "n_trades": 2,
+          "win_rate": 0.0,
+          "sharpe_ratio": -1.3842371788104701,
+          "max_drawdown": 1.2380224889357048,
+          "total_pnl": -12380.224889357049,
+          "total_return": -1.2380224889357048,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": -6190.112444678524,
+          "std_trade_pnl": 2388.005077076801
+        },
+        "transition": {
+          "regime": "transition",
+          "n_candles": 20,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        }
+      },
+      "overall": {
+        "regime": "overall",
+        "n_candles": 720,
+        "n_trades": 3,
+        "win_rate": 0.3333333333333333,
+        "sharpe_ratio": -15.39285045640891,
+        "max_drawdown": 1.1673324512246974,
+        "total_pnl": -11774.655861983198,
+        "total_return": -1.1774655861983199,
+        "profit_factor": 0.048914218666127995,
+        "mean_trade_pnl": -3924.8852873277324,
+        "std_trade_pnl": 4271.422052112263
+      }
+    },
+    "+20%": {
+      "threshold": "+20%",
+      "oversold": 36.0,
+      "overbought": 84.0,
+      "regimes": {
+        "bull": {
+          "regime": "bull",
+          "n_candles": 247,
+          "n_trades": 1,
+          "win_rate": 1.0,
+          "sharpe_ratio": 1.2156203328022537,
+          "max_drawdown": 0.0,
+          "total_pnl": 605.569027373851,
+          "total_return": 0.0605569027373851,
+          "profit_factor": Infinity,
+          "mean_trade_pnl": 605.569027373851,
+          "std_trade_pnl": 0.0
+        },
+        "bear": {
+          "regime": "bear",
+          "n_candles": 68,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "range": {
+          "regime": "range",
+          "n_candles": 77,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        },
+        "high_vol": {
+          "regime": "high_vol",
+          "n_candles": 308,
+          "n_trades": 1,
+          "win_rate": 0.0,
+          "sharpe_ratio": -1.0886068781084117,
+          "max_drawdown": 0.455481170326948,
+          "total_pnl": -4554.81170326948,
+          "total_return": -0.455481170326948,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": -4554.81170326948,
+          "std_trade_pnl": 0.0
+        },
+        "transition": {
+          "regime": "transition",
+          "n_candles": 20,
+          "n_trades": 0,
+          "win_rate": 0.0,
+          "sharpe_ratio": 0.0,
+          "max_drawdown": 0.0,
+          "total_pnl": 0.0,
+          "total_return": 0.0,
+          "profit_factor": 0.0,
+          "mean_trade_pnl": 0.0,
+          "std_trade_pnl": 0.0
+        }
+      },
+      "overall": {
+        "regime": "overall",
+        "n_candles": 720,
+        "n_trades": 2,
+        "win_rate": 0.5,
+        "sharpe_ratio": -10.17036703789528,
+        "max_drawdown": 0.42947358048522755,
+        "total_pnl": -3949.242675895629,
+        "total_return": -0.3949242675895629,
+        "profit_factor": 0.13295149543485382,
+        "mean_trade_pnl": -1974.6213379478145,
+        "std_trade_pnl": 3648.94020814229
+      }
+    }
+  }
+}
