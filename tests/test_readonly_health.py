@@ -86,3 +86,37 @@ def test_health_no_http_exception(client):
     for _ in range(5):
         response = client.get("/health")
         assert response.status_code == 200
+
+
+def test_health_no_database_calls_via_mock(client):
+    """Test /health does not execute any database calls.
+
+    Mocks _get_stores and verifies the endpoint still returns 200
+    with the correct structure, proving it does not depend on
+    database connectivity.
+    """
+    from unittest.mock import patch
+
+    import api.main as main_module
+
+    mock_stores = {"candle": None, "order": None, "position": None}
+
+    with patch.object(main_module, "_get_stores", return_value=mock_stores) as mock_get_stores:
+        response = client.get("/health")
+
+        # Assert HTTP 200
+        assert response.status_code == 200
+
+        # Assert response structure
+        data = response.json()
+        assert "status" in data
+        assert data["status"] == "ok"
+        assert "uptime_seconds" in data
+        assert isinstance(data["uptime_seconds"], int)
+        assert data["uptime_seconds"] >= 0
+        assert "version" in data
+        assert isinstance(data["version"], str)
+        assert len(data["version"]) > 0
+
+        # Assert _get_stores was NOT called (proving no DB dependency)
+        mock_get_stores.assert_not_called()
