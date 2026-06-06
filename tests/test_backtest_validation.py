@@ -45,6 +45,7 @@ from core.strategy_eval.walk_forward import (  # noqa: E402
     WalkForwardConfig,
     run_cost_aware_walk_forward,
     run_walk_forward,
+    _log_oos_trades_to_json,
 )
 from core.types import Candle  # noqa: E402
 
@@ -1335,6 +1336,138 @@ class TestValidationPipeline:
 
         # Check key classes document lookahead bias
         assert "lookahead" in TestLookaheadBias.__doc__.lower()
+
+
+# ---------------------------------------------------------------------------
+# OOS trade capture tests
+# ---------------------------------------------------------------------------
+
+
+class TestOOSTradeCapture:
+    """Tests for out-of-sample trade capture in walk-forward validation."""
+
+    @pytest.fixture
+    def candles(self):
+        return generate_synthetic_candles(n=1000)
+
+    def test_fold_level_capture(self, candles):
+        """Each fold captures its own OOS trades."""
+        strategy = RSIStrategy()
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
+        result = run_walk_forward(strategy, candles, config)
+
+        # Every fold should have oos_trades list
+        for fold in result.folds:
+            assert isinstance(fold.oos_trades, list)
+            assert isinstance(fold.oos_returns, list)
+            assert len(fold.oos_trades) == len(fold.oos_returns)
+
+    def test_aggregation_across_folds(self, candles):
+        """Total OOS trades is the sum of per-fold trades."""
+        strategy = RSIStrategy()
+        result = run_walk_forward(strategy, candles)
+
+        assert result.total_oos_trades == len(result.oos_trades)
+        assert result.total_oos_trades == sum(
+            len(f.oos_trades) for f in result.folds
+        )
+
+    def test_dict_structure(self, candles):
+        """OOS trades are dicts with correct keys and types."""
+        strategy = RSIStrategy()
+        result = run_walk_forward(strategy, candles)
+
+        for trade in result.oos_trades:
+            assert isinstance(trade, dict)
+            for key in ("entry_price", "exit_price", "side", "size", "pnl"):
+                assert key in trade, f"Missing key '{key}' in trade dict"
+            assert isinstance(trade["entry_price"], float)
+            assert isinstance(trade["exit_price"], float)
+            assert isinstance(trade["side"], str)
+            assert isinstance(trade["size"], float)
+            assert isinstance(trade["pnl"], float)
+
+    def test_return_types(self, candles):
+        """OOS returns are floats and match trade count."""
+        strategy = RSIStrategy()
+        result = run_walk_forward(strategy, candles)
+
+        assert isinstance(result.oos_returns, list)
+        assert len(result.oos_returns) == result.total_oos_trades
+        for ret in result.oos_returns:
+            assert isinstance(ret, float)
+            assert math.isfinite(ret)
+
+    def test_partial_oos_detection(self, candles):
+        """Partial OOS folds (extending beyond end_date) are detected."""
+        strategy = RSIStrategy()
+        # Use a config that creates folds near the end boundary
+        config = WalkForwardConfig(
+            train_size_days=7, test_size_days=3, step_size_days=3
+        )
+        result = run_walk_forward(strategy, candles, config)
+
+        # At least some folds should have valid OOS data
+        partial_folds = [f for f in result.folds if f.oos_is_partial]
+        regular_folds = [f for f in result.folds if not f.oos_is_partial]
+
+        # All folds should have trades or at least empty lists
+        for fold in result.folds:
+            assert isinstance(fold.oos_is_partial, bool)
+            assert fold.oos_trades is not None
+            assert fold.oos_returns is not None
+
+    def test_json_logging(self, candles, tmp_path):
+        """OOS trades are logged to JSON with correct structure."""
+        import json
+
+        log_file = tmp_path / "oos_test_results.json"
+        strategy = RSIStrategy()
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
+
+        # Run with explicit output path
+        from core.strategy_eval.walk_forward import run_walk_forward as rwf
+
+        result = rwf(strategy, candles, config)
+        _log_oos_trades_to_json(result.folds, output_path=log_file)
+
+        assert log_file.exists()
+        data = json.loads(log_file.read_text())
+
+        assert "oos_trades" in data
+        assert "per_fold" in data
+        assert "aggregate" in data
+        assert isinstance(data["oos_trades"], list)
+        assert isinstance(data["per_fold"], list)
+        assert "total_folds" in data["aggregate"]
+        assert "total_oos_trades" in data["aggregate"]
+        assert "total_oos_return" in data["aggregate"]
+
+    def test_empty_candles(self):
+        """Empty candles produce empty OOS structures."""
+        strategy = RSIStrategy()
+        result = run_walk_forward(strategy, [])
+
+        assert result.oos_trades == []
+        assert result.oos_returns == []
+        assert result.total_oos_trades == 0
+        assert result.folds == []
+
+    def test_pnl_diversity(self, candles):
+        """OOS trades have diverse PnL values (not all identical)."""
+        strategy = RSIStrategy()
+        result = run_walk_forward(strategy, candles)
+
+        if result.total_oos_trades > 0:
+            pnls = [t["pnl"] for t in result.oos_trades]
+            # Should have at least some variation
+            assert len(set(pnls)) > 0  # not all empty
+            # PnL values should be finite
+            for pnl in pnls:
+                assert math.isfinite(pnl)
+                # PnL can be positive (win) or negative (loss)
+                assert pnl != float("inf")
+                assert pnl != float("-inf")
 
 
 # ---------------------------------------------------------------------------

@@ -7,10 +7,12 @@ that strategy performance is robust and not overfitted to a specific period.
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Sequence
 
 from core.strategy_eval.types import (
@@ -19,9 +21,45 @@ from core.strategy_eval.types import (
 )
 from core.types import Candle
 from core.backtest.engine import BacktestEngine, BacktestResult, Strategy
-from core.backtest.metrics import calculate_sharpe_ratio
+from core.backtest.metrics import Trade, calculate_sharpe_ratio
 from core.fees.model import FeeModel
 from core.risk.sizing import PositionSize
+
+
+def _trade_to_dict(trade: Trade) -> dict:
+    """Convert a Trade to a serializable dict."""
+    return {"pnl": float(trade.pnl), "side": trade.side}
+
+
+def _log_oos_trades_to_json(
+    folds: list[WalkForwardFold],
+    output_path: Path | str = "oos_walk_forward_results.json",
+) -> None:
+    """Log OOS trades to a JSON file.
+
+    Args:
+        folds: Walk-forward folds with OOS trade data.
+        output_path: Path to write JSON file.
+    """
+    oos_trades = [t for f in folds for t in f.oos_trades]
+    per_fold = [
+        {"fold_idx": i, "n_trades": len(f.oos_trades), "oos_returns": f.oos_returns}
+        for i, f in enumerate(folds)
+    ]
+    total_oos_return = sum(r for f in folds for r in f.oos_returns)
+
+    data = {
+        "oos_trades": oos_trades,
+        "per_fold": per_fold,
+        "aggregate": {
+            "total_folds": len(folds),
+            "total_oos_trades": len(oos_trades),
+            "total_oos_return": total_oos_return,
+        },
+    }
+
+    path = Path(output_path)
+    path.write_text(json.dumps(data, indent=2, default=str))
 
 
 def _parse_timeframe_to_timedelta(timeframe: str) -> timedelta:
@@ -104,6 +142,8 @@ def _compute_fold_metrics(
         test_win_rate=result.win_rate,
         test_trades=len(result.trades),
         oos_decay=oos_decay,
+        oos_returns=[float(t.pnl) / 10000.0 for t in result.trades],
+        oos_trades=[_trade_to_dict(t) for t in result.trades],
     )
 
 
@@ -155,6 +195,9 @@ def run_walk_forward(
             oos_max_dd=0.0,
             oos_win_rate=0.0,
             overfitting_risk="high",
+            oos_returns=[],
+            oos_trades=[],
+            total_oos_trades=0,
         )
 
     if fee_model is not None and not isinstance(strategy, _CostAwareStrategy):
@@ -241,6 +284,9 @@ def run_walk_forward(
             test_win_rate=test_result.win_rate,
             test_trades=len(test_result.trades),
             oos_decay=(test_result.total_return / train_return if abs(train_return) > 1e-9 else 0.0),
+            oos_returns=[float(t.pnl) / 10000.0 for t in test_result.trades],
+            oos_trades=[_trade_to_dict(t) for t in test_result.trades],
+            oos_is_partial=test_end > end_date,
         )
         folds.append(fold)
 
@@ -261,6 +307,9 @@ def run_walk_forward(
             oos_max_dd=0.0,
             oos_win_rate=0.0,
             overfitting_risk="high",
+            oos_returns=[],
+            oos_trades=[],
+            total_oos_trades=0,
         )
 
     mean_train = sum(f.train_return for f in folds) / n
@@ -317,6 +366,9 @@ def run_walk_forward(
         oos_max_dd=oos_max_dd,
         oos_win_rate=oos_win_rate,
         overfitting_risk=overfit_risk,
+        oos_returns=[r for f in folds for r in f.oos_returns],
+        oos_trades=[t for f in folds for t in f.oos_trades],
+        total_oos_trades=sum(len(f.oos_trades) for f in folds),
     )
 
 
