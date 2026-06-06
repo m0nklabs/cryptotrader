@@ -131,7 +131,6 @@ def print_validation_results(data: dict) -> None:
     print()
 
     # Risk assessment
-    within = data["matrix"].max_correlation_pair
     risk = "low" if len(data["matrix"].overcorrelated_pairs) == 0 else (
         "medium" if len(data["matrix"].overcorrelated_pairs) <= 1 else "high"
     )
@@ -152,9 +151,9 @@ def print_validation_results(data: dict) -> None:
         return 0.0
 
     checks = [
-        (f"RSI/Stochastic", rsi_stoch, 0.81, 0.05),
-        (f"MACD/RSI", get_pair(MACD_CODE, RSI_CODE), 0.65, 0.05),
-        (f"MACD/Stochastic", macd_stoch, 0.66, 0.05),
+        ("RSI/Stochastic", rsi_stoch, 0.81, 0.05),
+        ("MACD/RSI", get_pair(MACD_CODE, RSI_CODE), 0.65, 0.05),
+        ("MACD/Stochastic", macd_stoch, 0.66, 0.05),
     ]
     all_pass = True
     for name, actual, expected, tolerance in checks:
