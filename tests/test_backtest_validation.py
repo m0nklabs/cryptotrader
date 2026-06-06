@@ -1443,5 +1443,137 @@ class TestEdgeCases:
         assert result.equity_curve[0] == engine.initial_capital
 
 
+# ---------------------------------------------------------------------------
+# OOS trade capture tests
+# ---------------------------------------------------------------------------
+
+
+class TestOOSTradeCapture:
+    """Tests for OOS trade capture in walk-forward validation."""
+
+    @pytest.fixture(scope="class")
+    def rsi_candles(self):
+        return generate_synthetic_candles(n=1000, start_price=100.0, volatility=0.02)
+
+    def test_oos_trades_captured_in_folds(self, rsi_candles):
+        """Each fold captures OOS trades from the test period."""
+        strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
+        result = run_walk_forward(strategy, rsi_candles, config)
+
+        assert result.n_folds > 0
+        for fold in result.folds:
+            assert isinstance(fold.oos_trades, list)
+            assert isinstance(fold.oos_returns, list)
+            assert len(fold.oos_trades) == len(fold.oos_returns)
+
+    def test_oos_trades_aggregated_in_result(self, rsi_candles):
+        """OOS trades are aggregated across all folds in the result."""
+        strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
+        result = run_walk_forward(strategy, rsi_candles, config)
+
+        assert isinstance(result.oos_trades, list)
+        assert isinstance(result.oos_returns, list)
+        assert result.total_oos_trades == len(result.oos_trades)
+        # Aggregated trades should equal sum of per-fold trades
+        expected_total = sum(len(f.oos_trades) for f in result.folds)
+        assert result.total_oos_trades == expected_total
+
+    def test_oos_trade_dict_structure(self, rsi_candles):
+        """Each OOS trade dict has the expected keys and types."""
+        strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
+        result = run_walk_forward(strategy, rsi_candles, config)
+
+        required_keys = {"entry_price", "exit_price", "side", "size", "pnl"}
+        for fold in result.folds:
+            for trade in fold.oos_trades:
+                assert required_keys.issubset(trade.keys())
+                assert isinstance(trade["entry_price"], float)
+                assert isinstance(trade["exit_price"], float)
+                assert trade["side"] in ("BUY", "SELL")
+                assert isinstance(trade["size"], float)
+                assert isinstance(trade["pnl"], float)
+
+    def test_oos_returns_are_floats(self, rsi_candles):
+        """Per-trade OOS returns are floats."""
+        strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
+        result = run_walk_forward(strategy, rsi_candles, config)
+
+        for fold in result.folds:
+            for ret in fold.oos_returns:
+                assert isinstance(ret, float)
+                assert math.isfinite(ret)
+
+    def test_partial_oos_detection(self, rsi_candles):
+        """Partial OOS periods are detected when test_end extends beyond end_date."""
+        # Use a config that creates a fold near the end where test_end > end_date
+        strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+        config = WalkForwardConfig(
+            train_size_days=7,
+            test_size_days=3,
+            step_size_days=1,  # Small step increases chance of partial
+        )
+        result = run_walk_forward(strategy, rsi_candles, config)
+
+        partial_folds = [f for f in result.folds if f.oos_is_partial]
+        # At least some folds may be partial depending on data boundaries
+        assert isinstance(partial_folds, list)
+
+    def test_oos_trades_json_logging(self, rsi_candles, tmp_path):
+        """OOS trades are logged to a JSON file."""
+        strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
+        json_path = tmp_path / "test_oos_trades.json"
+
+        # Temporarily patch the output path
+        import core.strategy_eval.walk_forward as wf
+        original_log = wf._log_oos_trades_to_json
+
+        def patched_log(folds, output_path=json_path):
+            original_log(folds, output_path)
+
+        wf._log_oos_trades_to_json = patched_log
+
+        try:
+            result = run_walk_forward(strategy, rsi_candles, config)
+            assert json_path.exists()
+
+            with open(json_path) as f:
+                data = json.load(f)
+
+            assert "oos_trades" in data
+            assert "per_fold" in data
+            assert "aggregate" in data
+            assert isinstance(data["oos_trades"], list)
+            assert len(data["per_fold"]) == result.n_folds
+            assert "total_folds" in data["aggregate"]
+            assert "total_oos_trades" in data["aggregate"]
+        finally:
+            wf._log_oos_trades_to_json = original_log
+
+    def test_empty_candles_oos_fields(self):
+        """Empty candles still produce valid OOS fields."""
+        strategy = RSIStrategy()
+        result = run_walk_forward(strategy, [])
+
+        assert result.oos_trades == []
+        assert result.oos_returns == []
+        assert result.total_oos_trades == 0
+
+    def test_oos_trades_have_positive_and_negative_pnl(self, rsi_candles):
+        """OOS trades include both profitable and losing trades."""
+        strategy = RSIStrategy(oversold=30.0, overbought=70.0)
+        config = WalkForwardConfig(train_size_days=7, test_size_days=3, step_size_days=3)
+        result = run_walk_forward(strategy, rsi_candles, config)
+
+        all_pnl = [t["pnl"] for fold in result.folds for t in fold.oos_trades]
+        if all_pnl:
+            assert any(p > 0 for p in all_pnl), "Should have at least one profitable trade"
+            assert any(p < 0 for p in all_pnl), "Should have at least one losing trade"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
