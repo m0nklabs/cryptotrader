@@ -284,6 +284,7 @@ class TestIntegration:
         assert len(results) > 0
         assert len(sensitivity) > 0
         assert len(optimal) > 0
+        assert "bull" in optimal
 
     def test_results_consistency(self):
         """Results should be consistent across runs with same seed."""
