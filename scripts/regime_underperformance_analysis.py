@@ -29,8 +29,6 @@ from core.backtest.engine import BacktestEngine, RSIStrategy, BacktestResult
 from core.backtest.metrics import (
     calculate_sharpe_ratio,
     calculate_max_drawdown,
-    calculate_win_rate,
-    calculate_profit_factor,
 )
 from core.types import Candle
 

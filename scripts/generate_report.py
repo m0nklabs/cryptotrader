@@ -221,7 +221,6 @@ def compute_key_findings(
     trans_return = transition_baseline["return"]
 
     for regime_name, flag in flags.items():
-        rm = regime_metrics[Regime(regime_name)]
         delta_pct = (flag.return_delta / trans_return * 100) if trans_return != 0 else 0.0
 
         direction = "negative" if delta_pct < -5 else ("positive" if delta_pct > 5 else "neutral")

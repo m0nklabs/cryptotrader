@@ -34,12 +34,6 @@ from scripts.regime_underperformance_analysis import (
     trans_win_rate,
 )
 from core.backtest.engine import BacktestEngine, RSIStrategy, BacktestResult
-from core.backtest.metrics import (
-    calculate_max_drawdown,
-    calculate_profit_factor,
-    calculate_sharpe_ratio,
-    calculate_win_rate,
-)
 from core.types import Candle
 from decimal import Decimal
 
