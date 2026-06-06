@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "generated_at": "2026-06-05T22:57:53.094838+00:00",
+    "generated_at": "2026-06-05T22:58:49.127451+00:00",
     "total_candles": 8760,
     "segments": 3
   },
@@ -12,11 +12,11 @@
       "n_candles": 4380,
       "dominant_regime": "high_vol",
       "regime_breakdown": {
+        "transition": 0.5,
+        "bull": 30.8,
         "bear": 29.9,
         "range": 6.0,
-        "transition": 0.5,
-        "high_vol": 32.8,
-        "bull": 30.8
+        "high_vol": 32.8
       },
       "mean_return": 0.000113,
       "mean_volatility": 0.020072,
@@ -31,11 +31,11 @@
       "n_candles": 1752,
       "dominant_regime": "high_vol",
       "regime_breakdown": {
+        "transition": 1.1,
+        "bull": 28.1,
         "bear": 31.6,
         "range": 6.2,
-        "transition": 1.1,
-        "high_vol": 33.0,
-        "bull": 28.1
+        "high_vol": 33.0
       },
       "mean_return": 4.6e-05,
       "mean_volatility": 0.019859,
@@ -50,11 +50,11 @@
       "n_candles": 2628,
       "dominant_regime": "high_vol",
       "regime_breakdown": {
+        "transition": 0.8,
+        "bull": 34.0,
         "bear": 25.1,
         "range": 5.9,
-        "transition": 0.8,
-        "high_vol": 34.2,
-        "bull": 34.0
+        "high_vol": 34.2
       },
       "mean_return": 0.001235,
       "mean_volatility": 0.020052,
