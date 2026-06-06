@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "last_run": "2026-06-06T08:23:42.763416+00:00",
+  "prs": {
+    "pr_347": {
+      "fingerprint": "d9fef9b8d9cb3353",
+      "tier": "Tier 3 (Manual)",
+      "last_processed": "2026-06-06T08:23:42.763068+00:00"
+    },
+    "pr_342": {
+      "fingerprint": "489f75623bd01fba",
+      "tier": "Tier 3 (Manual)",
+      "last_processed": "2026-06-06T08:23:42.763196+00:00"
+    },
+    "pr_341": {
+      "fingerprint": "aeda15e2ade09325",
+      "tier": "Tier 3 (Manual)",
+      "last_processed": "2026-06-06T08:23:42.763251+00:00"
+    },
+    "pr_338": {
+      "fingerprint": "dfe448133915dd84",
+      "tier": "Tier 2 (Auto-Approve)",
+      "last_processed": "2026-06-06T08:23:42.763311+00:00"
+    },
+    "pr_335": {
+      "fingerprint": "da2098560af24011",
+      "tier": "Tier 2 (Auto-Approve)",
+      "last_processed": "2026-06-06T08:23:42.763359+00:00"
+    },
+    "pr_326": {
+      "fingerprint": "f86635e747ba8a1e",
+      "tier": "Tier 2 (Auto-Approve)",
+      "last_processed": "2026-06-06T08:23:42.763410+00:00"
+    }
+  }
+}
