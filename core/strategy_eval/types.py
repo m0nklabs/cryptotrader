@@ -86,6 +86,8 @@ class RegimePerformance:
     max_dd: float
     win_rate: float
     avg_trade_pnl: float
+    oos_trades: int = 0
+    oos_returns: list[float] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
