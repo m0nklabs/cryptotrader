@@ -22,15 +22,26 @@ from core.types import Candle
 
 @dataclass
 class RegimeDetector:
-    """Detects market regimes from candle data."""
+    """Detects market regimes from candle data.
+
+    Uses soft transition detection: even during the warm-up period,
+    strong trend or volatility signals can produce trades instead of
+    locking to TRANSITION.
+    """
 
     trend_window: int = 20  # SMA window for trend detection
     vol_window: int = 20  # volatility calculation window
-    trend_threshold: float = 0.01  # % move for trend detection
-    vol_z_threshold: float = 1.0  # z-score threshold for vol regime
+    trend_threshold: float = 0.008  # % move for trend detection (softened from 0.01)
+    vol_z_threshold: float = 0.8  # z-score threshold for vol regime (softened from 1.0)
+    transition_min_candles: int = 5  # minimum candles before transition lock expires
 
     def detect_regime(self, candles: Sequence[Candle], index: int) -> MarketRegime:
         """Detect the regime at a specific candle index.
+
+        During the transition period (first trend_window candles), strong
+        trend or volatility signals are still respected — trades are not
+        locked to TRANSITION. Once past transition_min_candles, the detector
+        uses a softer threshold to allow more regimes to emerge.
 
         Args:
             candles: Full candle sequence
@@ -39,8 +50,7 @@ class RegimeDetector:
         Returns:
             Detected market regime
         """
-        if index < self.trend_window:
-            return MarketRegime.TRANSITION
+        in_transition = index < self.trend_window
 
         # Calculate trend direction and strength
         recent = candles[max(0, index - self.trend_window) : index + 1]
@@ -49,7 +59,17 @@ class RegimeDetector:
         # Calculate volatility regime
         vol_regime = self._detect_volatility(candles, index)
 
-        # Combine trend and vol signals
+        # During early transition, use soft detection:
+        # If we have enough candles and strong signals, don't lock to TRANSITION
+        if in_transition and index < self.transition_min_candles:
+            # Very early: if strong trend or high vol, break out
+            if trend in (MarketRegime.TRENDING_UP, MarketRegime.TRENDING_DOWN):
+                return trend
+            if vol_regime == MarketRegime.HIGH_VOL:
+                return MarketRegime.HIGH_VOL
+            return MarketRegime.TRANSITION
+
+        # Full detection logic
         if trend == MarketRegime.TRENDING_UP:
             if vol_regime == MarketRegime.HIGH_VOL:
                 return MarketRegime.HIGH_VOL
@@ -113,7 +133,8 @@ class RegimeDetector:
             return MarketRegime.LOW_VOL
 
         mean_ret = sum(returns) / len(returns)
-        variance = sum((r - mean_ret) ** 2 for r in returns) / (len(returns) - 1)
+        n = len(returns)
+        variance = sum((r - mean_ret) ** 2 for r in returns) / (n - 1) if n > 1 else 0.0
         std_ret = math.sqrt(variance) if variance > 0 else 0.0
 
         # Current candle return z-score

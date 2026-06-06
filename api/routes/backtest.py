@@ -149,6 +149,8 @@ class WalkForwardFoldResponse(BaseModel):
     test_win_rate: float
     test_trades: int
     oos_decay: float
+    oos_trades: list[dict] = Field(default_factory=list)  # actual OOS trade objects
+    oos_is_partial: bool = False  # True if test_end extends beyond end_date
 
 
 class WalkForwardResponse(BaseModel):
@@ -165,6 +167,8 @@ class WalkForwardResponse(BaseModel):
     oos_win_rate: float
     overfitting_risk: str
     folds: list[WalkForwardFoldResponse]
+    oos_trades: list[dict] = Field(default_factory=list)  # aggregate of all OOS trades
+    total_oos_trades: int = 0  # total trade count across all folds
 
 
 class BacktestComparisonResponse(BaseModel):
@@ -337,9 +341,13 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
                     test_win_rate=f.test_win_rate,
                     test_trades=f.test_trades,
                     oos_decay=f.oos_decay,
+                    oos_trades=f.oos_trades,
+                    oos_is_partial=f.oos_is_partial,
                 )
                 for f in wf_result.folds
             ],
+            oos_trades=wf_result.oos_trades,
+            total_oos_trades=wf_result.total_oos_trades,
         )
 
         # Combine results
@@ -347,6 +355,12 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
 
         # Write to backtest_comparison.json
         _write_comparison_json(combined)
+
+        # Log OOS trades to JSON file
+        from core.strategy_eval.walk_forward import log_oos_trades
+
+        oos_log_path = log_oos_trades(wf_result)
+        logger.info("OOS trades logged to %s", oos_log_path)
 
         # Log walk-forward results
         logger.info(

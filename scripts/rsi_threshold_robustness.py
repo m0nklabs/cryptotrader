@@ -23,11 +23,177 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from core.backtest.engine import BacktestEngine, RSIStrategy
+from core.backtest.engine import BacktestEngine, RSIStrategy, BacktestResult
+from core.backtest.metrics import (
+    Trade,
+    calculate_win_rate,
+)
 from core.types import Candle
 from scripts.walk_forward_analysis import (
-    Regime, classify_regime, generate_synthetic_candles, load_candles_from_file,
+    Regime, RegimeMetrics, classify_regime, generate_synthetic_candles, load_candles_from_file,
 )
+
+# All recognized regime values
+ALL_REGIMES = list(Regime)
+
+# ±10% and ±20% threshold variants: (oversold, overbought)
+THRESHOLD_VARIANTS = {
+    "-20%": (24.0, 56.0),
+    "-10%": (27.0, 63.0),
+    "base": (30.0, 70.0),
+    "+10%": (33.0, 77.0),
+    "+20%": (36.0, 84.0),
+}
+
+
+# ---------------------------------------------------------------------------
+# Threshold result dataclass
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ThresholdResult:
+    """Results for a single threshold variant across all regimes."""
+    threshold_label: str
+    oversold: float
+    overbought: float
+    regimes: dict[str, RegimeMetrics]
+    overall: RegimeMetrics
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "threshold": self.threshold_label,
+            "oversold": self.oversold,
+            "overbought": self.overbought,
+            "regimes": {k: v.to_dict() for k, v in self.regimes.items()},
+            "overall": self.overall.to_dict(),
+        }
+
+
+def run_threshold_analysis(
+    candles: list[Candle],
+    threshold_variants: dict[str, tuple[float, float]] | None = None,
+    lookback: int = 20,
+    initial_capital: float = 10000.0,
+) -> dict[str, ThresholdResult]:
+    """Run RSI threshold robustness analysis.
+
+    For each threshold variant:
+    1. Classify each candle into a regime
+    2. For each regime, extract the candles and run a backtest
+    3. Aggregate metrics per regime
+    """
+    if threshold_variants is None:
+        threshold_variants = THRESHOLD_VARIANTS
+
+    results: dict[str, ThresholdResult] = {}
+
+    # Pre-classify regimes for all candles
+    all_regimes = [classify_regime(candles, i, lookback=lookback) for i in range(len(candles))]
+
+    for label, (oversold, overbought) in threshold_variants.items():
+        strategy = RSIStrategy(oversold=oversold, overbought=overbought)
+
+        # Group candles by regime
+        regime_candle_groups: dict[Regime, list[Candle]] = {r: [] for r in ALL_REGIMES}
+        for i, regime in enumerate(all_regimes):
+            regime_candle_groups[regime].append(candles[i])
+
+        # Run backtest per regime
+        regime_metrics: dict[str, RegimeMetrics] = {}
+        all_trades: list[Trade] = []
+        mean_pnl = 0.0
+        std_pnl = 0.0
+
+        for regime in ALL_REGIMES:
+            reg_candle_list = regime_candle_groups[regime]
+            n_candles = len(reg_candle_list)
+
+            if n_candles == 0:
+                regime_metrics[regime.value] = RegimeMetrics(
+                    regime=regime.value,
+                    n_candles=0,
+                    n_trades=0,
+                    win_rate=0.0,
+                    sharpe_ratio=0.0,
+                    max_drawdown=0.0,
+                    total_pnl=0.0,
+                    total_return=0.0,
+                    profit_factor=0.0,
+                    mean_trade_pnl=0.0,
+                    std_trade_pnl=0.0,
+                )
+                continue
+
+            engine = BacktestEngine(
+                candle_store=None,
+                initial_capital=initial_capital,
+            )
+            result: BacktestResult = engine.run(strategy=strategy, candles=reg_candle_list)
+
+            all_trades.extend(result.trades)
+
+            win_rate = calculate_win_rate(result.trades)
+
+            # Calculate mean and std trade PnL
+            trade_pnl = [(float(t.exit_price) - float(t.entry_price)) * float(t.size) for t in result.trades] if result.trades else [0.0]
+            mean_pnl = statistics.mean(trade_pnl) if trade_pnl else 0.0
+            std_pnl = statistics.stdev(trade_pnl) if len(trade_pnl) > 1 else 0.0
+
+            regime_metrics[regime.value] = RegimeMetrics(
+                regime=regime.value,
+                n_candles=n_candles,
+                n_trades=len(result.trades),
+                win_rate=win_rate,
+                sharpe_ratio=result.sharpe_ratio,
+                max_drawdown=result.max_drawdown,
+                total_pnl=result.total_pnl,
+                total_return=result.total_return,
+                profit_factor=result.profit_factor,
+                mean_trade_pnl=float(mean_pnl),
+                std_trade_pnl=float(std_pnl),
+            )
+
+        # Overall metrics across all regimes
+        total_trades = len(all_trades)
+        overall_win_rate = calculate_win_rate(all_trades) if all_trades else 0.0
+        total_pnl = sum(m.total_pnl for m in regime_metrics.values())
+        total_return = sum(m.total_return for m in regime_metrics.values())
+
+        # Weighted average sharpe
+        total_candles = sum(m.n_candles for m in regime_metrics.values())
+        avg_sharpe = (
+            sum(m.sharpe_ratio * m.n_candles for m in regime_metrics.values()) / total_candles
+            if total_candles > 0 else 0.0
+        )
+        avg_maxdd = (
+            sum(m.max_drawdown * m.n_candles for m in regime_metrics.values()) / total_candles
+            if total_candles > 0 else 0.0
+        )
+        avg_pnl = total_pnl / len(regime_metrics) if regime_metrics else 0.0
+
+        overall = RegimeMetrics(
+            regime="all",
+            n_candles=total_candles,
+            n_trades=total_trades,
+            win_rate=overall_win_rate,
+            sharpe_ratio=avg_sharpe,
+            max_drawdown=avg_maxdd,
+            total_pnl=total_pnl,
+            total_return=total_return,
+            profit_factor=statistics.mean([m.profit_factor for m in regime_metrics.values()]) if regime_metrics else 0.0,
+            mean_trade_pnl=float(mean_pnl),
+            std_trade_pnl=float(std_pnl),
+        )
+
+        results[label] = ThresholdResult(
+            threshold_label=label,
+            oversold=oversold,
+            overbought=overbought,
+            regimes=regime_metrics,
+            overall=overall,
+        )
+
+    return results
 
 
 # ---------------------------------------------------------------------------

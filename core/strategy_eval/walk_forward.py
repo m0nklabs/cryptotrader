@@ -7,10 +7,14 @@ that strategy performance is robust and not overfitted to a specific period.
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+import logging
 import math
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Sequence
 
 from core.strategy_eval.types import (
@@ -19,9 +23,11 @@ from core.strategy_eval.types import (
 )
 from core.types import Candle
 from core.backtest.engine import BacktestEngine, BacktestResult, Strategy
-from core.backtest.metrics import calculate_sharpe_ratio
+from core.backtest.metrics import Trade, calculate_sharpe_ratio
 from core.fees.model import FeeModel
 from core.risk.sizing import PositionSize
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_timeframe_to_timedelta(timeframe: str) -> timedelta:
@@ -44,6 +50,17 @@ def _parse_timeframe_to_timedelta(timeframe: str) -> timedelta:
     if unit == "d":
         return timedelta(days=value)
     raise ValueError(f"Unsupported timeframe unit: '{unit}' in '{timeframe}'")
+
+
+def _trade_to_dict(trade: Trade) -> dict:
+    """Convert a Trade object to a serializable dict."""
+    return {
+        "entry_price": float(trade.entry_price),
+        "exit_price": float(trade.exit_price),
+        "side": trade.side,
+        "size": float(trade.size),
+        "pnl": float(trade.pnl),
+    }
 
 
 def _clone_strategy(strategy: Strategy) -> Strategy:
@@ -155,6 +172,8 @@ def run_walk_forward(
             oos_max_dd=0.0,
             oos_win_rate=0.0,
             overfitting_risk="high",
+            oos_trades=[],
+            total_oos_trades=0,
         )
 
     if fee_model is not None and not isinstance(strategy, _CostAwareStrategy):
@@ -172,8 +191,13 @@ def run_walk_forward(
         train_end = current + timedelta(days=config.train_size_days)
         test_end = train_end + timedelta(days=config.test_size_days)
 
-        if test_end > end_date:
-            break  # Skip last incomplete fold
+        # Check if test period extends beyond end_date
+        partial_oos = test_end > end_date
+        if partial_oos and test_end > end_date + timedelta(days=config.test_size_days):
+            # Test period extends too far — skip if no train data
+            if train_end > end_date:
+                current = train_end + timedelta(days=config.step_size_days)
+                continue
 
         # Warm-up: include lookback candles before training for indicator state
         warmup_start = current - timedelta(days=config.lookback_candles // 24)
@@ -184,9 +208,17 @@ def run_walk_forward(
         # Also, warmup uses end_exclusive so it does not include the candle at 'current'.
         warmup_candles = _split_candles(candles, warmup_start, current, end_exclusive=True)
         train_candles = _split_candles(candles, current, train_end, end_exclusive=True)
-        test_candles = _split_candles(candles, train_end, test_end)
+        # For partial OOS, clip test candles to end_date
+        if partial_oos:
+            test_candles = _split_candles(candles, train_end, end_date)
+        else:
+            test_candles = _split_candles(candles, train_end, test_end)
 
-        if not train_candles or not test_candles:
+        if not train_candles and not partial_oos:
+            current = train_end + timedelta(days=config.step_size_days)
+            continue
+
+        if not test_candles and not partial_oos:
             current = train_end + timedelta(days=config.step_size_days)
             continue
 
@@ -229,6 +261,9 @@ def run_walk_forward(
         )
         test_result = test_engine.run(_clone_strategy(strategy), test_candles)
 
+        # Capture OOS trades as serializable dicts
+        oos_trades = [_trade_to_dict(t) for t in test_result.trades]
+
         fold = WalkForwardFold(
             train_start=current,
             train_end=train_end,
@@ -241,8 +276,21 @@ def run_walk_forward(
             test_win_rate=test_result.win_rate,
             test_trades=len(test_result.trades),
             oos_decay=(test_result.total_return / train_return if abs(train_return) > 1e-9 else 0.0),
+            oos_trades=oos_trades,
+            oos_is_partial=partial_oos,
         )
         folds.append(fold)
+
+        # Log OOS trades for this fold
+        if oos_trades:
+            logger.info(
+                "OOS fold [%s -> %s]: %d trades, return=%.4f, trades=%s",
+                fold.test_start.isoformat(),
+                fold.test_end.isoformat(),
+                len(oos_trades),
+                fold.test_return,
+                [f"{t['side']}@{t['entry_price']:.2f}->{t['exit_price']:.2f} (PnL={t['pnl']:.2f})" for t in oos_trades],
+            )
 
         current = train_end + timedelta(days=config.step_size_days)
 
@@ -261,6 +309,8 @@ def run_walk_forward(
             oos_max_dd=0.0,
             oos_win_rate=0.0,
             overfitting_risk="high",
+            oos_trades=[],
+            total_oos_trades=0,
         )
 
     mean_train = sum(f.train_return for f in folds) / n
@@ -297,6 +347,13 @@ def run_walk_forward(
     oos_max_dd = max(f.test_max_dd for f in folds)
     oos_win_rate = sum(f.test_win_rate for f in folds) / n
 
+    # Aggregate OOS trades across all folds
+    all_oos_trades: list[dict] = []
+    total_oos_trades = 0
+    for f in folds:
+        all_oos_trades.extend(f.oos_trades)
+        total_oos_trades += f.test_trades
+
     # Overfitting risk assessment
     if mean_oos_decay > 0.7:
         overfit_risk = "low"
@@ -304,6 +361,18 @@ def run_walk_forward(
         overfit_risk = "medium"
     else:
         overfit_risk = "high"
+
+    # Log summary of OOS trades
+    logger.info(
+        "Walk-forward complete: %d folds, %d OOS trades, mean train=%.4f, mean test=%.4f, OOS decay=%.4f, overfitting=%s, significant=%s",
+        n,
+        total_oos_trades,
+        mean_train,
+        mean_test,
+        mean_oos_decay,
+        overfit_risk,
+        oos_sig,
+    )
 
     return WalkForwardResult(
         folds=folds,
@@ -317,6 +386,8 @@ def run_walk_forward(
         oos_max_dd=oos_max_dd,
         oos_win_rate=oos_win_rate,
         overfitting_risk=overfit_risk,
+        oos_trades=all_oos_trades,
+        total_oos_trades=total_oos_trades,
     )
 
 
@@ -370,3 +441,75 @@ class _CostAwareStrategy:
             adjusted_strength = max(0, signal.strength - int(cost_bps))
             signal.strength = adjusted_strength
         return signal
+
+
+def log_oos_trades(
+    result: WalkForwardResult,
+    output_dir: str | None = None,
+) -> Path:
+    """Log OOS trades to a JSON file.
+
+    Args:
+        result: WalkForwardResult containing OOS trade data.
+        output_dir: Directory to write the log file to. Defaults to BACKTEST_OUTPUT_DIR env var or /tmp.
+
+    Returns:
+        Path to the written log file.
+    """
+    if output_dir is None:
+        output_dir = os.getenv("BACKTEST_OUTPUT_DIR", "/tmp")
+
+    output_path = Path(output_dir) / "oos_trades.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load existing data if present
+    existing: list[dict] = []
+    if output_path.exists():
+        try:
+            with open(output_path, "r") as f:
+                existing = json.load(f)
+            if not isinstance(existing, list):
+                existing = [existing]
+        except (json.JSONDecodeError, OSError):
+            existing = []
+
+    # Build the log entry
+    entry = {
+        "n_folds": result.n_folds,
+        "total_oos_trades": result.total_oos_trades,
+        "mean_train_return": result.mean_train_return,
+        "mean_test_return": result.mean_test_return,
+        "mean_oos_decay": result.mean_oos_decay,
+        "oos_significant": result.oos_significant,
+        "oos_sharpe": result.oos_sharpe,
+        "oos_max_dd": result.oos_max_dd,
+        "oos_win_rate": result.oos_win_rate,
+        "overfitting_risk": result.overfitting_risk,
+        "folds": [
+            {
+                "train_start": f.train_start.isoformat(),
+                "train_end": f.train_end.isoformat(),
+                "test_start": f.test_start.isoformat(),
+                "test_end": f.test_end.isoformat(),
+                "train_return": f.train_return,
+                "test_return": f.test_return,
+                "test_sharpe": f.test_sharpe,
+                "test_max_dd": f.test_max_dd,
+                "test_win_rate": f.test_win_rate,
+                "test_trades": f.test_trades,
+                "oos_decay": f.oos_decay,
+                "oos_is_partial": f.oos_is_partial,
+                "oos_trades": f.oos_trades,
+            }
+            for f in result.folds
+        ],
+        "oos_trades": result.oos_trades,
+    }
+
+    existing.append(entry)
+
+    with open(output_path, "w") as f:
+        json.dump(existing, f, indent=2, default=str)
+
+    logger.info("Wrote OOS trades to %s (total entries: %d)", output_path, len(existing))
+    return output_path
