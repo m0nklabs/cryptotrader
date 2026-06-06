@@ -11,7 +11,6 @@ classifies regimes against live thresholds.
 from __future__ import annotations
 
 import json
-import math
 import statistics
 import sys
 from dataclasses import dataclass, field, asdict
@@ -28,7 +27,6 @@ if str(_project_root) not in sys.path:
 
 from core.backtest.engine import BacktestEngine, RSIStrategy, BacktestResult
 from core.backtest.metrics import (
-    Trade,
     calculate_sharpe_ratio,
     calculate_max_drawdown,
     calculate_win_rate,
@@ -263,7 +261,7 @@ def compute_all_regime_metrics(
 ) -> dict[Regime, RegimeMetrics]:
     """Compute metrics for all regimes."""
     results: dict[Regime, RegimeMetrics] = {}
-    for regime in Regime:
+    for regime in list(Regime):
         results[regime] = compute_regime_metrics(
             candles, regime, lookback, vol_threshold_abs, initial_capital
         )

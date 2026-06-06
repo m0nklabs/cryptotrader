@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import math
-import statistics
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +24,6 @@ from scripts.regime_underperformance_analysis import (
     UnderperformanceFlag,
     UnderperformanceThresholds,
     compute_all_regime_metrics,
-    compute_regime_metrics,
     compute_transition_baseline,
     compute_underperformance,
     generate_synthetic_candles,
@@ -37,7 +35,6 @@ from scripts.regime_underperformance_analysis import (
 )
 from core.backtest.engine import BacktestEngine, RSIStrategy, BacktestResult
 from core.backtest.metrics import (
-    Trade,
     calculate_max_drawdown,
     calculate_profit_factor,
     calculate_sharpe_ratio,

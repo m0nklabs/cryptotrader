@@ -11,7 +11,6 @@ Produces a structured report with:
 from __future__ import annotations
 
 import json
-import math
 import sys
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -27,7 +26,6 @@ from scripts.regime_underperformance_analysis import (
     Regime,
     RegimeMetrics,
     UnderperformanceFlag,
-    UnderperformanceThresholds,
     compute_all_regime_metrics,
     compute_transition_baseline,
     compute_underperformance,
@@ -316,7 +314,7 @@ def generate_report(
 
     # Build regime analysis section
     regime_analysis = {}
-    for regime in Regime:
+    for regime in list(Regime):
         rm = regime_metrics[regime]
         regime_analysis[regime.value] = {
             "regime": regime.value,

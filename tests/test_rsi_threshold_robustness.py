@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import math
-import statistics
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +34,6 @@ from scripts.rsi_threshold_robustness import (
 )
 from core.backtest.engine import BacktestEngine, RSIStrategy, BacktestResult
 from core.backtest.metrics import (
-    Trade,
     calculate_max_drawdown,
     calculate_profit_factor,
     calculate_sharpe_ratio,
@@ -417,15 +415,6 @@ class TestIntegration:
         """Test that metrics are consistent with independent calculations."""
         results = run_threshold_analysis(sample_candles)
         base = results["base"]
-
-        # Verify win rate independently
-        all_trades = []
-        for regime_candles in [
-            sample_candles[i]
-            for i in range(len(sample_candles))
-            if classify_regime(sample_candles, i) == base.regimes["bull"].regime
-        ]:
-            pass  # Just checking the structure
 
         # Win rate should be between 0 and 1
         assert 0.0 <= base.overall.win_rate <= 1.0
