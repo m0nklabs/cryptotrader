@@ -62,6 +62,7 @@ from api.routes import (
     alerts as alerts_routes,
     backtest as backtest_routes,
     smoke as smoke_routes,
+    ping as ping_routes,
 )
 
 # Import middleware for rate limit tracking
@@ -775,7 +776,7 @@ async def get_available_pairs(
 @app.get("/candles/stream")
 async def stream_candles(
     symbol: str = Query(..., description="Trading symbol (e.g., BTCUSD)"),
-    timeframe: str = Query(..., description="Timeframe (e.g., 1m, 5m, 1h)"),
+    timeframe: str = Query(..., description="Candle timeframe (e.g., 1m, 5m, 1h)"),
 ) -> StreamingResponse:
     """Stream real-time candle updates via Server-Sent Events (SSE).
 
@@ -1193,6 +1194,17 @@ async def get_paper_summary() -> dict[str, Any]:
 @app.get("/paper/kelly")
 async def get_kelly_info() -> dict[str, Any]:
     """Get Kelly sizing details for paper trading.
+
+    The paper trading endpoint uses full-Kelly (kelly_fraction=1.0) by default,
+    which produces larger position sizes than the orchestrator's half-Kelly (0.5).
+    This is deliberate: paper trading has no real money at risk, so the more
+    aggressive full-Kelly sizing is appropriate. The orchestrator uses half-Kelly
+    to conserve capital during live trading.
+
+    See also:
+        - execution_orchestrator.py:99  (orchestrator default: kelly_fraction=0.5)
+        - core/risk/sizing.py:133       (calculate_position_size fallback: 0.5)
+        - ROLLOUT_CHECKLIST.md:41,73   (half-Kelly rationale)
 
     Returns:
         JSON with Kelly criterion details including fraction, win rate,
@@ -2398,3 +2410,4 @@ app.include_router(trade_history.router)
 app.include_router(alerts_routes.router)
 app.include_router(backtest_routes.router)
 app.include_router(smoke_routes.router)
+app.include_router(ping_routes.router)
