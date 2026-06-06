@@ -312,59 +312,22 @@ class FeesEstimateResponse(BaseModel):
 @app.get("/health")
 @app.get("/healthz")
 async def health() -> dict[str, Any]:
-    """Health check endpoint.
+    """Read-only health check endpoint.
+
+    Returns status, uptime, and version without depending on the database
+    or any external services. Always returns HTTP 200.
 
     Returns:
-        JSON with database connectivity status and schema information.
-
-    Raises:
-        HTTPException: If database connection fails.
+        JSON with status, uptime_seconds, and version.
     """
-    try:
-        stores = _get_stores()
-        engine = stores._get_engine()  # noqa: SLF001
-        _, text = stores._require_sqlalchemy()  # noqa: SLF001
+    uptime_seconds = int(time.time() - _app_start_time)
+    version = os.environ.get("APP_VERSION", "0.1.0")
 
-        # Check database connectivity and candles table
-        with engine.begin() as conn:
-            # Verify candles table exists
-            result = conn.execute(
-                text(
-                    """
-                    SELECT COUNT(*)
-                    FROM information_schema.tables
-                    WHERE table_name = 'candles'
-                    """
-                )
-            ).scalar()
-
-            candles_table_exists = result > 0
-
-            # Get total candle count if table exists
-            total_candles = 0
-            if candles_table_exists:
-                total_candles = conn.execute(text("SELECT COUNT(*) FROM candles")).scalar() or 0
-
-        return {
-            "status": "ok",
-            "database": {
-                "connected": True,
-                "candles_table_exists": candles_table_exists,
-                "total_candles": total_candles,
-            },
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "status": "error",
-                "database": {
-                    "connected": False,
-                    "error": str(e),
-                },
-            },
-        ) from e
+    return {
+        "status": "ok",
+        "uptime_seconds": uptime_seconds,
+        "version": version,
+    }
 
 
 @app.get("/version")
