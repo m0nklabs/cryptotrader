@@ -25,7 +25,6 @@ if str(_project_root) not in sys.path:
 
 from core.backtest.engine import BacktestEngine, RSIStrategy, BacktestResult
 from core.backtest.metrics import Trade, calculate_sharpe_ratio, calculate_max_drawdown, calculate_win_rate, calculate_profit_factor
-
 from core.types import Candle
 # from core.persistence.file_candle_store import FileCandleStore
 
@@ -100,6 +99,8 @@ def classify_regime(
     # Rolling volatility: std of price changes (absolute)
     price_changes = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
     abs_vol = statistics.stdev(price_changes) if len(price_changes) > 1 else 0.0
+    # pct_vol = abs_vol / closes[0] if closes[0] > 0 else 0.0  # available for future pct-based thresholds
+
     # Simple moving average
     sma = sum(closes) / len(closes)
     price_vs_sma = (closes[-1] - sma) / sma if sma > 0 else 0
@@ -245,7 +246,8 @@ def aggregate_regime_metrics(
         # Max drawdown across all windows
         all_equity = []
         for w in wlist:
-            all_equity.extend(w.result.equity_curve)
+            if w.result is not None:
+                all_equity.extend(w.result.equity_curve)
         rm.max_drawdown = calculate_max_drawdown(all_equity) if all_equity else 0.0
 
         # Win rate
@@ -276,7 +278,8 @@ def aggregate_regime_metrics(
         # Collect equity curve from last window for visualization
         if wlist:
             last = wlist[-1]
-            rm.equity_curve = last.result.equity_curve
+            if last.result is not None:
+                rm.equity_curve = last.result.equity_curve
 
         results[regime] = rm
 
