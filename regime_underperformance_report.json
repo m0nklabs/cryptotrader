@@ -1,0 +1,264 @@
+{
+  "report_metadata": {
+    "analysis": "regime_underperformance",
+    "generated_at": "2026-06-06T00:44:24.123533+00:00",
+    "version": "1.0.0",
+    "data_source": "oos_regime_dataset.json",
+    "n_candles": 8760,
+    "transition_baseline": {
+      "return": 0.00011189587916777577,
+      "sharpe": 10.908558991266917,
+      "drawdown": 0.0002549040830257325,
+      "n_candles": 20
+    }
+  },
+  "regime_analysis": {
+    "bull": {
+      "regime": "bull",
+      "n_candles": 420,
+      "n_trades": 0,
+      "mean_return": 0.0029874843765800895,
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_pnl": 0.0,
+      "total_return": 0.0
+    },
+    "bear": {
+      "regime": "bear",
+      "n_candles": 0,
+      "n_trades": 0,
+      "mean_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_pnl": 0.0,
+      "total_return": 0.0
+    },
+    "range": {
+      "regime": "range",
+      "n_candles": 6,
+      "n_trades": 0,
+      "mean_return": -6.122776498031779e-06,
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_pnl": 0.0,
+      "total_return": 0.0
+    },
+    "high_vol": {
+      "regime": "high_vol",
+      "n_candles": 2271,
+      "n_trades": 0,
+      "mean_return": 0.002427183388417783,
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_pnl": 0.0,
+      "total_return": 0.0
+    },
+    "low_vol": {
+      "regime": "low_vol",
+      "n_candles": 6043,
+      "n_trades": 4,
+      "mean_return": 0.0003452288502064506,
+      "sharpe_ratio": 0.22402604373533028,
+      "max_drawdown": 0.10358287998619861,
+      "win_rate": 0.75,
+      "profit_factor": 5.08572041111288,
+      "total_pnl": 8886.37938833228,
+      "total_return": 0.888637938833228
+    },
+    "transition": {
+      "regime": "transition",
+      "n_candles": 20,
+      "n_trades": 0,
+      "mean_return": 0.00011189587916777577,
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_pnl": 0.0,
+      "total_return": 0.0
+    }
+  },
+  "key_findings": [
+    {
+      "metric": "return_delta_pct",
+      "regime": "bull",
+      "value": 0.0028755884974123137,
+      "baseline": 0.00011189587916777577,
+      "delta_pct": 2569.878818415359,
+      "direction": "positive"
+    },
+    {
+      "metric": "return_delta_pct",
+      "regime": "bear",
+      "value": -0.00011189587916777577,
+      "baseline": 0.00011189587916777577,
+      "delta_pct": -100.0,
+      "direction": "negative"
+    },
+    {
+      "metric": "return_delta_pct",
+      "regime": "range",
+      "value": -0.00011801865566580754,
+      "baseline": 0.00011189587916777577,
+      "delta_pct": -105.4718516388359,
+      "direction": "negative"
+    },
+    {
+      "metric": "return_delta_pct",
+      "regime": "high_vol",
+      "value": 0.0023152875092500073,
+      "baseline": 0.00011189587916777577,
+      "delta_pct": 2069.1445712477794,
+      "direction": "positive"
+    },
+    {
+      "metric": "return_delta_pct",
+      "regime": "low_vol",
+      "value": 0.0002333329710386748,
+      "baseline": 0.00011189587916777577,
+      "delta_pct": 208.52686691778635,
+      "direction": "positive"
+    },
+    {
+      "metric": "return_delta_pct",
+      "regime": "transition",
+      "value": 0.0,
+      "baseline": 0.00011189587916777577,
+      "delta_pct": 0.0,
+      "direction": "neutral"
+    }
+  ],
+  "go_no_go_recommendations": [
+    {
+      "regime": "bull",
+      "decision": "CONDITIONAL",
+      "confidence": 0.75,
+      "reasoning": "Underperformance score 96.9 suggests conditional (score=96.9)",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "regime": "bear",
+      "decision": "NO-GO",
+      "confidence": 0.5,
+      "reasoning": "Both return and Sharpe below thresholds (score=41.6)",
+      "risk_level": "HIGH"
+    },
+    {
+      "regime": "range",
+      "decision": "NO-GO",
+      "confidence": 0.7,
+      "reasoning": "Both return and Sharpe below thresholds (score=41.7)",
+      "risk_level": "HIGH"
+    },
+    {
+      "regime": "high_vol",
+      "decision": "CONDITIONAL",
+      "confidence": 0.75,
+      "reasoning": "Underperformance score 85.7 suggests conditional (score=85.7)",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "regime": "low_vol",
+      "decision": "CONDITIONAL",
+      "confidence": 0.75,
+      "reasoning": "Underperformance score 57.3 suggests conditional (score=57.3)",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "regime": "transition",
+      "decision": "GO",
+      "confidence": 0.7,
+      "reasoning": "Baseline regime, reference point for all comparisons",
+      "risk_level": "LOW"
+    }
+  ],
+  "underperformance_scores": [
+    {
+      "regime": "bull",
+      "score": 96.87873133412984,
+      "is_underperforming": true,
+      "return_delta": 0.0028755884974123137,
+      "drawdown_delta": -0.0002549040830257325,
+      "sharpe_delta": 10.908558991266917,
+      "win_rate_delta": 0.15,
+      "flags": [
+        "low_sharpe",
+        "low_win_rate"
+      ]
+    },
+    {
+      "regime": "bear",
+      "score": 41.60487896923909,
+      "is_underperforming": true,
+      "return_delta": -0.00011189587916777577,
+      "drawdown_delta": -0.0002549040830257325,
+      "sharpe_delta": 10.908558991266917,
+      "win_rate_delta": 0.15,
+      "flags": [
+        "low_return",
+        "low_sharpe",
+        "low_win_rate"
+      ]
+    },
+    {
+      "regime": "range",
+      "score": 41.72733449919972,
+      "is_underperforming": true,
+      "return_delta": -0.00011801865566580754,
+      "drawdown_delta": -0.0002549040830257325,
+      "sharpe_delta": 10.908558991266917,
+      "win_rate_delta": 0.15,
+      "flags": [
+        "low_return",
+        "low_sharpe",
+        "low_win_rate"
+      ]
+    },
+    {
+      "regime": "high_vol",
+      "score": 85.6727115708837,
+      "is_underperforming": true,
+      "return_delta": 0.0023152875092500073,
+      "drawdown_delta": -0.0002549040830257325,
+      "sharpe_delta": 10.908558991266917,
+      "win_rate_delta": 0.15,
+      "flags": [
+        "low_sharpe",
+        "low_win_rate"
+      ]
+    },
+    {
+      "regime": "low_vol",
+      "score": 57.34832876394225,
+      "is_underperforming": true,
+      "return_delta": 0.0002333329710386748,
+      "drawdown_delta": 0.10332797590317287,
+      "sharpe_delta": 10.684532947531586,
+      "win_rate_delta": -0.75,
+      "flags": [
+        "high_drawdown",
+        "low_sharpe"
+      ]
+    },
+    {
+      "regime": "transition",
+      "score": 0.0,
+      "is_underperforming": false,
+      "return_delta": 0.0,
+      "drawdown_delta": 0.0,
+      "sharpe_delta": 0.0,
+      "win_rate_delta": 0.0,
+      "flags": [
+        "baseline"
+      ]
+    }
+  ]
+}
