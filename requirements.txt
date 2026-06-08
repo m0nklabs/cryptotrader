@@ -4,7 +4,7 @@ requests>=2.31.0
 
 # Technical analysis
 pandas>=3.0.3
-numpy>=1.26.0
+numpy>=2.4.6
 
 # Desktop notifications (optional, for signal alerts)
 plyer>=2.1.0
