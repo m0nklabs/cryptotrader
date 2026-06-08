@@ -103,6 +103,23 @@ def needs_manual_merge(pr: dict) -> bool:
     return True
 
 
+# Cosmetic deprecation warnings that do not indicate a real failure
+_DEPRECATION_WARNINGS = (
+    "Projects (classic) is being deprecated",
+    "DeprecationWarning",
+)
+
+
+def _is_deprecation_warning(stderr: str) -> bool:
+    """Check if stderr contains only cosmetic deprecation warnings."""
+    if not stderr:
+        return False
+    for warning in _DEPRECATION_WARNINGS:
+        if warning in stderr:
+            return True
+    return False
+
+
 def apply_manual_ready_label(repo: str, pr_number: int) -> bool:
     """Apply the manual-ready label to a PR."""
     try:
@@ -119,7 +136,14 @@ def apply_manual_ready_label(repo: str, pr_number: int) -> bool:
         )
         logger.info(f"Applied {MANUAL_READY_LABEL} to PR #{pr_number}")
         return True
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        # GraphQL deprecation warnings are cosmetic — label was still applied
+        if _is_deprecation_warning(e.stderr or ""):
+            logger.info(
+                f"Applied {MANUAL_READY_LABEL} to PR #{pr_number}"
+                f" (deprecation warning, label OK)"
+            )
+            return True
         logger.warning(f"Failed to apply {MANUAL_READY_LABEL} to PR #{pr_number}")
         return False
 
@@ -147,20 +171,26 @@ def route_pr(repo: str, pr: dict) -> bool:
     return success
 
 
-def route_all_dependencies(repo: str) -> int:
-    """Route all eligible dependency PRs through the manual merge path."""
+def route_all_dependencies(repo: str) -> tuple[int, list[str]]:
+    """Route all eligible dependency PRs through the manual merge path.
+
+    Returns (count_of_routed, list_of_routed_pr_numbers) so callers
+    can persist the routed PRs across runs.
+    """
     prs = get_open_prs(repo)
     if not prs:
         logger.info("No open PRs found")
-        return 0
+        return 0, []
 
     routed = 0
+    routed_numbers: list[str] = []
     for pr in prs:
         if is_dependency_pr(pr) and route_pr(repo, pr):
             routed += 1
+            routed_numbers.append(str(pr["number"]))
 
     logger.info(f"Routed {routed}/{len(prs)} dependency PR(s) to manual merge")
-    return routed
+    return routed, routed_numbers
 
 
 def load_state() -> dict:
@@ -201,16 +231,31 @@ def main() -> int:
         try:
             while True:
                 state = load_state()
-                n = route_all_dependencies(args.repo)
+                n, pr_numbers = route_all_dependencies(args.repo)
+
+                # Merge routed PRs into state (avoid duplicates)
+                existing = set(state.get("routed_prs", []))
+                for prn in pr_numbers:
+                    if prn not in existing:
+                        state.setdefault("routed_prs", []).append(prn)
                 state["last_run"] = datetime.now(tz=UTC).isoformat()
                 save_state(state)
+
                 if n:
                     logger.info(f"Routed {n} PR(s) to manual merge")
                 time.sleep(args.interval)
         except KeyboardInterrupt:
             logger.info("Stopped")
     else:
-        n = route_all_dependencies(args.repo)
+        n, pr_numbers = route_all_dependencies(args.repo)
+        # Persist routed PRs in state file
+        state = load_state()
+        existing = set(state.get("routed_prs", []))
+        for prn in pr_numbers:
+            if prn not in existing:
+                state.setdefault("routed_prs", []).append(prn)
+        state["last_run"] = datetime.now(tz=UTC).isoformat()
+        save_state(state)
         logger.info(f"Routed {n} PR(s) to manual merge" if n else "No PRs to route")
 
     return 0
