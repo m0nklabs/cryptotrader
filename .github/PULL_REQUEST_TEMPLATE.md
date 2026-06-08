@@ -6,6 +6,12 @@
 
 Fixes #<!-- issue number -->
 
+## Report Comment
+
+<!-- Required for any code change. Link the dedicated PR comment that reports owner, scope, touched files, validation, and remaining risks. -->
+
+<!-- Example: https://github.com/m0nklabs/cryptotrader/pull/123#issuecomment-0000000000 -->
+
 ## Type of Change
 
 - [ ] 🐛 Bug fix (non-breaking change that fixes an issue)
@@ -23,6 +29,8 @@ Fixes #<!-- issue number -->
 - [ ] All new and existing tests pass (`pytest`)
 - [ ] Linting passes (`ruff check .`)
 - [ ] I have updated documentation if needed
+- [ ] I posted a dedicated PR comment report for this code change with owner, scope, touched files, validation, and remaining risks
+- [ ] This branch does not include unrelated stacked commits outside the stated issue/scope
 
 ### Trading-Specific (if applicable)
 - [ ] Paper trading is the default (`dry_run=True` or `paper_mode=True`)

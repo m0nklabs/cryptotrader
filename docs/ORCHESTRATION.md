@@ -9,6 +9,29 @@ This document defines how work is delegated to agents and tracked via GitHub Iss
 - Canonical requirements live in `docs/*`.
 - `research/` is local-only and should not be required by delegated agents.
 - Default to paper-trading / dry-run.
+- The Hermes PR-manager/coordinator is orchestration-only in this repo: it may triage, route, request artifacts, and post process-status comments, but it must not author code commits, open coding PRs, or submit code reviews.
+- Every PR with code changes must carry a dedicated PR comment report before it is considered merge-ready.
+
+## Role Separation
+
+| Role | Allowed | Not allowed |
+|------|---------|-------------|
+| Hermes PR-manager / coordinator | Issue triage, branch routing, merge-readiness comments, requesting coding agents, requesting reviewer bots, stale-PR cleanup | Coding, opening coding PRs, submitting code reviews, resolving review feedback in code |
+| Coding agent / developer | Implement scoped changes, run validations, push branch updates, post implementation report comment | Expanding scope beyond the issue, stacking unrelated commits, self-approving merge readiness |
+| Reviewer (human or reviewer bot) | Review diff, request changes, approve/reject for merge | Silently changing branch scope without a new report comment |
+
+## Required PR Comment Report
+
+Every PR that changes code must have a dedicated PR comment, separate from the PR body, with this minimum content:
+
+- owner: human or coding agent name/model
+- task: what was implemented in this push
+- scope: the intended work package / issue
+- touched files: explicit file list or file groups
+- validation: exact commands and outcomes
+- risks: remaining known risks, assumptions, or out-of-scope carryover
+
+If a new push changes the effective scope, add a fresh report comment. A stale or missing report comment means the PR is not merge-ready.
 
 ## Issue Hierarchy: Epics & Sub-issues
 
@@ -78,16 +101,21 @@ One-sentence goal.
    - Link to parent Epic if applicable
 
 3. **Assign to an agent / developer**
-   - Agent implements on a branch and opens a PR.
+   - A coding agent or human developer implements on a branch and opens a PR.
+   - The coordinator may route work and request updates, but must not be the coding author of the PR.
 
 4. **Pull Request requirements**
    - PR description references the issue.
    - Use `Closes #<issue>` to auto-close on merge.
    - Keep changes minimal and limited to the work package.
+   - Post a PR comment report covering owner, scope, touched files, validation, and remaining risks.
+   - Rebuild or close the branch if unrelated commits leak into the PR.
 
 5. **Review & merge**
    - Validate via tests/smoke checks.
    - Ensure safety constraints are upheld.
+   - Code review must come from a human reviewer or reviewer bot, not from the coordinator.
+   - The coordinator may block merge on missing artifacts, but must not submit semantic code review.
 
 ## Issue template (copy/paste)
 
@@ -202,45 +230,61 @@ gh run view <RUN_ID>
      └──────┬───────┘             │
             │ Yes                 │
             ▼                     │
-     ┌──────────────┐             │
-     │ 2. Review PR │             │
-     └──────┬───────┘             │
+        ┌────────────────────┐       │
+        │ 2. Check PR scope, │       │
+        │    report, and CI  │       │
+        └─────────┬──────────┘       │
             │                     │
             ▼                     │
-     ┌──────────────┐             │
-     │  Approved?   │             │
-     └──────┬───────┘             │
+        ┌────────────────────┐       │
+        │  Ready for real    │       │
+        │  review?           │       │
+        └─────────┬──────────┘       │
             │                     │
       ┌─────┴─────┐               │
       │           │               │
      Yes          No              │
       │           │               │
       ▼           ▼               │
-┌──────────┐ ┌───────────────┐    │
-│ 3. Merge │ │ Request       │    │
-│    PR    │ │ Changes       │    │
-└────┬─────┘ └───────┬───────┘    │
+   ┌──────────────┐ ┌────────────────┐ │
+   │ 3. Request   │ │ Request missing│ │
+   │ reviewer bot │ │ artifacts /    │ │
+   │ or human     │ │ rescope branch │ │
+   └────┬─────────┘ └────────┬───────┘ │
      │               │            │
      │               └────────────┤
      ▼                            │
 ┌────────────────┐                │
-│ 4. Check for   │◄───────────────┘
-│    new issues  │
+   │ 4. Human /     │◄───────────────┘
+   │ bot review     │
 └───────┬────────┘
         │
         ▼
 ┌────────────────┐
-│ 5. Assign to   │
-│    agents      │
+   │ 5. Merge only  │
+   │ after unlock + │
+   │ required review│
 └───────┬────────┘
         │
         ▼
 ┌────────────────┐
-│ 6. Wait for    │
-│    agent work  │
+   │ 6. Check for   │
+   │    new issues  │
 └───────┬────────┘
         │
-        └──────────► Loop to Step 1
+      ▼
+   ┌────────────────┐
+   │ 7. Assign to   │
+   │    agents      │
+   └───────┬────────┘
+      │
+      ▼
+   ┌────────────────┐
+   │ 8. Wait for    │
+   │    agent work  │
+   └───────┬────────┘
+      │
+      └──────────► Loop to Step 1
 ```
 
 ### Loop Commands
@@ -249,20 +293,24 @@ gh run view <RUN_ID>
 # 1. Check open PRs
 gh pr list --repo m0nk111/cryptotrader --state open
 
-# 2. Review PR diff
+# 2. Check scope drift / missing artifacts
 gh pr diff <PR#> --repo m0nk111/cryptotrader
+gh pr view <PR#> --repo m0nk111/cryptotrader --comments
 
-# 3. Merge PR (squash)
-gh pr merge <PR#> --squash --repo m0nk111/cryptotrader
-git pull origin master
+# 3. Request real review or missing artifacts
+gh pr comment <PR#> --body "Missing report comment / scope drift / CI status ..."
 
-# 4. List unassigned issues
+# 4. Human or reviewer bot performs code review
+
+# 5. Merge only after explicit unlock + required review
+
+# 6. List unassigned issues
 gh issue list --repo m0nk111/cryptotrader --state open
 
-# 5. Assign to Copilot
+# 7. Assign to Copilot
 gh issue edit <ISSUE#> --add-assignee copilot
 
-# 5. Assign to Agent-Forge
+# 7. Assign to Agent-Forge
 gh issue edit <ISSUE#> --add-assignee m0nk111-post --add-label agent-ready
 ```
 
@@ -397,6 +445,11 @@ gh issue comment <NEW#> --body "@copilot please implement this issue"
 | Cost-sensitive | Agent-Forge |
 
 ## Orchestration log (newest-first)
+
+## 2026-06-06
+- Tightened coordinator role: Hermes PR-manager is orchestration-only and may not code, open coding PRs, or submit code reviews in this repo.
+- Added mandatory PR comment report requirement for every code-changing PR.
+- Updated workflow text so process comments and code review are explicitly separate.
 
 ## 2025-12-25
 - Implemented stale PR recovery procedure

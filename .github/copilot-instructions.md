@@ -43,6 +43,8 @@ These instructions apply to GitHub Copilot in the context of this repository.
 
 - Prefer delegating module work via GitHub Issues/PRs over doing large coding tasks in the coordinator role.
 - Maintain `docs/ORCHESTRATION.md` as the process/log for delegation.
+- In this repo, the Hermes PR-manager/coordinator is orchestration-only: triage, routing, status comments, and merge-readiness checks are allowed; authoring code commits, opening coding PRs, and submitting code reviews are not.
+- Every PR with code changes must include a dedicated PR comment report that states the coding owner, intended scope, touched files, validation run, and remaining risks before the PR is considered merge-ready.
 
 ## Safety & secrets
 
@@ -116,6 +118,8 @@ When the user says (Dutch) "doe is een review van deze PR" / "review deze PR", t
 - **PR branch discipline**: If the user points to a specific PR with a bug / improvement to fix, apply the fix on that PR's branch and commit + push to the PR branch. Do **not** commit such fixes directly to `master`/`main`.
 - If the user explicitly asks to commit and push changes to GitHub, push directly to the default branch in this repository (no PR/feature branch) unless the user asks otherwise or an open PR exists.
 - When resolving merge conflicts during rebase, keep both sections when they add independent features (e.g., different cache declarations, different imports).
+- Do not stack unrelated commits into a PR branch. If a branch picks up unrelated work, rebuild it from a clean base or close it.
+- Process/status comments from the coordinator are not code review. Code review must come from a human reviewer or the designated reviewer bots.
 
 ## GitHub Copilot Coding Agent
 
