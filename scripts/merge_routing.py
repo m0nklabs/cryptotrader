@@ -79,6 +79,56 @@ def get_open_prs(repo: str, *, author: str | None = None) -> list[dict]:
         return []
 
 
+def get_all_prs(repo: str, *, author: str | None = None) -> list[dict]:
+    """Get all PRs (open + closed), optionally filtered by author.
+
+    This is needed to detect already-routed PRs that are closed but unmerged.
+    These PRs are often re-detected as "needing PR" on each cycle because
+    the original get_open_prs() only returns open PRs.
+    """
+    filters = ["--state", "all", "--json", "number,title,author,labels,mergeStateStatus,state,headRefName"]
+    if author:
+        filters += ["--author", author]
+    try:
+        output = run_gh(["pr", "list", "--repo", repo] + filters, check=False)
+        if not output or output == "[]":
+            return []
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return []
+
+
+def check_branch_has_pr(repo: str, branch_name: str) -> dict | None:
+    """Check if a branch already has an existing PR (open or closed).
+
+    Returns the PR dict if found, None otherwise.
+    """
+    try:
+        output = run_gh(
+            [
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--state",
+                "all",
+                "--head",
+                branch_name,
+                "--json",
+                "number,title,state,labels,headRefName",
+            ],
+            check=False,
+        )
+        if not output or output == "[]":
+            return None
+        prs = json.loads(output)
+        if prs:
+            return prs[0]  # Return the first matching PR
+        return None
+    except json.JSONDecodeError:
+        return None
+
+
 def is_dependency_pr(pr: dict) -> bool:
     """Check if a PR is a dependency PR (Dependabot or Copilot)."""
     author = pr.get("author", {}).get("login", "")
@@ -176,18 +226,45 @@ def route_all_dependencies(repo: str) -> tuple[int, list[str]]:
 
     Returns (count_of_routed, list_of_routed_pr_numbers) so callers
     can persist the routed PRs across runs.
+
+    Uses get_all_prs() to detect both open and closed PRs. Closed-but-unmerged
+    PRs that were already routed are recognized and added to routed_prs,
+    preventing redundant re-detection on each cycle.
     """
-    prs = get_open_prs(repo)
+    prs = get_all_prs(repo)
     if not prs:
-        logger.info("No open PRs found")
+        logger.info("No PRs found (open + closed)")
         return 0, []
 
     routed = 0
     routed_numbers: list[str] = []
     for pr in prs:
+        pr_number = pr["number"]
+        pr_state = pr.get("state", "OPEN")
+
+        # Check if this PR is already in routed_prs (from previous runs)
+        state = load_state()
+        existing_routed = set(state.get("routed_prs", []))
+
+        if str(pr_number) in existing_routed:
+            # Already routed in a previous run — recognize it
+            logger.debug(f"PR #{pr_number} ({pr_state}) already in routed_prs, skipping")
+            if str(pr_number) not in routed_numbers:
+                routed_numbers.append(str(pr_number))
+            continue
+
         if is_dependency_pr(pr) and route_pr(repo, pr):
             routed += 1
-            routed_numbers.append(str(pr["number"]))
+            routed_numbers.append(str(pr_number))
+            logger.info(f"PR #{pr_number} ({pr_state}) routed to manual merge")
+        elif str(pr_number) not in routed_numbers:
+            # PR was not newly routed but is a dependency PR
+            # Check if it has the manual-ready label
+            labels = [lb.get("name", "") for lb in pr.get("labels", [])]
+            if MANUAL_READY_LABEL in labels:
+                # Already has the label — add to routed_prs to prevent re-detection
+                logger.debug(f"PR #{pr_number} ({pr_state}) already has {MANUAL_READY_LABEL}, adding to routed_prs")
+                routed_numbers.append(str(pr_number))
 
     logger.info(f"Routed {routed}/{len(prs)} dependency PR(s) to manual merge")
     return routed, routed_numbers
