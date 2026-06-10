@@ -49,7 +49,7 @@ MANUAL_READY_LABEL = "manual-ready"
 AUTO_MERGE_DISABLED_LABEL = "do-not-merge"
 
 # PR author patterns that should be routed through manual merge
-DEPENDENCY_AUTHORS = ("dependabot[bot]", "github-actions[bot]")
+DEPENDENCY_AUTHORS = ("dependabot", "github-actions[bot]")
 
 
 def run_gh(args: list[str], check: bool = True) -> str:
