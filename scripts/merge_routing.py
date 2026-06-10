@@ -309,13 +309,12 @@ def main() -> int:
         n = route_all_dependencies(args.repo)
         logger.info(f"Routed {n} PR(s) to manual merge" if n else "No PRs to route")
 
-        # Merge BLOCKED PRs if --merge flag is set
-        if args.merge:
-            m = merge_manual_ready_prs(args.repo)
-            if m:
-                logger.info(f"Merged {m} BLOCKED PR(s)")
-            else:
-                logger.info("No BLOCKED PRs to merge")
+        # Always attempt to merge BLOCKED PRs after routing
+        m = merge_manual_ready_prs(args.repo)
+        if m:
+            logger.info(f"Merged {m} BLOCKED PR(s)")
+        else:
+            logger.info("No BLOCKED PRs to merge")
 
     return 0
 
