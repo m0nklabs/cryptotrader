@@ -51,6 +51,9 @@ AUTO_MERGE_DISABLED_LABEL = "do-not-merge"
 # PR author patterns that should be routed through manual merge
 DEPENDENCY_AUTHORS = ("dependabot", "github-actions[bot]")
 
+# Timeout: skip re-routing already_flagged branches waiting > this many days
+FLAGGED_TIMEOUT_DAYS = 2
+
 
 def run_gh(args: list[str], check: bool = True) -> str:
     """Run a gh CLI command and return stdout."""
@@ -77,6 +80,46 @@ def get_open_prs(repo: str, *, author: str | None = None) -> list[dict]:
         return json.loads(output)
     except json.JSONDecodeError:
         return []
+
+
+def is_stale_flagged(state: dict, pr_number: int | str, pr_title: str) -> bool:
+    """Check if a PR is in the already_flagged list and has been waiting too long.
+
+    Returns True if the PR is stale (flagged > FLAGGED_TIMEOUT_DAYS ago).
+    Stale PRs are skipped to prevent infinite re-routing loops.
+    """
+    missing = state.get("missing_prs", {})
+    already_flagged = missing.get("already_flagged", {})
+
+    # Handle both dict format {"branch": timestamp} and list format ["branch", ...]
+    if isinstance(already_flagged, dict):
+        if str(pr_number) in already_flagged:
+            flagged_at = already_flagged[str(pr_number)]
+            return _is_stale_since(flagged_at)
+        # Also check by branch name in title
+        for branch, ts in already_flagged.items():
+            if branch in pr_title:
+                return _is_stale_since(ts)
+    elif isinstance(already_flagged, list):
+        # List format: no timestamps, treat as stale if any entries exist
+        if str(pr_number) in already_flagged:
+            return True
+        for branch in already_flagged:
+            if branch in pr_title:
+                return True
+    return False
+
+
+def _is_stale_since(timestamp_str: str) -> bool:
+    """Check if a timestamp is older than FLAGGED_TIMEOUT_DAYS."""
+    try:
+        flagged_dt = datetime.fromisoformat(timestamp_str)
+        if flagged_dt.tzinfo is None:
+            flagged_dt = flagged_dt.replace(tzinfo=UTC)
+        age = datetime.now(tz=UTC) - flagged_dt
+        return age.days > FLAGGED_TIMEOUT_DAYS
+    except (ValueError, TypeError):
+        return True  # If we can't parse, treat as stale
 
 
 def is_dependency_pr(pr: dict) -> bool:
@@ -195,29 +238,50 @@ def get_repo_from_git() -> str:
         return DEFAULT_REPO
 
 
-def route_all_dependencies(repo: str) -> int:
-    """Route all eligible dependency PRs through the manual merge path."""
+def route_all_dependencies(repo: str) -> tuple[int, dict]:
+    """Route all eligible dependency PRs through the manual merge path.
+
+    Skips PRs that are already flagged as manual-ready and have been
+    waiting longer than FLAGGED_TIMEOUT_DAYS (prevents infinite loops).
+
+    Returns (routed_count, state_dict) so the caller can persist state.
+    """
     prs = get_open_prs(repo)
     if not prs:
         logger.info("No open PRs found")
-        return 0
+        return 0, load_state()
 
+    state = load_state()
     routed = 0
+    skipped_stale = 0
     for pr in prs:
+        pr_number = pr["number"]
+        pr_title = pr.get("title", "")
+
+        # Check if already flagged and stale
+        if is_stale_flagged(state, pr_number, pr_title):
+            logger.debug(f"PR #{pr_number} ({pr_title[:50]}) is stale flagged, skipping")
+            skipped_stale += 1
+            continue
+
         if is_dependency_pr(pr) and route_pr(repo, pr):
             routed += 1
 
-    logger.info(f"Routed {routed}/{len(prs)} dependency PR(s) to manual merge")
-    return routed
+    logger.info(f"Routed {routed}/{len(prs)} dependency PR(s) to manual merge ({skipped_stale} stale skipped)")
+    return routed, state
 
 
-def merge_manual_ready_prs(repo: str) -> int:
+def merge_manual_ready_prs(repo: str, state: dict | None = None) -> int:
     """Find and merge PRs that are ready for manual merge.
 
     Strategy: apply manual-ready label, then try direct merge.
     If direct merge fails (repository rules), PRs remain labeled for Mergify/human merge.
+    Saves state after merging so the state file reflects actual merge results.
     Returns number of PRs labeled (whether merged or pending).
     """
+    if state is None:
+        state = load_state()
+
     prs = get_open_prs(repo)
     if not prs:
         logger.info("No open PRs found")
@@ -254,22 +318,61 @@ def merge_manual_ready_prs(repo: str) -> int:
         else:
             logger.info(f"PR #{pr_number} labeled, pending merge (repository rules)")
 
+    # Update state counters after merge
+    state["last_run"] = datetime.now(tz=UTC).isoformat()
+    state["missing_prs"]["needs_pr"] = [p["number"] for p in prs if p.get("mergeStateStatus") == "BLOCKED"]
+    save_state(state)
+
     logger.info(f"Labeled {labeled}/{len(candidates)} BLOCKED PR(s), {merged} merged directly")
-    return merged
+    return labeled
 
 
 def load_state() -> dict:
-    """Load state from file."""
+    """Load state from file, migrating old list format to dict with timestamps."""
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text())
+            state = json.loads(STATE_FILE.read_text())
+            # Migrate already_flagged from list to dict with timestamps
+            missing = state.get("missing_prs", {})
+            already_flagged = missing.get("already_flagged", [])
+            if isinstance(already_flagged, list):
+                # Convert to dict with existing timestamps or use last_detected
+                last_detected = missing.get("last_detected")
+                migrated = {}
+                for entry in already_flagged:
+                    if isinstance(entry, dict):
+                        # Already a dict entry
+                        key = entry.get("branch", str(entry.get("number", "")))
+                        ts = entry.get("flagged_at", last_detected or datetime.now(tz=UTC).isoformat())
+                        migrated[str(key)] = ts
+                    else:
+                        # Plain string entry - use last_detected or now
+                        key = str(entry)
+                        ts = last_detected or datetime.now(tz=UTC).isoformat()
+                        migrated[key] = ts
+                state.setdefault("missing_prs", {})["already_flagged"] = migrated
+            return state
         except json.JSONDecodeError:
             pass
-    return {"last_run": None, "routed_prs": []}
+    return {"last_run": None, "routed_prs": [], "missing_prs": {"already_flagged": {}}}
 
 
 def save_state(state: dict) -> None:
-    """Save state to file."""
+    """Save state to file, ensuring already_flagged has timestamps."""
+    # Ensure already_flagged is a dict with timestamps
+    missing = state.get("missing_prs", {})
+    already_flagged = missing.get("already_flagged", [])
+    if isinstance(already_flagged, list):
+        last_detected = missing.get("last_detected")
+        migrated = {}
+        for entry in already_flagged:
+            if isinstance(entry, dict):
+                key = entry.get("branch", str(entry.get("number", "")))
+                ts = entry.get("flagged_at", last_detected or datetime.now(tz=UTC).isoformat())
+                migrated[str(key)] = ts
+            else:
+                migrated[str(entry)] = last_detected or datetime.now(tz=UTC).isoformat()
+        state["missing_prs"]["already_flagged"] = migrated
     STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
@@ -297,7 +400,7 @@ def main() -> int:
         try:
             while True:
                 state = load_state()
-                n = route_all_dependencies(args.repo)
+                n, state = route_all_dependencies(args.repo)
                 state["last_run"] = datetime.now(tz=UTC).isoformat()
                 save_state(state)
                 if n:
@@ -306,12 +409,13 @@ def main() -> int:
         except KeyboardInterrupt:
             logger.info("Stopped")
     else:
-        n = route_all_dependencies(args.repo)
+        n, state = route_all_dependencies(args.repo)
+        save_state(state)
         logger.info(f"Routed {n} PR(s) to manual merge" if n else "No PRs to route")
 
         # Merge BLOCKED PRs if --merge flag is set
         if args.merge:
-            m = merge_manual_ready_prs(args.repo)
+            m = merge_manual_ready_prs(args.repo, state=state)
             if m:
                 logger.info(f"Merged {m} BLOCKED PR(s)")
             else:
