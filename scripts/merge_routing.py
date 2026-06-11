@@ -195,29 +195,36 @@ def get_repo_from_git() -> str:
         return DEFAULT_REPO
 
 
-def route_all_dependencies(repo: str) -> int:
-    """Route all eligible dependency PRs through the manual merge path."""
+def route_all_dependencies(repo: str) -> tuple[int, dict]:
+    """Route all eligible dependency PRs through the manual merge path.
+
+    Returns (routed_count, state_dict) so the caller can persist state.
+    """
     prs = get_open_prs(repo)
     if not prs:
         logger.info("No open PRs found")
-        return 0
+        return 0, load_state()
 
+    state = load_state()
     routed = 0
     for pr in prs:
         if is_dependency_pr(pr) and route_pr(repo, pr):
             routed += 1
 
     logger.info(f"Routed {routed}/{len(prs)} dependency PR(s) to manual merge")
-    return routed
+    return routed, state
 
 
-def merge_manual_ready_prs(repo: str) -> int:
+def merge_manual_ready_prs(repo: str, state: dict | None = None) -> int:
     """Find and merge PRs that are ready for manual merge.
 
     Strategy: apply manual-ready label, then try direct merge.
     If direct merge fails (repository rules), PRs remain labeled for Mergify/human merge.
+    Saves state after merging so the state file reflects actual merge results.
     Returns number of PRs labeled (whether merged or pending).
     """
+    if state is None:
+        state = load_state()
     prs = get_open_prs(repo)
     if not prs:
         logger.info("No open PRs found")
@@ -297,7 +304,7 @@ def main() -> int:
         try:
             while True:
                 state = load_state()
-                n = route_all_dependencies(args.repo)
+                n, state = route_all_dependencies(args.repo)
                 state["last_run"] = datetime.now(tz=UTC).isoformat()
                 save_state(state)
                 if n:
@@ -306,16 +313,16 @@ def main() -> int:
         except KeyboardInterrupt:
             logger.info("Stopped")
     else:
-        n = route_all_dependencies(args.repo)
+        n, state = route_all_dependencies(args.repo)
+        save_state(state)
         logger.info(f"Routed {n} PR(s) to manual merge" if n else "No PRs to route")
 
-        # Merge BLOCKED PRs if --merge flag is set
-        if args.merge:
-            m = merge_manual_ready_prs(args.repo)
-            if m:
-                logger.info(f"Merged {m} BLOCKED PR(s)")
-            else:
-                logger.info("No BLOCKED PRs to merge")
+        # Always attempt to merge BLOCKED PRs after routing
+        m = merge_manual_ready_prs(args.repo, state=state)
+        if m:
+            logger.info(f"Merged {m} BLOCKED PR(s)")
+        else:
+            logger.info("No BLOCKED PRs to merge")
 
     return 0
 
