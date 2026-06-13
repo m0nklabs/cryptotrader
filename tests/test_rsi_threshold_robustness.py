@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import math
-import statistics
+# import statistics  # unused
 from pathlib import Path
 from typing import Any
 
@@ -35,10 +35,10 @@ from scripts.rsi_threshold_robustness import (
 )
 from core.backtest.engine import BacktestEngine, RSIStrategy, BacktestResult
 from core.backtest.metrics import (
-    Trade,
-    calculate_max_drawdown,
-    calculate_profit_factor,
-    calculate_sharpe_ratio,
+    
+    
+    
+    
     calculate_win_rate,
 )
 from core.types import Candle

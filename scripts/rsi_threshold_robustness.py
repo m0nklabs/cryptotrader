@@ -11,7 +11,6 @@ Acceptance criterion: runs on 720 synthetic candles without errors.
 from __future__ import annotations
 
 import json
-import math
 import statistics
 import sys
 from dataclasses import dataclass, asdict

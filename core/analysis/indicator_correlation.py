@@ -20,10 +20,10 @@ from typing import Sequence
 
 import numpy as np
 
-from core.indicators.macd import compute_macd, generate_macd_signal
-from core.indicators.rsi import compute_rsi, generate_rsi_signal
-from core.indicators.stochastic import compute_stochastic, generate_stochastic_signal
-from core.types import Candle, IndicatorSignal
+from core.indicators.macd import compute_macd
+from core.indicators.rsi import compute_rsi
+from core.indicators.stochastic import compute_stochastic
+from core.types import Candle
 
 logger = logging.getLogger(__name__)
 
