@@ -21,10 +21,8 @@ Acceptance criteria:
 from __future__ import annotations
 
 import json
-import math
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
