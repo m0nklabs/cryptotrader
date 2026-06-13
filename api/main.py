@@ -381,7 +381,6 @@ async def health() -> dict[str, Any]:
         ) from e
 
 
-@app.get("/version")
 async def version() -> dict[str, Any]:
     """Get application version.
 
