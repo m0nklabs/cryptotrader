@@ -7,8 +7,7 @@ and integration with the backtest engine.
 from __future__ import annotations
 
 import json
-import math
-#   # unused
+# import math  # unused - removed per github-code-quality bot feedback
 from pathlib import Path
 
 
@@ -423,7 +422,6 @@ class TestIntegration:
         base = results["base"]
 
         # Verify win rate independently
-        all_trades = []
         for regime_candles in [
             sample_candles[i]
             for i in range(len(sample_candles))
