@@ -127,35 +127,35 @@ def _extract_signal_series(
     return values
 
 
-def compute_signal_correlation(
-    candles: Sequence[Candle],
-    indicator_a: str = RSI_CODE,
-    indicator_b: str = STOCHASTIC_CODE,
-    threshold: float = DEFAULT_CORRELATION_THRESHOLD,
-    **kwargs,
+def _correlation_from_series(
+    series_a: Sequence[float],
+    series_b: Sequence[float],
+    indicator_a: str,
+    indicator_b: str,
+    threshold: float,
 ) -> CorrelationResult:
-    """Compute correlation between two indicators.
+    """Compute correlation + threshold check from pre-extracted indicator series.
 
-    The threshold check is intentionally signed: only ``correlation >=
-    threshold`` is reported as ``is_above_threshold``. Negative correlation
-    between two indicators is a hedge (they move against each other), not
-    the same-signal double exposure this module exists to flag.
+    Centralises the series-alignment, NaN handling, signed-threshold logic,
+    and result construction. Used by both ``compute_signal_correlation``
+    (which extracts the series itself) and ``compute_correlation_matrix``
+    (which caches the series to avoid recomputing them for every pair).
 
     Args:
-        candles: Sequence of OHLCV candles.
-        indicator_a: First indicator code.
+        series_a: First indicator series (one value per candle after warmup).
+        series_b: Second indicator series.
+        indicator_a: First indicator code (for the result label and errors).
         indicator_b: Second indicator code.
-        threshold: Correlation threshold above which indicators
-            are considered too correlated (only positive correlations
-            count toward this; a negative correlation can never exceed it).
-        **kwargs: Parameters passed to indicator functions.
+        threshold: Correlation threshold from the risk side (signed:
+            only positive correlations at or above this are flagged).
 
     Returns:
-        CorrelationResult with correlation value and threshold check.
-    """
-    series_a = _extract_signal_series(candles, indicator_a, **kwargs)
-    series_b = _extract_signal_series(candles, indicator_b, **kwargs)
+        CorrelationResult with the Pearson correlation and the threshold
+        check.
 
+    Raises:
+        ValueError: If fewer than 10 aligned points are available.
+    """
     # Align series lengths
     min_len = min(len(series_a), len(series_b))
     series_a = series_a[:min_len]
@@ -187,6 +187,46 @@ def compute_signal_correlation(
     )
 
 
+def compute_signal_correlation(
+    candles: Sequence[Candle],
+    indicator_a: str = RSI_CODE,
+    indicator_b: str = STOCHASTIC_CODE,
+    threshold: float = DEFAULT_CORRELATION_THRESHOLD,
+    **kwargs,
+) -> CorrelationResult:
+    """Compute correlation between two indicators.
+
+    The threshold check is intentionally signed: only ``correlation >=
+    threshold`` is reported as ``is_above_threshold``. Negative correlation
+    between two indicators is a hedge (they move against each other), not
+    the same-signal double exposure this module exists to flag.
+
+    Args:
+        candles: Sequence of OHLCV candles.
+        indicator_a: First indicator code.
+        indicator_b: Second indicator code.
+        threshold: Correlation threshold above which indicators
+            are considered too correlated (only positive correlations
+            count toward this; a negative correlation can never exceed it).
+        **kwargs: Parameters passed to indicator functions.
+
+    Returns:
+        CorrelationResult with correlation value and threshold check.
+    """
+    # TODO(perf): this is O(N * W) per indicator and the underlying
+    # compute_rsi / compute_macd / compute_stochastic helpers each re-iterate
+    # the prefix window, so the total cost is roughly O(N^2) per series and
+    # O(N^2 * k) for ``compute_correlation_matrix`` (k = #indicators). For a
+    # 540-candle backtest (4h x 90d) this gets slow. The per-matrix cost
+    # was already halved by the per-(indicator, kwargs) memoisation in
+    # ``compute_correlation_matrix``; the remaining win is incremental
+    # indicator updates that only look at the new candle instead of the
+    # whole prefix. Tracked for a follow-up.
+    series_a = _extract_signal_series(candles, indicator_a, **kwargs)
+    series_b = _extract_signal_series(candles, indicator_b, **kwargs)
+    return _correlation_from_series(series_a, series_b, indicator_a, indicator_b, threshold)
+
+
 def compute_correlation_matrix(
     candles: Sequence[Candle],
     indicators: list[str] | None = None,
@@ -194,6 +234,13 @@ def compute_correlation_matrix(
     **kwargs,
 ) -> CorrelationMatrixResult:
     """Compute full correlation matrix for all indicator pairs.
+
+    Indicator series are memoised by (indicator, kwargs) so that an
+    indicator that appears in multiple pairs (e.g. RSI in RSI-MACD
+    *and* RSI-Stochastic) is only extracted once. Combined with the
+    TODO(perf) note in ``_extract_signal_series`` (the per-series
+    extraction is itself O(N^2)) this halves the per-matrix cost for
+    the default 3-indicator case.
 
     Args:
         candles: Sequence of OHLCV candles.
@@ -211,6 +258,17 @@ def compute_correlation_matrix(
     if len(indicators) < 2:
         raise ValueError("Need at least 2 indicators for correlation matrix")
 
+    # Memoise per-indicator series so we extract each one once. The keys
+    # are the indicator code; values are the extracted time series.
+    series_cache: dict[str, Sequence[float]] = {}
+
+    def _series(indicator: str) -> Sequence[float]:
+        cached = series_cache.get(indicator)
+        if cached is None:
+            cached = _extract_signal_series(candles, indicator, **kwargs)
+            series_cache[indicator] = cached
+        return cached
+
     # Build pairwise correlation results
     pairs: list[CorrelationResult] = []
     matrix: dict[str, dict[str, float]] = {ind: {} for ind in indicators}
@@ -219,9 +277,7 @@ def compute_correlation_matrix(
         matrix[ind_a][ind_a] = 1.0
         for j, ind_b in enumerate(indicators):
             if i < j:
-                result = compute_signal_correlation(
-                    candles, indicator_a=ind_a, indicator_b=ind_b, threshold=threshold, **kwargs
-                )
+                result = _correlation_from_series(_series(ind_a), _series(ind_b), ind_a, ind_b, threshold)
                 pairs.append(result)
                 matrix[ind_a][ind_b] = result.correlation
                 matrix[ind_b][ind_a] = result.correlation

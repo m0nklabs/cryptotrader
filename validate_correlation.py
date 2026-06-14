@@ -9,11 +9,11 @@ Usage:
 
 Acceptance criteria:
     - Script executes without errors
-    - Outputs correlation values for the three tracked pairs
-    - Clearly marks pairs above/below the configured threshold
-    - Smoke-checks that each pair's correlation lands in a plausible
-      range (deliberately a range, not a pinned value, so it survives
-      NumPy / indicator implementation drift)
+    - Outputs correlation values for all three pairs in [-1, 1], with
+      over-threshold pairs marked
+    - Smoke-checks that each pair's correlation lands in a per-pair
+      plausible range (deliberately a range, not a pinned value, so it
+      survives NumPy / indicator implementation drift)
 """
 
 from __future__ import annotations
@@ -148,10 +148,8 @@ def print_validation_results(data: dict) -> None:
     # or to the indicator implementations shifts them silently), and the unit
     # tests in ``tests/test_indicator_correlation.py`` cover correctness
     # more rigorously.
-    print("  Smoke check (plausible range + non-NaN):")
+    print("  Smoke check (per-pair plausible range + non-NaN):")
     print("  " + "-" * 60)
-    rsi_stoch = data["pairs"][(RSI_CODE, STOCHASTIC_CODE)].correlation
-    macd_stoch = data["pairs"][(MACD_CODE, STOCHASTIC_CODE)].correlation
 
     def get_pair(a: str, b: str) -> float:
         for (ka, kb), v in data["pairs"].items():
@@ -159,15 +157,15 @@ def print_validation_results(data: dict) -> None:
                 return v.correlation
         raise KeyError(f"Pair ({a}, {b}) not found in computed correlations")
 
-    # These bounds were chosen from the same seed=42 synthetic data the script
-    # has historically used: the three pairs cluster in the [0.4, 0.95] range.
-    # If the bounds are too tight, loosen them; if they ever pass on a
-    # broken implementation, tighten them. The point is to catch a silent
-    # regression (e.g. indicators returning zeros), not to pin a single value.
+    # Per-pair empirical bounds chosen across multiple seeds of the same
+    # synthetic fixture. The point is to catch a silent regression (e.g. an
+    # indicator returning zeros, or a sign flip), not to pin a single seed.
+    # RSI/Stochastic runs hotter than the MACD-involving pairs because both
+    # are 0-100 oscillators and the periodic trend term lines them up.
     checks = [
-        ("RSI/Stochastic", rsi_stoch, 0.4, 0.95),
-        ("MACD/RSI", get_pair(MACD_CODE, RSI_CODE), 0.4, 0.95),
-        ("MACD/Stochastic", macd_stoch, 0.4, 0.95),
+        ("RSI/Stochastic", get_pair(RSI_CODE, STOCHASTIC_CODE), 0.4, 0.95),
+        ("MACD/RSI", get_pair(MACD_CODE, RSI_CODE), 0.3, 0.90),
+        ("MACD/Stochastic", get_pair(MACD_CODE, STOCHASTIC_CODE), 0.3, 0.90),
     ]
     all_pass = True
     for name, actual, low, high in checks:

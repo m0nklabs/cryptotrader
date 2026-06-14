@@ -285,6 +285,36 @@ class TestCorrelationThresholdCheck:
             assert ind in result.matrix
             assert len(result.matrix[ind]) == 3
 
+    def test_matrix_memoises_indicator_series(self):
+        """compute_correlation_matrix should extract each indicator series once.
+
+        Without the per-(indicator, kwargs) memoisation, the default 3-pair
+        matrix would call ``_extract_signal_series`` six times (two per
+        pair). With the cache, each of the three indicators is extracted
+        exactly once. This locks in the half-cost optimisation called out
+        in the review.
+        """
+        candles = _make_candles(count=200)
+        call_counts: dict[str, int] = {}
+
+        original = ic_mod._extract_signal_series
+
+        def counting(candles_arg, indicator, **kwargs):
+            call_counts[indicator] = call_counts.get(indicator, 0) + 1
+            return original(candles_arg, indicator, **kwargs)
+
+        try:
+            ic_mod._extract_signal_series = counting
+            compute_correlation_matrix(candles)
+        finally:
+            ic_mod._extract_signal_series = original
+
+        # Three indicators -> three distinct extractions, regardless of the
+        # number of pairs (3 pairs * 2 = 6 without the cache).
+        assert call_counts == {RSI_CODE: 1, MACD_CODE: 1, STOCHASTIC_CODE: 1}, (
+            f"Expected each indicator extracted exactly once, got {call_counts}"
+        )
+
 
 # --- Test: Edge cases ---
 
