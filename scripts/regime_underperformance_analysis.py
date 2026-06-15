@@ -108,7 +108,20 @@ class UnderperformanceReport:
 # ---------------------------------------------------------------------------
 
 def compute_regime_metrics_from_oos(oos_data: dict) -> dict[str, RegimeMetrics]:
-    """Extract per-regime metrics from OOS dataset JSON."""
+    """DEPRECATED: kept for backwards-compat only.
+
+    The PR #379 second review found that this function discards the OOS
+    per-segment ``mean_return`` and ``mean_volatility`` and only uses
+    ``n_candles`` + ``regime_breakdown``. That gave a hand-coded-feeling
+    result and was the central reason the prior analysis was not
+    data-driven. Use :func:`estimate_regime_metrics` instead, which
+    candle-weights the OOS per-segment return/volatility to derive the
+    per-regime stats.
+
+    This function is no longer called by :func:`generate_report`. It is
+    kept exported so external callers (and the pre-rebase analyses that
+    generated the JSON artifacts in the repo) keep working.
+    """
     metrics = {}
 
     for seg in oos_data.get("segments", []):
@@ -320,9 +333,25 @@ def generate_report(oos_data: dict, backtest_data: dict) -> UnderperformanceRepo
     report.acceptable_for_paper = check_acceptable(transition, ACCEPTABLE_THRESHOLDS)
     report.acceptable_for_live = check_acceptable(transition, LIVE_THRESHOLDS)
 
-    # Check bear and range acceptability
-    bear_acceptable = check_acceptable(regime_metrics.get("bear", RegimeMetrics()), ACCEPTABLE_THRESHOLDS)
-    range_acceptable = check_acceptable(regime_metrics.get("range", RegimeMetrics()), ACCEPTABLE_THRESHOLDS)
+    # Check bear and range acceptability against both paper and live thresholds.
+    # The "_live" suffix on the dataclass fields would be a breaking change, so
+    # we keep the same field names and add the live variant as separate keys on
+    # the dict; the report_to_dict / print_report consumers below now read the
+    # live values from these extra keys.
+    bear_acceptable = check_acceptable(
+        regime_metrics.get("bear", RegimeMetrics()), ACCEPTABLE_THRESHOLDS
+    )
+    bear_acceptable_live = check_acceptable(
+        regime_metrics.get("bear", RegimeMetrics()), LIVE_THRESHOLDS
+    )
+    bear_acceptable["acceptable_for_live"] = bear_acceptable_live.get("all_ok", False)
+    range_acceptable = check_acceptable(
+        regime_metrics.get("range", RegimeMetrics()), ACCEPTABLE_THRESHOLDS
+    )
+    range_acceptable_live = check_acceptable(
+        regime_metrics.get("range", RegimeMetrics()), LIVE_THRESHOLDS
+    )
+    range_acceptable["acceptable_for_live"] = range_acceptable_live.get("all_ok", False)
     report.bear_acceptable = bear_acceptable
     report.range_acceptable = range_acceptable
 
@@ -358,13 +387,27 @@ def generate_report(oos_data: dict, backtest_data: dict) -> UnderperformanceRepo
         report.go_live_reason = "Some regimes exceed live thresholds. Consider phased deployment or regime filters."
 
     # Key findings
+    # Use .get() with a RegimeMetrics() default so this works even when
+    # the OOS data lacks a regime (e.g. a backtest that only sees bull+bear
+    # regimes). Without this, the unconditional ``regime_metrics['range']``
+    # raises KeyError and ``generate_report`` crashes.
+    def _fmt(name: str) -> str:
+        m = regime_metrics.get(name)
+        if m is None:
+            return f"{name.replace('_', ' ').capitalize()} regime: not in OOS data"
+        return (
+            f"{name.replace('_', ' ').capitalize()} regime: "
+            f"Sharpe={m.sharpe_ratio:.2f}, DD={m.max_drawdown:.1%}, "
+            f"return={m.mean_return:.4f}/hr"
+        )
+
     report.key_findings = [
         f"Transition regime (baseline): Sharpe={transition.sharpe_ratio:.2f}, DD={transition.max_drawdown:.1%}, WinRate={transition.win_rate:.0%}",
-        f"Bear regime: Sharpe={regime_metrics['bear'].sharpe_ratio:.2f}, DD={regime_metrics['bear'].max_drawdown:.1%}, return={regime_metrics['bear'].mean_return:.4f}/hr",
-        f"Range regime: Sharpe={regime_metrics['range'].sharpe_ratio:.2f}, DD={regime_metrics['range'].max_drawdown:.1%}, return={regime_metrics['range'].mean_return:.4f}/hr",
-        f"High vol regime: Sharpe={regime_metrics['high_vol'].sharpe_ratio:.2f}, DD={regime_metrics['high_vol'].max_drawdown:.1%}",
-        f"Bear underperformance: return {bear_underperf.get('return_degradation', 0):+.1f}%, DD +{bear_underperf.get('drawdown_difference', 0):+.1%}",
-        f"Range underperformance: return {range_underperf.get('return_degradation', 0):+.1f}%, DD +{range_underperf.get('drawdown_difference', 0):+.1%}",
+        _fmt("bear"),
+        _fmt("range"),
+        _fmt("high_vol"),
+        f"Bear underperformance: return {bear_underperf.get('return_degradation', 0):+.1f}%, DD {bear_underperf.get('drawdown_difference', 0):+.1%}",
+        f"Range underperformance: return {range_underperf.get('return_degradation', 0):+.1f}%, DD {range_underperf.get('drawdown_difference', 0):+.1%}",
         f"Paper acceptable: {report.acceptable_for_paper['all_ok']} (Sharpe>={ACCEPTABLE_THRESHOLDS['sharpe_ratio_min']:.1f}, DD<={ACCEPTABLE_THRESHOLDS['max_drawdown_max']:.0%}, WR>={ACCEPTABLE_THRESHOLDS['win_rate_min']:.0%})",
         f"Live acceptable: {report.acceptable_for_live['all_ok']} (Sharpe>={LIVE_THRESHOLDS['sharpe_ratio_min']:.1f}, DD<={LIVE_THRESHOLDS['max_drawdown_max']:.0%}, WR>={LIVE_THRESHOLDS['win_rate_min']:.0%})",
     ]
@@ -404,7 +447,7 @@ def report_to_dict(report: UnderperformanceReport) -> dict:
                 "n_trades": report.bear_vs_transition["metrics"].n_trades,
             },
             "acceptable_for_paper": report.bear_acceptable.get("all_ok", False),
-            "acceptable_for_live": report.bear_acceptable.get("all_ok", False),
+            "acceptable_for_live": report.bear_acceptable.get("acceptable_for_live", False),
         },
         "range_vs_transition": {
             "return_degradation_pct": report.range_vs_transition.get("return_degradation", 0),
@@ -421,7 +464,7 @@ def report_to_dict(report: UnderperformanceReport) -> dict:
                 "n_trades": report.range_vs_transition["metrics"].n_trades,
             },
             "acceptable_for_paper": report.range_acceptable.get("all_ok", False),
-            "acceptable_for_live": report.range_acceptable.get("all_ok", False),
+            "acceptable_for_live": report.range_acceptable.get("acceptable_for_live", False),
         },
         "high_vol_vs_transition": {
             "return_degradation_pct": report.high_vol_vs_transition.get("return_degradation", 0),
@@ -467,35 +510,44 @@ def print_report(report: UnderperformanceReport) -> None:
 
     print("\n--- Bear vs Transition ---")
     bear = report.bear_vs_transition
-    bear_m = bear["metrics"]
-    print(f"  Return Degradation:  {bear['return_degradation']:+.1f}%")
-    print(f"  Sharpe Change:       {bear['sharpe_degradation']:+.3f}")
-    print(f"  Drawdown Change:     {bear['drawdown_difference']:+.1%}")
-    print(f"  Win Rate Change:     {bear['win_rate_difference']:+.0%}")
-    print(f"  Underperformance Score: {bear['underperformance_score']:.3f}")
-    print(f"  Bear Metrics: Sharpe={bear_m.sharpe_ratio:.2f}, DD={bear_m.max_drawdown:.1%}, WR={bear_m.win_rate:.0%}")
+    if bear:
+        bear_m = bear["metrics"]
+        print(f"  Return Degradation:  {bear['return_degradation']:+.1f}%")
+        print(f"  Sharpe Change:       {bear['sharpe_degradation']:+.3f}")
+        print(f"  Drawdown Change:     {bear['drawdown_difference']:+.1%}")
+        print(f"  Win Rate Change:     {bear['win_rate_difference']:+.0%}")
+        print(f"  Underperformance Score: {bear['underperformance_score']:.3f}")
+        print(f"  Bear Metrics: Sharpe={bear_m.sharpe_ratio:.2f}, DD={bear_m.max_drawdown:.1%}, WR={bear_m.win_rate:.0%}")
+    else:
+        print("  (no bear regime in OOS data)")
     print(f"  Acceptable (Paper):  {report.bear_acceptable.get('all_ok', False)}")
-    print(f"  Acceptable (Live):   {report.bear_acceptable.get('all_ok', False)}")
+    print(f"  Acceptable (Live):   {report.bear_acceptable.get('acceptable_for_live', False)}")
 
     print("\n--- Range vs Transition ---")
     rng = report.range_vs_transition
-    rng_m = rng["metrics"]
-    print(f"  Return Degradation:  {rng['return_degradation']:+.1f}%")
-    print(f"  Sharpe Change:       {rng['sharpe_degradation']:+.3f}")
-    print(f"  Drawdown Change:     {rng['drawdown_difference']:+.1%}")
-    print(f"  Win Rate Change:     {rng['win_rate_difference']:+.0%}")
-    print(f"  Underperformance Score: {rng['underperformance_score']:.3f}")
-    print(f"  Range Metrics: Sharpe={rng_m.sharpe_ratio:.2f}, DD={rng_m.max_drawdown:.1%}, WR={rng_m.win_rate:.0%}")
+    if rng:
+        rng_m = rng["metrics"]
+        print(f"  Return Degradation:  {rng['return_degradation']:+.1f}%")
+        print(f"  Sharpe Change:       {rng['sharpe_degradation']:+.3f}")
+        print(f"  Drawdown Change:     {rng['drawdown_difference']:+.1%}")
+        print(f"  Win Rate Change:     {rng['win_rate_difference']:+.0%}")
+        print(f"  Underperformance Score: {rng['underperformance_score']:.3f}")
+        print(f"  Range Metrics: Sharpe={rng_m.sharpe_ratio:.2f}, DD={rng_m.max_drawdown:.1%}, WR={rng_m.win_rate:.0%}")
+    else:
+        print("  (no range regime in OOS data)")
     print(f"  Acceptable (Paper):  {report.range_acceptable.get('all_ok', False)}")
-    print(f"  Acceptable (Live):   {report.range_acceptable.get('all_ok', False)}")
+    print(f"  Acceptable (Live):   {report.range_acceptable.get('acceptable_for_live', False)}")
 
     print("\n--- High Vol vs Transition ---")
     hv = report.high_vol_vs_transition
-    hv_m = hv["metrics"]
-    print(f"  Return Degradation:  {hv['return_degradation']:+.1f}%")
-    print(f"  Sharpe Change:       {hv['sharpe_degradation']:+.3f}")
-    print(f"  Drawdown Change:     {hv['drawdown_difference']:+.1%}")
-    print(f"  High Vol Metrics: Sharpe={hv_m.sharpe_ratio:.2f}, DD={hv_m.max_drawdown:.1%}, WR={hv_m.win_rate:.0%}")
+    if hv:
+        hv_m = hv["metrics"]
+        print(f"  Return Degradation:  {hv['return_degradation']:+.1f}%")
+        print(f"  Sharpe Change:       {hv['sharpe_degradation']:+.3f}")
+        print(f"  Drawdown Change:     {hv['drawdown_difference']:+.1%}")
+        print(f"  High Vol Metrics: Sharpe={hv_m.sharpe_ratio:.2f}, DD={hv_m.max_drawdown:.1%}, WR={hv_m.win_rate:.0%}")
+    else:
+        print("  (no high_vol regime in OOS data)")
 
     print("\n--- Acceptability Thresholds ---")
     print(f"  Paper:  Sharpe>={ACCEPTABLE_THRESHOLDS['sharpe_ratio_min']:.1f}, DD<={ACCEPTABLE_THRESHOLDS['max_drawdown_max']:.0%}, WR>={ACCEPTABLE_THRESHOLDS['win_rate_min']:.0%}, PF>={ACCEPTABLE_THRESHOLDS['profit_factor_min']:.1f}")
