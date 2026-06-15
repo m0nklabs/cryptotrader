@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-15
+### Removed
+- Remove orphan CI/ops tooling `scripts/merge_routing.py` and its tracked state file `.merge-routing-state.json` (issue #384).
+  The script used the `gh` CLI to label and `--admin` squash-merge Dependabot / GitHub-Actions PRs, and had no consumer in CI workflows, systemd units, Docker compose, the `Makefile`, any Python module, or any tracked test.
+  Tracked git history is preserved (plain `git rm`, no rewrite). The five follow-up hermes branches (`issue-44bda50e-merge-routing-dedup`, `issue-748187c0-merge-routing-deprecation`, `issue-t_3b25ebe8-routing-timeout`, `issue-t_c9b7857d-merge-routing-missing-pr`, and the original PR #378) remain for traceability.
+
 ## 2026-06-01
 ### Frontend Dependencies
 - Restore PR #320 by rebumping `frontend` `react-dom` from `^19.2.4` to `^19.2.6` and revalidate the dependency update with the frontend Vitest suite and production build.
