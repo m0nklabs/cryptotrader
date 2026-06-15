@@ -184,113 +184,103 @@ def check_acceptable(metrics: RegimeMetrics, thresholds: dict) -> dict:
 # Estimate per-regime metrics from available data
 # ---------------------------------------------------------------------------
 
-def estimate_regime_metrics(oos_data: dict, backtest_data: dict) -> dict[str, RegimeMetrics]:
-    """Estimate per-regime metrics by combining OOS data with backtest results.
+# CANDLES_PER_YEAR is used to annualize per-candle return/volatility stats
+# sourced from the OOS dataset (which is hourly).
+CANDLES_PER_YEAR = 8760
 
-    Strategy:
-    - Use OOS segment data for regime breakdown and return/volatility stats
-    - Scale backtest metrics (Sharpe, drawdown, win rate) by regime characteristics
-    - Bull regimes: better returns, moderate drawdown
-    - Bear regimes: worse returns, higher drawdown
-    - Range regimes: moderate returns, low drawdown
-    - High vol: high variance, mixed returns
-    - Transition: baseline
+
+def estimate_regime_metrics(oos_data: dict, backtest_data: dict) -> dict[str, RegimeMetrics]:
+    """Estimate per-regime metrics from OOS data and backtest results.
+
+    Per-regime ``mean_return``, ``mean_volatility``, ``n_candles`` and
+    ``sharpe_ratio`` are derived from the OOS dataset. For each segment we
+    have a single ``mean_return`` and ``mean_volatility`` (candle-level
+    statistics) and a ``regime_breakdown`` (% of candles in each regime).
+    We apportion those segment statistics to each regime by the regime's
+    share of the segment's candles, then candle-weight the contribution
+    across segments. The per-regime Sharpe is then computed as
+    ``(mean_return / mean_volatility) * sqrt(CANDLES_PER_YEAR)``.
+
+    Per-regime ``max_drawdown``, ``win_rate`` and ``profit_factor`` are
+    **not** recoverable from the OOS dataset alone (it has no per-trade
+    attribution by regime), so we use the overall backtest metrics as a
+    coarse proxy. The comparison report (``bear_vs_transition`` etc.) still
+    drives the go/no-go decision primarily on the data-derived
+    ``return_degradation`` and ``sharpe_degradation`` fields.
     """
     overall = backtest_data.get("metrics", {})
 
-    # Base metrics from overall backtest
-    base_sharpe = overall.get("sharpe_ratio", 0.46)
-    base_drawdown = overall.get("max_drawdown", 0.357)
-    base_win_rate = overall.get("win_rate", 0.60)
-    base_pf = overall.get("profit_factor", 1.475)
-    base_return = overall.get("total_return", 0.235)
+    base_drawdown = overall.get("max_drawdown", 0.0)
+    base_win_rate = overall.get("win_rate", 0.0)
+    base_pf = overall.get("profit_factor", 0.0)
 
-    # Regime multipliers (based on historical BTC behavior and regime detection logic)
-    regime_multipliers = {
-        "bull": {
-            "return_mult": 1.3,
-            "sharpe_mult": 1.2,
-            "drawdown_mult": 0.85,
-            "win_rate_add": 0.05,
-            "pf_add": 0.1,
-        },
-        "bear": {
-            "return_mult": 0.6,
-            "sharpe_mult": 0.7,
-            "drawdown_mult": 1.3,
-            "win_rate_add": -0.10,
-            "pf_add": -0.15,
-        },
-        "range": {
-            "return_mult": 0.8,
-            "sharpe_mult": 0.85,
-            "drawdown_mult": 0.75,
-            "win_rate_add": 0.02,
-            "pf_add": 0.05,
-        },
-        "high_vol": {
-            "return_mult": 0.9,
-            "sharpe_mult": 0.9,
-            "drawdown_mult": 1.1,
-            "win_rate_add": -0.03,
-            "pf_add": 0.0,
-        },
-        "transition": {
-            "return_mult": 1.0,
-            "sharpe_mult": 1.0,
-            "drawdown_mult": 1.0,
-            "win_rate_add": 0.0,
-            "pf_add": 0.0,
-        },
-        "low_vol": {
-            "return_mult": 0.85,
-            "sharpe_mult": 0.95,
-            "drawdown_mult": 0.8,
-            "win_rate_add": 0.03,
-            "pf_add": 0.05,
-        },
-    }
-
-    # Get OOS breakdown to weight regimes
-    all_breakdown = {}
-    total_candles = 0
-    for seg in oos_data.get("segments", []):
-        for regime, pct in seg.get("regime_breakdown", {}).items():
-            weight = pct * seg["n_candles"] / 100
-            all_breakdown[regime] = all_breakdown.get(regime, 0.0) + weight
-            total_candles += seg["n_candles"]
-
-    if total_candles == 0:
-        total_candles = 1
-
-    metrics: dict[str, RegimeMetrics] = {}
-    for regime, mults in regime_multipliers.items():
-        m = RegimeMetrics(
-            regime=regime,
-            n_candles=int(all_breakdown.get(regime, 0) / total_candles * 8760),
-            mean_return=base_return * mults["return_mult"] / 365,  # hourly
-            mean_volatility=0.02 * (1.0 if regime != "high_vol" else 1.5) if regime != "transition" else 0.02,
-            sharpe_ratio=base_sharpe * mults["sharpe_mult"],
-            max_drawdown=base_drawdown * mults["drawdown_mult"],
-            win_rate=min(max(base_win_rate + mults["win_rate_add"], 0.0), 1.0),
-            profit_factor=base_pf + mults["pf_add"],
-            total_return=base_return * mults["return_mult"],
-            regime_pct=all_breakdown.get(regime, 0.0) / total_candles * 100,
+    if base_drawdown == 0.0 or base_win_rate == 0.0 or base_pf == 0.0:
+        print(
+            "WARNING: backtest_results.json is missing one of "
+            "max_drawdown/win_rate/profit_factor; per-regime drawdown, "
+            "win-rate and profit-factor will fall back to 0",
+            file=sys.stderr,
         )
 
-        # Estimate trades based on candle count and regime
-        # More trades in high_vol and transition, fewer in range
-        trade_rates = {
-            "bull": 0.012,
-            "bear": 0.010,
-            "range": 0.007,
-            "high_vol": 0.014,
-            "transition": 0.011,
-            "low_vol": 0.008,
-        }
-        m.n_trades = max(1, int(m.n_candles * trade_rates.get(regime, 0.01)))
+    # Data-driven: per-regime candle-weighted return and volatility from OOS.
+    regime_return_weighted: dict[str, float] = {}
+    regime_vol_weighted: dict[str, float] = {}
+    regime_n_candles: dict[str, float] = {}
+    for seg in oos_data.get("segments", []):
+        seg_n = seg.get("n_candles", 0)
+        seg_ret = seg.get("mean_return", 0.0)
+        seg_vol = seg.get("mean_volatility", 0.0)
+        breakdown = seg.get("regime_breakdown", {})
+        for regime, pct in breakdown.items():
+            share = pct / 100.0
+            n = seg_n * share
+            regime_return_weighted[regime] = regime_return_weighted.get(regime, 0.0) + seg_ret * n
+            regime_vol_weighted[regime] = regime_vol_weighted.get(regime, 0.0) + seg_vol * n
+            regime_n_candles[regime] = regime_n_candles.get(regime, 0.0) + n
 
+    for regime in list(regime_n_candles.keys()):
+        n = regime_n_candles[regime]
+        if n > 0:
+            regime_return_weighted[regime] /= n
+            regime_vol_weighted[regime] /= n
+
+    total_candles = sum(regime_n_candles.values()) or 1.0
+
+    metrics: dict[str, RegimeMetrics] = {}
+    for regime, n in regime_n_candles.items():
+        mean_ret = regime_return_weighted[regime]
+        mean_vol = regime_vol_weighted[regime]
+        # Per-candle Sharpe, annualized.
+        sharpe = (
+            (mean_ret / mean_vol) * (CANDLES_PER_YEAR ** 0.5)
+            if mean_vol > 0
+            else 0.0
+        )
+        # Trade density: ~1 trade per 100 candles is a coarse but neutral
+        # default in the absence of per-regime trade attribution.
+        n_trades = max(1, int(n * 0.01))
+
+        m = RegimeMetrics(
+            regime=regime,
+            n_candles=int(n),
+            mean_return=mean_ret,
+            mean_volatility=mean_vol,
+            sharpe_ratio=sharpe,
+            max_drawdown=base_drawdown,
+            win_rate=base_win_rate,
+            profit_factor=base_pf,
+            total_return=mean_ret * CANDLES_PER_YEAR,
+            regime_pct=n / total_candles * 100.0,
+            n_trades=n_trades,
+        )
         metrics[regime] = m
+
+    if not metrics:
+        print(
+            "WARNING: oos_data contains no per-regime candle counts; "
+            "estimate_regime_metrics() returned an empty dict",
+            file=sys.stderr,
+        )
 
     return metrics
 
@@ -464,7 +454,7 @@ def print_report(report: UnderperformanceReport) -> None:
     print("=" * 70)
 
     t = report.transition_as_baseline
-    print(f"\n--- Baseline (Transition Regime) ---")
+    print("\n--- Baseline (Transition Regime) ---")
     print(f"  Sharpe Ratio:    {t.sharpe_ratio:.3f}")
     print(f"  Max Drawdown:    {t.max_drawdown:.1%}")
     print(f"  Win Rate:        {t.win_rate:.0%}")
@@ -475,7 +465,7 @@ def print_report(report: UnderperformanceReport) -> None:
     print(f"  Regime Share:    {t.regime_pct:.1f}% of candles")
     print(f"  Est. Trades:     {t.n_trades}")
 
-    print(f"\n--- Bear vs Transition ---")
+    print("\n--- Bear vs Transition ---")
     bear = report.bear_vs_transition
     bear_m = bear["metrics"]
     print(f"  Return Degradation:  {bear['return_degradation']:+.1f}%")
@@ -487,7 +477,7 @@ def print_report(report: UnderperformanceReport) -> None:
     print(f"  Acceptable (Paper):  {report.bear_acceptable.get('all_ok', False)}")
     print(f"  Acceptable (Live):   {report.bear_acceptable.get('all_ok', False)}")
 
-    print(f"\n--- Range vs Transition ---")
+    print("\n--- Range vs Transition ---")
     rng = report.range_vs_transition
     rng_m = rng["metrics"]
     print(f"  Return Degradation:  {rng['return_degradation']:+.1f}%")
@@ -499,7 +489,7 @@ def print_report(report: UnderperformanceReport) -> None:
     print(f"  Acceptable (Paper):  {report.range_acceptable.get('all_ok', False)}")
     print(f"  Acceptable (Live):   {report.range_acceptable.get('all_ok', False)}")
 
-    print(f"\n--- High Vol vs Transition ---")
+    print("\n--- High Vol vs Transition ---")
     hv = report.high_vol_vs_transition
     hv_m = hv["metrics"]
     print(f"  Return Degradation:  {hv['return_degradation']:+.1f}%")
@@ -507,18 +497,18 @@ def print_report(report: UnderperformanceReport) -> None:
     print(f"  Drawdown Change:     {hv['drawdown_difference']:+.1%}")
     print(f"  High Vol Metrics: Sharpe={hv_m.sharpe_ratio:.2f}, DD={hv_m.max_drawdown:.1%}, WR={hv_m.win_rate:.0%}")
 
-    print(f"\n--- Acceptability Thresholds ---")
+    print("\n--- Acceptability Thresholds ---")
     print(f"  Paper:  Sharpe>={ACCEPTABLE_THRESHOLDS['sharpe_ratio_min']:.1f}, DD<={ACCEPTABLE_THRESHOLDS['max_drawdown_max']:.0%}, WR>={ACCEPTABLE_THRESHOLDS['win_rate_min']:.0%}, PF>={ACCEPTABLE_THRESHOLDS['profit_factor_min']:.1f}")
     print(f"  Live:   Sharpe>={LIVE_THRESHOLDS['sharpe_ratio_min']:.1f}, DD<={LIVE_THRESHOLDS['max_drawdown_max']:.0%}, WR>={LIVE_THRESHOLDS['win_rate_min']:.0%}, PF>={LIVE_THRESHOLDS['profit_factor_min']:.1f}")
     print(f"  Paper OK:  {report.acceptable_for_paper['all_ok']}")
     print(f"  Live OK:   {report.acceptable_for_live['all_ok']}")
 
-    print(f"\n--- Decision ---")
+    print("\n--- Decision ---")
     decision = "GO" if report.go_live else "NO-GO (conditional)"
     print(f"  Decision: {decision}")
     print(f"  Reason:   {report.go_live_reason}")
 
-    print(f"\n--- Key Findings ---")
+    print("\n--- Key Findings ---")
     for i, finding in enumerate(report.key_findings, 1):
         print(f"  {i}. {finding}")
 
