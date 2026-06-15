@@ -275,11 +275,24 @@ class TestEdgeCases:
 
     def test_synthetic_candles_generation(self):
         """generate_synthetic_candles should produce valid candles."""
-        candles = generate_synthetic_candles(count=100)
+        candles = generate_synthetic_candles(count=100, seed=42)
         assert len(candles) == 100
         assert all(isinstance(c, Candle) for c in candles)
         assert all(c.symbol == "BTCUSD" for c in candles)
         assert all(c.exchange == "bitfinex" for c in candles)
+
+    def test_synthetic_candles_deterministic_with_seed(self):
+        """Same seed must produce identical candle sets."""
+        a = generate_synthetic_candles(count=50, seed=123)
+        b = generate_synthetic_candles(count=50, seed=123)
+        assert len(a) == len(b) == 50
+        assert all(
+            ca.close == cb.close
+            and ca.high == cb.high
+            and ca.low == cb.low
+            and ca.open == cb.open
+            for ca, cb in zip(a, b)
+        )
 
     def test_correlation_pairs_constant(self):
         """CORRELATION_PAIRS should have exactly 3 pairs."""

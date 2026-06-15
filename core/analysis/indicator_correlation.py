@@ -303,6 +303,7 @@ def generate_synthetic_candles(
     count: int = 200,
     correlation_mode: str = "neutral",
     noise_level: float = 1.0,
+    seed: int | None = None,
     **kwargs,
 ) -> list[Candle]:
     """Generate synthetic candle data for testing.
@@ -312,6 +313,11 @@ def generate_synthetic_candles(
         correlation_mode: "high" for correlated indicators,
             "low" for uncorrelated, "neutral" for typical.
         noise_level: Noise level for signal variation.
+        seed: Optional integer seed for the numpy RNG. When set, two calls
+            with the same arguments produce identical candle sets, which is
+            required for the validation script's hard-coded expected values
+            and for reproducible tests. When ``None`` (the default), numpy's
+            global RNG state is used and the result is non-deterministic.
         **kwargs: Additional parameters for indicator functions.
 
     Returns:
@@ -319,6 +325,12 @@ def generate_synthetic_candles(
     """
     from datetime import datetime, timedelta, timezone
     from decimal import Decimal
+
+    # Use the global numpy RNG state so a single ``np.random.seed`` call
+    # (e.g. in validate_correlation.py) controls all random draws in this
+    # function. When ``seed`` is provided we seed the global state once.
+    if seed is not None:
+        np.random.seed(seed)
 
     base_time = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
 

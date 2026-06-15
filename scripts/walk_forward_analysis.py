@@ -12,7 +12,7 @@ import math
 import statistics
 import sys
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -371,7 +371,7 @@ def save_results(
             "total_windows": len(windows),
             "total_candles": len(windows) * 20 if windows else 0,
             "regimes_analyzed": list(metrics.keys()),
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(tz=timezone.utc).isoformat(),
         },
         "regime_metrics": {k.value: v.to_dict() for k, v in metrics.items()},
         "performance_curves": curves,

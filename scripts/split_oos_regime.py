@@ -328,7 +328,7 @@ def split_oos_data(
             mean_price=sum(closes) / len(closes),
             min_price=min(closes),
             max_price=max(closes),
-            regime_labels=[l.value for l in labels],
+            regime_labels=[label.value for label in labels],
         )
         segments.append(segment)
 

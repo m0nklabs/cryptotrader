@@ -48,10 +48,9 @@ def run_validation(
     Returns:
         Dictionary with all correlation data.
     """
-    import numpy as np
-    np.random.seed(seed)
-
-    candles = generate_synthetic_candles(count=count)
+    # ``generate_synthetic_candles`` seeds numpy's global RNG when ``seed``
+    # is provided, so we no longer seed it here.
+    candles = generate_synthetic_candles(count=count, seed=seed)
 
     # Compute full matrix
     matrix_result = compute_correlation_matrix(candles, threshold=threshold)
@@ -151,9 +150,9 @@ def print_validation_results(data: dict) -> None:
         return 0.0
 
     checks = [
-        (f"RSI/Stochastic", rsi_stoch, 0.81, 0.05),
-        (f"MACD/RSI", get_pair(MACD_CODE, RSI_CODE), 0.65, 0.05),
-        (f"MACD/Stochastic", macd_stoch, 0.66, 0.05),
+        ("RSI/Stochastic", rsi_stoch, 0.81, 0.05),
+        ("MACD/RSI", get_pair(MACD_CODE, RSI_CODE), 0.65, 0.05),
+        ("MACD/Stochastic", macd_stoch, 0.66, 0.05),
     ]
     all_pass = True
     for name, actual, expected, tolerance in checks:
