@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -86,7 +87,6 @@ def classify_pr(pr: dict) -> PRInfo:
     draft = pr.get("draft", False)
     base_branch = pr.get("baseRefName", "main")
 
-    label_set = {lbl.lower() for lbl in labels}
     title_lower = title.lower()
 
     # Auto-approve conditions (Tier 2)

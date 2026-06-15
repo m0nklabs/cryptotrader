@@ -25,7 +25,6 @@ if str(_project_root) not in sys.path:
 
 from core.backtest.engine import BacktestEngine, RSIStrategy, BacktestResult
 from core.backtest.metrics import Trade, calculate_sharpe_ratio, calculate_max_drawdown, calculate_win_rate, calculate_profit_factor
-from core.backtest.strategy import Signal
 from core.types import Candle
 # from core.persistence.file_candle_store import FileCandleStore
 
@@ -100,7 +99,6 @@ def classify_regime(
     # Rolling volatility: std of price changes (absolute)
     price_changes = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
     abs_vol = statistics.stdev(price_changes) if len(price_changes) > 1 else 0.0
-    pct_vol = abs_vol / closes[0] if closes[0] > 0 else 0.0
 
     # Simple moving average
     sma = sum(closes) / len(closes)

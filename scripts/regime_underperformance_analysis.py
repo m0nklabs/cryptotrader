@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,7 +112,6 @@ def compute_regime_metrics_from_oos(oos_data: dict) -> dict[str, RegimeMetrics]:
     metrics = {}
 
     for seg in oos_data.get("segments", []):
-        regime = seg.get("dominant_regime", "transition")
         breakdown = seg.get("regime_breakdown", {})
 
         for regime_name, pct in breakdown.items():
