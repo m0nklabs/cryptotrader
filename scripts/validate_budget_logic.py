@@ -4,6 +4,8 @@ Budget Guardrails - Manual Validation Script
 
 This script demonstrates budget enforcement logic without requiring a database.
 Run this to verify the budget calculation logic works correctly.
+
+Exits 0 on success.
 """
 
 from datetime import datetime, timedelta, timezone
