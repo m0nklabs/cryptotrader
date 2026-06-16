@@ -14,6 +14,8 @@ Exit codes:
   2 = missing dependency or configuration
   3 = database connectivity error
   4 = schema/problem detected
+
+Exits 0 on success; non-zero on any check failure.
 """
 
 from __future__ import annotations
