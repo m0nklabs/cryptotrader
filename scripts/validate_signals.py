@@ -9,6 +9,8 @@ This script validates the complete flow:
 
 Usage:
     python scripts/validate_signals.py
+
+Exits 0 on success.
 """
 
 from __future__ import annotations
