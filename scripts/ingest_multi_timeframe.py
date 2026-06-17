@@ -30,6 +30,11 @@ from core.market_data.bitfinex_backfill import main as backfill_main
 DEFAULT_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"]
 
 # Default Bitfinex public WebSocket base URL.
+# Kept in sync with cex/bitfinex/api/websocket_client.py::BitfinexWebSocket.WS_URL
+# (the URL the live client actually connects to). Avoid duplicating that constant
+# here so a future Bitfinex URL rotation only needs to be applied in one place;
+# the cross-reference comment is the lightweight alternative to importing it,
+# which would couple this exchange-agnostic wrapper to the Bitfinex client module.
 DEFAULT_BITFINEX_WS_URL = "wss://api-pub.bitfinex.com/ws/2"
 
 
@@ -38,11 +43,17 @@ def build_websocket_url(
     timeframe: str,
     base_url: str = DEFAULT_BITFINEX_WS_URL,
 ) -> str:
-    """Return the fully-qualified WebSocket URL for a (symbol, timeframe) pair.
+    """Build a stable, human-readable identifier URL for a (symbol, timeframe) job.
 
-    The base URL is taken as-is; the per-job symbol and timeframe are appended
-    as path segments so the resulting URL uniquely identifies the candle
-    channel the backfill would subscribe to.
+    The base URL is taken as-is (with a single trailing slash stripped) and the
+    per-job ``symbol`` and ``timeframe`` are appended as path segments.
+
+    .. note::
+       This URL is for **log output only**. Bitfinex WebSocket v2 multiplexes
+       every channel over a single ``wss://api-pub.bitfinex.com/ws/2`` connection
+       and routes subscriptions via JSON message
+       (``{"event": "subscribe", "channel": "candles", ...}``); the path
+       segments produced here are decorative and ignored by the server.
     """
     base = base_url.rstrip("/")
     return f"{base}/{symbol}/{timeframe}"
@@ -155,8 +166,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     for symbol in symbols:
         for timeframe in timeframes:
             job_desc = f"{symbol}:{timeframe}"
-            ws_url = build_websocket_url(symbol, timeframe)
-            print(f"[{completed + 1}/{total_jobs}] Processing {job_desc} (ws: {ws_url})...")
+            if args.exchange == "bitfinex":
+                ws_url = build_websocket_url(symbol, timeframe)
+                print(
+                    f"[{completed + 1}/{total_jobs}] Processing {job_desc} (ws: {ws_url})..."
+                )
+            else:
+                print(f"[{completed + 1}/{total_jobs}] Processing {job_desc}...")
 
             # Build argv for backfill_main
             backfill_argv = [

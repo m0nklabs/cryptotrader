@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 from unittest.mock import patch
 
-from scripts.ingest_multi_timeframe import DEFAULT_TIMEFRAMES, main, parse_args
+from scripts.ingest_multi_timeframe import (
+    DEFAULT_BITFINEX_WS_URL,
+    DEFAULT_TIMEFRAMES,
+    build_websocket_url,
+    main,
+    parse_args,
+)
 
 
 def test_parse_args_single_symbol():
@@ -206,3 +214,102 @@ def test_main_backfill_mode_with_end(mock_backfill):
     assert "2024-01-01" in call_args
     assert "--end" in call_args
     assert "2024-01-31" in call_args
+
+
+# ---------------------------------------------------------------------------
+# build_websocket_url helper
+# ---------------------------------------------------------------------------
+
+
+def test_default_bitfinex_ws_url_constant():
+    """Constant matches the Bitfinex public WS v2 base URL."""
+    assert DEFAULT_BITFINEX_WS_URL == "wss://api-pub.bitfinex.com/ws/2"
+
+
+def test_build_websocket_url_default():
+    """Default base URL is the Bitfinex public WS v2 URL."""
+    assert (
+        build_websocket_url("tBTCUSD", "1m")
+        == "wss://api-pub.bitfinex.com/ws/2/tBTCUSD/1m"
+    )
+
+
+def test_build_websocket_url_strips_trailing_slash():
+    """A trailing slash on the base URL is stripped (not doubled)."""
+    assert (
+        build_websocket_url("tBTCUSD", "1m", base_url="wss://api-pub.bitfinex.com/ws/2/")
+        == "wss://api-pub.bitfinex.com/ws/2/tBTCUSD/1m"
+    )
+
+
+def test_build_websocket_url_custom_base():
+    """Custom (non-Bitfinex) base URL is honoured and joined verbatim."""
+    assert (
+        build_websocket_url("BTC-USD", "1h", base_url="wss://stream.binance.com:9443/ws")
+        == "wss://stream.binance.com:9443/ws/BTC-USD/1h"
+    )
+
+
+def test_build_websocket_url_preserves_symbol_and_timeframe_verbatim():
+    """symbol and timeframe are appended as-is; no validation/transformation."""
+    url = build_websocket_url("tETHUSD", "5m", base_url="wss://example.test")
+    assert url.endswith("/tETHUSD/5m")
+    assert url.startswith("wss://example.test/")
+
+
+# ---------------------------------------------------------------------------
+# Per-job log line: WS URL suffix only emitted when exchange == "bitfinex"
+# ---------------------------------------------------------------------------
+
+
+def _capture_main_stdout(argv, mock_backfill):
+    """Run main(argv) with backfill_main mocked and return captured stdout."""
+    mock_backfill.return_value = 0
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        exit_code = main(argv)
+    return exit_code, buf.getvalue()
+
+
+@patch.dict(os.environ, {"DATABASE_URL": "postgresql://test"})
+@patch("scripts.ingest_multi_timeframe.backfill_main")
+def test_main_logs_ws_url_for_bitfinex_exchange(mock_backfill):
+    """For --exchange bitfinex the per-job log line includes (ws: <url>)."""
+    _, stdout = _capture_main_stdout(
+        [
+            "--symbol",
+            "tBTCUSD",
+            "--exchange",
+            "bitfinex",
+            "--timeframe",
+            "1m",
+            "--resume",
+        ],
+        mock_backfill,
+    )
+    assert "(ws: wss://api-pub.bitfinex.com/ws/2/tBTCUSD/1m)" in stdout
+
+
+@patch.dict(os.environ, {"DATABASE_URL": "postgresql://test"})
+@patch("scripts.ingest_multi_timeframe.backfill_main")
+def test_main_omits_ws_url_for_non_bitfinex_exchange(mock_backfill):
+    """For non-Bitfinex --exchange values the per-job log line has no (ws: …) suffix.
+
+    Regression test for the review finding that a previous version hardcoded
+    the Bitfinex WS URL into the per-job log line regardless of --exchange.
+    """
+    _, stdout = _capture_main_stdout(
+        [
+            "--symbol",
+            "BTCUSD",
+            "--exchange",
+            "binance",
+            "--timeframe",
+            "1m",
+            "--resume",
+        ],
+        mock_backfill,
+    )
+    assert "Processing BTCUSD:1m..." in stdout
+    assert "(ws:" not in stdout
+    assert "api-pub.bitfinex.com" not in stdout
