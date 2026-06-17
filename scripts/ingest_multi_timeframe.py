@@ -29,6 +29,24 @@ from core.market_data.bitfinex_backfill import main as backfill_main
 # Default timeframes to ingest if none specified
 DEFAULT_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"]
 
+# Default Bitfinex public WebSocket base URL.
+DEFAULT_BITFINEX_WS_URL = "wss://api-pub.bitfinex.com/ws/2"
+
+
+def build_websocket_url(
+    symbol: str,
+    timeframe: str,
+    base_url: str = DEFAULT_BITFINEX_WS_URL,
+) -> str:
+    """Return the fully-qualified WebSocket URL for a (symbol, timeframe) pair.
+
+    The base URL is taken as-is; the per-job symbol and timeframe are appended
+    as path segments so the resulting URL uniquely identifies the candle
+    channel the backfill would subscribe to.
+    """
+    base = base_url.rstrip("/")
+    return f"{base}/{symbol}/{timeframe}"
+
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -137,7 +155,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     for symbol in symbols:
         for timeframe in timeframes:
             job_desc = f"{symbol}:{timeframe}"
-            print(f"[{completed + 1}/{total_jobs}] Processing {job_desc}...")
+            ws_url = build_websocket_url(symbol, timeframe)
+            print(f"[{completed + 1}/{total_jobs}] Processing {job_desc} (ws: {ws_url})...")
 
             # Build argv for backfill_main
             backfill_argv = [
