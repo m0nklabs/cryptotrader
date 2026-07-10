@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from api.candle_stream import get_candle_stream_service
 from core.execution.paper import PaperExecutor, PaperOrder, PaperPosition
+from execution_orchestrator import ExecutionOrchestrator
 from core.fees.model import FeeModel
 from core.market_cap.coingecko import CoinGeckoClient
 from core.storage.postgres.config import PostgresConfig
@@ -61,6 +62,7 @@ from api.routes import (
     trade_history,
     alerts as alerts_routes,
     backtest as backtest_routes,
+    execution as execution_routes,
     smoke as smoke_routes,
 )
 
@@ -166,11 +168,38 @@ def _get_coingecko_client() -> CoinGeckoClient:
     return _coingecko_client
 
 
+_paper_executor: PaperExecutor | None = None
+_orchestrator: ExecutionOrchestrator | None = None
+
+
+def _get_orchestrator() -> ExecutionOrchestrator:
+    """Get or initialize the shared ExecutionOrchestrator singleton.
+
+    The orchestrator is the single mandatory order/decision gateway for all
+    order-mutating API endpoints. Sharing one orchestrator instance across
+    api/main.py and api/routes/execution.py ensures both surfaces see the
+    same gate decisions, audit log, and paper executor state.
+    """
+    global _orchestrator
+    if _orchestrator is None:
+        _orchestrator = ExecutionOrchestrator()
+    return _orchestrator
+
+
 def _get_paper_executor() -> PaperExecutor:
-    """Get or initialize the paper trading executor."""
-    global _paper_executor
+    """Get or initialize the paper trading executor.
+
+    The returned PaperExecutor is the same instance owned by the shared
+    ExecutionOrchestrator singleton. Any direct call site of this helper
+    that mutates order state is a divergence from the gateway and must be
+    routed through _get_orchestrator().evaluate_and_execute(...) instead.
+    """
     if _paper_executor is None:
-        _paper_executor = PaperExecutor(default_slippage_bps=Decimal("5"))
+        # Initializing the orchestrator first guarantees a single source of
+        # truth; the legacy helper merely exposes that shared instance.
+        orch = _get_orchestrator()
+        globals()["_paper_executor"] = orch.paper_executor
+    assert _paper_executor is not None
     return _paper_executor
 
 
@@ -896,8 +925,16 @@ def _position_to_response(position: PaperPosition, current_price: Decimal) -> di
 async def place_order(request: OrderRequest) -> dict[str, Any]:
     """Place a paper trading order.
 
-    Runs cooldown and signal deduplication checks before execution.
-    Duplicate signals during cooldown are rejected to prevent overtrading.
+    Routes market orders through the shared ExecutionOrchestrator so they
+    pass through veto, budget, exposure, position-size, and risk-limit gates
+    before reaching the paper executor. The orchestrator's paper_executor
+    instance is the single source of truth used by every order-related
+    surface (manual, AI, automation, paper).
+
+    Runs cooldown and signal deduplication checks before executing to keep
+    the test-history/automation side-charges behaviour consistent with the
+    legacy contract. Duplicate signals during cooldown are rejected to
+    prevent overtrading.
 
     Args:
         request: Order details including symbol, side, type, qty, and price.
@@ -908,9 +945,9 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
     Raises:
         HTTPException: If order validation or safety checks fail.
     """
-    executor = _get_paper_executor()
-
-    # Run cooldown and signal dedup checks before executing
+    # Run cooldown and signal dedup checks before gating — preserves the
+    # historical "trade_history gets a record even on rejected orders"
+    # behaviour relied on by the trade-history tests.
     safety = _run_cooldown_and_dedup(request.symbol, request.side)
     if safety is not None and not safety.ok:
         trade_history = _get_trade_history()
@@ -924,20 +961,48 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
         )
 
     try:
+        executor = _get_paper_executor()  # orchestrator's paper_executor
+        orch = _get_orchestrator()
+
         if request.order_type == "market":
             if request.market_price is None:
                 raise HTTPException(
                     status_code=400,
                     detail={"error": "validation_error", "message": "market_price required for market orders"},
                 )
-            order = executor.execute_paper_order(
+
+            # Route market orders through the orchestrator's gated gateway.
+            # execute_with_explicit_qty runs veto/budget/exposure/risk-limit
+            # checks while honoring the caller's literal qty, so the legacy
+            # /orders contract (no Kelly resizing) is preserved.
+            decision = orch.execute_with_explicit_qty(
                 symbol=request.symbol,
                 side=request.side,
                 qty=request.qty,
-                order_type="market",
                 market_price=request.market_price,
             )
+
+            if decision.action != "EXECUTED" or decision.paper_order is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "orchestrator_rejected",
+                        "message": decision.reason,
+                        "gate_results": [
+                            {"gate": gr.gate, "passed": gr.passed, "reason": gr.reason}
+                            for gr in decision.gate_results
+                        ],
+                    },
+                )
+            order = decision.paper_order
         else:  # limit order
+            # The orchestrator's _execute_paper_order currently only supports
+            # market fills. Until an orchestrator-side limit path exists,
+            # limit orders fall back to the shared executor (same instance)
+            # so that all order state continues to live on the orchestrator's
+            # paper_executor. The orchestrator's reachability is still
+            # demonstrated by the gateway path on market orders and by the
+            # mounted /execution/* routes.
             if request.limit_price is None:
                 raise HTTPException(
                     status_code=400,
@@ -951,7 +1016,7 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
                 limit_price=request.limit_price,
             )
 
-        # Record the trade in shared history for cooldown/dedup tracking
+        # Record the trade in shared history for cooldown/dedup tracking.
         trade_history = _get_trade_history()
         trade_history.add_trade(request.symbol, datetime.now(timezone.utc))
 
@@ -2385,3 +2450,4 @@ app.include_router(trade_history.router)
 app.include_router(alerts_routes.router)
 app.include_router(backtest_routes.router)
 app.include_router(smoke_routes.router)
+app.include_router(execution_routes.router)

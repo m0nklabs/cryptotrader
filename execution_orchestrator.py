@@ -272,6 +272,155 @@ class ExecutionOrchestrator:
             position_value=position_value,
         )
 
+    def execute_with_explicit_qty(
+        self,
+        symbol: str,
+        side: str,
+        qty: Decimal,
+        market_price: Decimal,
+        portfolio_value: Decimal = Decimal("10000"),
+        current_exposure: Decimal = Decimal("0"),
+        current_positions: int = 0,
+        timeframe: str = "1h",
+    ) -> RiskDecision:
+        """Manual-order path through the orchestrator gates.
+
+        Same veto/budget/exposure/risk-limit chain as evaluate_and_execute,
+        but the position_size used for the exposure/risk-limit gates and the
+        executed fill is the caller's literal ``qty`` — not the orchestrator's
+        Kelly-derived sizing. This keeps the legacy /orders endpoint contract
+        (caller-supplied qty honored) while still routing every manual order
+        through the single risk-gated gateway. Use evaluate_and_execute for
+        AI/automation paths that should rely on model-derived sizing.
+        """
+        start_time = datetime.now(timezone.utc)
+        gate_results: list[GateCheckResult] = []
+
+        if side not in ("BUY", "SELL"):
+            return self._build_result(
+                start_time=start_time,
+                symbol=symbol,
+                timeframe=timeframe,
+                consensus=ConsensusDecision(
+                    final_action="NEUTRAL",
+                    final_confidence=0.0,
+                    reasoning="execute_with_explicit_qty requires side in {BUY,SELL}",
+                ),
+                gate_results=gate_results,
+                action="REJECTED",
+                reason=f"invalid side {side!r}",
+                market_price=market_price,
+                portfolio_value=portfolio_value,
+            )
+        consensus = ConsensusDecision(
+            final_action=side,  # type: ignore[arg-type]
+            final_confidence=1.0,
+            reasoning="manual order via execute_with_explicit_qty",
+        )
+
+        veto_result = self._check_veto_gate(consensus, symbol)
+        gate_results.append(veto_result)
+        if not veto_result.passed:
+            return self._build_result(
+                start_time=start_time,
+                symbol=symbol,
+                timeframe=timeframe,
+                consensus=consensus,
+                gate_results=gate_results,
+                action="REJECTED",
+                reason=veto_result.reason,
+                market_price=market_price,
+                portfolio_value=portfolio_value,
+            )
+
+        budget_result = self._check_budget_gate(
+            symbol=symbol,
+            market_price=market_price,
+            portfolio_value=portfolio_value,
+        )
+        gate_results.append(budget_result)
+        if not budget_result.passed:
+            return self._build_result(
+                start_time=start_time,
+                symbol=symbol,
+                timeframe=timeframe,
+                consensus=consensus,
+                gate_results=gate_results,
+                action="REJECTED",
+                reason=budget_result.reason,
+                market_price=market_price,
+                portfolio_value=portfolio_value,
+            )
+
+        position_size = qty
+        position_value = market_price * position_size
+        exposure_result = self._check_exposure_gate(
+            symbol=symbol,
+            position_value=position_value,
+            current_exposure=current_exposure,
+            portfolio_value=portfolio_value,
+            current_positions=current_positions,
+        )
+        gate_results.append(exposure_result)
+        if not exposure_result.passed:
+            return self._build_result(
+                start_time=start_time,
+                symbol=symbol,
+                timeframe=timeframe,
+                consensus=consensus,
+                gate_results=gate_results,
+                action="REJECTED",
+                reason=exposure_result.reason,
+                market_price=market_price,
+                portfolio_value=portfolio_value,
+                position_size=position_size,
+            )
+
+        risk_result = self._check_risk_limit_gate(
+            symbol=symbol,
+            market_price=market_price,
+            position_size=position_size,
+            portfolio_value=portfolio_value,
+        )
+        gate_results.append(risk_result)
+        if not risk_result.passed:
+            return self._build_result(
+                start_time=start_time,
+                symbol=symbol,
+                timeframe=timeframe,
+                consensus=consensus,
+                gate_results=gate_results,
+                action="REJECTED",
+                reason=risk_result.reason,
+                market_price=market_price,
+                portfolio_value=portfolio_value,
+                position_size=position_size,
+            )
+
+        order = self._execute_paper_order(
+            symbol=symbol,
+            side=consensus.final_action,
+            qty=position_size,
+            market_price=market_price,
+        )
+
+        self._update_budget(consensus)
+
+        return self._build_result(
+            start_time=start_time,
+            symbol=symbol,
+            timeframe=timeframe,
+            consensus=consensus,
+            gate_results=gate_results,
+            action="EXECUTED",
+            reason="All gates passed",
+            paper_order=order,
+            market_price=market_price,
+            portfolio_value=portfolio_value,
+            position_size=position_size,
+            position_value=position_value,
+        )
+
     def get_decision_path(self, symbol: str) -> list[dict[str, Any]]:
         """Get the audit log for a specific symbol."""
         return [entry for entry in self._audit_log if entry.get("symbol") == symbol]
