@@ -2,9 +2,18 @@
 
 ## 2026-06-15
 ### Removed
-- Remove orphan CI/ops tooling `scripts/merge_routing.py` and its tracked state file `.merge-routing-state.json` (issue #384).
+- Remove orphan CI/ops tooling `scripts/merge_routing.py` and its tracked state file `.merge-routing-state.json` (issue #384, PR #397).
   The script used the `gh` CLI to label and `--admin` squash-merge Dependabot / GitHub-Actions PRs, and had no consumer in CI workflows, systemd units, Docker compose, the `Makefile`, any Python module, or any tracked test.
   Tracked git history is preserved (plain `git rm`, no rewrite). The five follow-up hermes branches (`issue-44bda50e-merge-routing-dedup`, `issue-748187c0-merge-routing-deprecation`, `issue-t_3b25ebe8-routing-timeout`, `issue-t_c9b7857d-merge-routing-missing-pr`, and the original PR #378) remain for traceability.
+
+### Regime Underperformance Analysis Review Fixes (PR #379)
+- Replace hand-coded `regime_multipliers` in `scripts/regime_underperformance_analysis.py` with a candle-weighted computation of per-regime `mean_return`, `mean_volatility`, and `n_candles` from the OOS dataset's per-segment statistics (PR #379 review #1).
+- Remove the dead top-level `merge_routing.py` (no consumer, unsafe `--auto-merge` title-only pattern matching).
+- Add 12 new tests across `tests/scripts/` covering `regime_underperformance_analysis`, `validate_correlation` and `walk_forward` / `split_oos_regime` smoke tests.
+- Fix `E741` (`l` shadowing) in `scripts/split_oos_regime.py:331` and the `F541` f-string-without-placeholder warnings in `validate_correlation.py` and `scripts/regime_underperformance_analysis.py`.
+- Replace deprecated `datetime.utcnow()` with `datetime.now(tz=timezone.utc)` in `scripts/walk_forward_analysis.py`.
+- Add a `seed=` parameter to `generate_synthetic_candles` in `core/analysis/indicator_correlation.py` so validation and tests are reproducible; add a `test_synthetic_candles_deterministic_with_seed` test.
+- Note: PR #397 subsequently removed `scripts/merge_routing.py` from master, so the shell-injection and `WORK_DIR` fixes in `scripts/merge_routing.py` from PR #379 are not needed in the rebased branch. Those commits are preserved in the PR's history for traceability, and the 10 tests in `tests/scripts/test_merge_routing.py` that targeted that module are dropped in the rebased branch (the surviving 12 tests still cover the analysis scripts that are the headline deliverable of the PR).
 
 ## 2026-06-01
 ### Frontend Dependencies

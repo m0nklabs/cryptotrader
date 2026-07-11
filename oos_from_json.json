@@ -1,0 +1,118 @@
+{
+  "metadata": {
+    "generated_at": "2026-06-05T22:58:49.127451+00:00",
+    "total_candles": 8760,
+    "segments": 3
+  },
+  "segments": [
+    {
+      "name": "train",
+      "start_time": "2025-01-01T00:00:00+00:00",
+      "end_time": "2025-07-02T12:00:00+00:00",
+      "n_candles": 4380,
+      "dominant_regime": "high_vol",
+      "regime_breakdown": {
+        "transition": 0.5,
+        "bull": 30.8,
+        "bear": 29.9,
+        "range": 6.0,
+        "high_vol": 32.8
+      },
+      "mean_return": 0.000113,
+      "mean_volatility": 0.020072,
+      "mean_price": 39219.73,
+      "min_price": 15409.59,
+      "max_price": 71197.64
+    },
+    {
+      "name": "validation",
+      "start_time": "2025-07-02T12:00:00+00:00",
+      "end_time": "2025-09-13T12:00:00+00:00",
+      "n_candles": 1752,
+      "dominant_regime": "high_vol",
+      "regime_breakdown": {
+        "transition": 1.1,
+        "bull": 28.1,
+        "bear": 31.6,
+        "range": 6.2,
+        "high_vol": 33.0
+      },
+      "mean_return": 4.6e-05,
+      "mean_volatility": 0.019859,
+      "mean_price": 28534.39,
+      "min_price": 17425.73,
+      "max_price": 44763.72
+    },
+    {
+      "name": "test",
+      "start_time": "2025-09-13T12:00:00+00:00",
+      "end_time": "2026-01-01T00:00:00+00:00",
+      "n_candles": 2628,
+      "dominant_regime": "high_vol",
+      "regime_breakdown": {
+        "transition": 0.8,
+        "bull": 34.0,
+        "bear": 25.1,
+        "range": 5.9,
+        "high_vol": 34.2
+      },
+      "mean_return": 0.001235,
+      "mean_volatility": 0.020052,
+      "mean_price": 91210.1,
+      "min_price": 17078.19,
+      "max_price": 342455.55
+    }
+  ],
+  "regime_verification": {
+    "bull": {
+      "expected_range": [
+        15,
+        35
+      ],
+      "actual": 31.2,
+      "within_range": true
+    },
+    "bear": {
+      "expected_range": [
+        15,
+        35
+      ],
+      "actual": 28.8,
+      "within_range": true
+    },
+    "range": {
+      "expected_range": [
+        5,
+        25
+      ],
+      "actual": 6.0,
+      "within_range": true
+    },
+    "high_vol": {
+      "expected_range": [
+        20,
+        50
+      ],
+      "actual": 33.3,
+      "within_range": true
+    },
+    "low_vol": {
+      "expected_range": [
+        0,
+        10
+      ],
+      "actual": 0.0,
+      "within_range": true
+    },
+    "transition": {
+      "expected_range": [
+        0,
+        5
+      ],
+      "actual": 0.7,
+      "within_range": true
+    },
+    "overall_pass": true,
+    "total_candles": 8760
+  }
+}
