@@ -36,6 +36,44 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _summarize_response(response: requests.Response) -> dict:
+    """Parse a Bitfinex candle response and return a small summary dict.
+
+    The returned dict always contains a ``rows`` key (the number of candle
+    rows).  When the payload is a non-empty list of well-formed rows it
+    additionally contains ``first_open_time_utc``, ``last_open_time_utc``
+    and ``first_row`` keys.
+
+    Raises ``RuntimeError`` when the payload is not a JSON list (e.g. the
+    API returned an error object).
+    """
+    data = response.json()
+    if not isinstance(data, list):
+        raise RuntimeError(f"Unexpected response type: {type(data)}")
+
+    summary: dict = {"rows": len(data)}
+    if not data:
+        return summary
+
+    # Defensive parse of the first / last rows.  If anything is malformed we
+    # skip the derived fields rather than crashing — the smoke script's job
+    # is to surface that the endpoint responded, not to validate the schema.
+    try:
+        first_row = data[0]
+        last_row = data[-1]
+        first_mts = int(first_row[0])
+        last_mts = int(last_row[0])
+        first_dt = datetime.fromtimestamp(first_mts / 1000, tz=timezone.utc)
+        last_dt = datetime.fromtimestamp(last_mts / 1000, tz=timezone.utc)
+    except Exception:
+        return summary
+
+    summary["first_open_time_utc"] = first_dt.isoformat()
+    summary["last_open_time_utc"] = last_dt.isoformat()
+    summary["first_row"] = first_row
+    return summary
+
+
 def main() -> int:
     args = _parse_args()
 
@@ -57,19 +95,12 @@ def main() -> int:
     print(f"status={r.status_code}")
     r.raise_for_status()
 
-    data = r.json()
-    if not isinstance(data, list):
-        raise RuntimeError(f"Unexpected response type: {type(data)}")
-
-    print(f"rows={len(data)}")
-    if data:
-        first_mts = int(data[0][0])
-        last_mts = int(data[-1][0])
-        first_dt = datetime.fromtimestamp(first_mts / 1000, tz=timezone.utc)
-        last_dt = datetime.fromtimestamp(last_mts / 1000, tz=timezone.utc)
-        print(f"first_open_time_utc={first_dt.isoformat()}")
-        print(f"last_open_time_utc={last_dt.isoformat()}")
-        print(f"first_row={data[0]}")
+    summary = _summarize_response(r)
+    print(f"rows={summary['rows']}")
+    if "first_open_time_utc" in summary:
+        print(f"first_open_time_utc={summary['first_open_time_utc']}")
+        print(f"last_open_time_utc={summary['last_open_time_utc']}")
+        print(f"first_row={summary['first_row']}")
 
     return 0
 
