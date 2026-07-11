@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import Literal, Mapping, Optional
 
 from core.execution.order_book import OrderBook
 from core.fees.model import FeeModel
@@ -100,22 +100,106 @@ class PaperExecutor:
         return self._total_fees_by_symbol.get(symbol, Decimal("0"))
 
     def execute(self, order: OrderIntent) -> ExecutionResult:
-        """Legacy dry-run execute method for compatibility.
+        """Execute a paper trading order through the authoritative gateway.
 
-        This never places real orders. It returns what *would* have been executed.
+        Routes the legacy OrderIntent entry point through ``execute_paper_order``
+        so the PaperExecutor ledger (orders, fills, positions, fees) actually
+        records the trade. Returns an ``ExecutionResult`` carrying the durable
+        order id, fill status, fill qty, fill price, and fees in ``raw`` so the
+        orchestrator and API layers can reconcile automation paper results with
+        the API paper ledger.
+
+        The OrderIntent contract does not carry a market price field. Callers
+        (e.g. the orchestrator) must source the current price from a
+        timestamped, authoritative provider and pass it via ``order.raw`` (a
+        Mapping) under the keys ``market_price`` (Decimal or string) and
+        optionally ``price_update_time`` (datetime). If neither a hint nor a
+        previously observed last-price is available, market orders are rejected
+        with a clear reason; limit orders still execute off the supplied
+        ``limit_price``.
+
+        Args:
+            order: Order intent describing symbol, side, amount, and order type.
+
+        Returns:
+            ExecutionResult with a durable order id and rich fill metadata.
         """
+        extra_hint = order.extra if isinstance(order.extra, Mapping) else {}
+        market_price_hint = extra_hint.get("market_price")
+        price_update_time = extra_hint.get("price_update_time") if "price_update_time" in extra_hint else None
+
+        if order.order_type == "market":
+            if market_price_hint is None:
+                last_price = self._last_prices.get(order.symbol)
+                if last_price is None:
+                    return ExecutionResult(
+                        dry_run=True,
+                        accepted=False,
+                        reason="paper-execution: missing market_price and no observed last price",
+                        order_id=None,
+                        raw={
+                            "exchange": order.exchange,
+                            "symbol": order.symbol,
+                            "side": order.side,
+                            "amount": str(order.amount),
+                            "order_type": order.order_type,
+                            "limit_price": str(order.limit_price) if order.limit_price is not None else None,
+                        },
+                    )
+                market_price = last_price
+            else:
+                market_price = market_price_hint if isinstance(market_price_hint, Decimal) else Decimal(str(market_price_hint))
+
+            paper_order = self.execute_paper_order(
+                symbol=order.symbol,
+                side=order.side,
+                qty=order.amount,
+                order_type="market",
+                market_price=market_price,
+                price_update_time=price_update_time,
+            )
+        else:
+            if order.limit_price is None:
+                return ExecutionResult(
+                    dry_run=True,
+                    accepted=False,
+                    reason="paper-execution: limit order requires limit_price",
+                    order_id=None,
+                    raw={
+                        "exchange": order.exchange,
+                        "symbol": order.symbol,
+                        "side": order.side,
+                        "amount": str(order.amount),
+                        "order_type": order.order_type,
+                    },
+                )
+            paper_order = self.execute_paper_order(
+                symbol=order.symbol,
+                side=order.side,
+                qty=order.amount,
+                order_type="limit",
+                limit_price=order.limit_price,
+                price_update_time=price_update_time,
+            )
+
         return ExecutionResult(
             dry_run=True,
             accepted=True,
             reason="paper-execution",
-            order_id=None,
+            order_id=str(paper_order.order_id),
             raw={
                 "exchange": order.exchange,
-                "symbol": order.symbol,
-                "side": order.side,
-                "amount": str(order.amount),
-                "order_type": order.order_type,
-                "limit_price": str(order.limit_price) if order.limit_price is not None else None,
+                "symbol": paper_order.symbol,
+                "side": paper_order.side,
+                "amount": str(paper_order.qty),
+                "order_type": paper_order.order_type,
+                "limit_price": str(paper_order.limit_price) if paper_order.limit_price is not None else None,
+                "fill_status": paper_order.status,
+                "fill_qty": str(paper_order.fill_qty) if paper_order.fill_qty is not None else None,
+                "fill_price": str(paper_order.fill_price) if paper_order.fill_price is not None else None,
+                "fees": str(paper_order.fees),
+                "slippage_bps": str(paper_order.slippage_bps) if paper_order.slippage_bps is not None else None,
+                "fill_ratio": str(paper_order.fill_ratio) if paper_order.fill_ratio is not None else None,
             },
         )
 
