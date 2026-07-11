@@ -61,10 +61,19 @@ class ExecutionOrchestrator:
 
     Workflow:
     1. Receive a ConsensusDecision from the AI multi-brain.
-    2. Apply risk gates in order: VETO → Budget → Position size → Exposure → Risk limits.
+    2. Apply risk gates in order: VETO → Budget → Position size → Risk limit → Exposure.
     3. If all gates pass, create a paper-order intent and execute.
     4. Persist the full decision path (AI decision → risk decision → paper order).
     5. Audit-log every gate check and the final outcome.
+
+    Gate ownership:
+    - ``risk_limit`` owns per-symbol quote-notional limits
+      (``max_position_size_per_symbol``).
+    - ``exposure`` owns portfolio-wide limits (total exposure and open
+      position count). Per-symbol position size no longer collapses
+      into the exposure gate, so a per-symbol rejection produces an
+      auditable ``risk_limit`` result rather than being masked by the
+      exposure gate's aggregate check.
 
     Paper-only: never places live exchange orders.
     """
@@ -204,6 +213,28 @@ class ExecutionOrchestrator:
 
         position_value = market_price * position_size
 
+        # Step 4: Risk limit gate (per-symbol quote-notional limit).
+        # Evaluated before the portfolio-wide exposure gate so that a
+        # per-symbol rejection produces its own auditable ``risk_limit``
+        # result. The exposure gate below only enforces portfolio-wide
+        # limits (total exposure + open position count) and never
+        # collapses per-symbol position size into the same result.
+        #
+        # Both the risk-limit and exposure gates are evaluated and
+        # recorded every time position_size is available, even if the
+        # risk-limit gate rejects first. This guarantees that every
+        # auditable gate has a verdict in ``gate_results`` — the first
+        # failing gate determines ``action``, but no gate is silently
+        # skipped just because an earlier gate short-circuited.
+        risk_result = self._check_risk_limit_gate(
+            symbol=symbol,
+            market_price=market_price,
+            position_size=position_size,
+            portfolio_value=portfolio_value,
+        )
+        gate_results.append(risk_result)
+
+        # Step 5: Exposure gate (portfolio-wide exposure + position count).
         exposure_result = self._check_exposure_gate(
             symbol=symbol,
             position_value=position_value,
@@ -212,28 +243,12 @@ class ExecutionOrchestrator:
             current_positions=current_positions,
         )
         gate_results.append(exposure_result)
-        if not exposure_result.passed:
-            return self._build_result(
-                start_time=start_time,
-                symbol=symbol,
-                timeframe=timeframe,
-                consensus=consensus,
-                gate_results=gate_results,
-                action="REJECTED",
-                reason=exposure_result.reason,
-                market_price=market_price,
-                portfolio_value=portfolio_value,
-            )
 
-        # Step 4: Risk limit gate
-        risk_result = self._check_risk_limit_gate(
-            symbol=symbol,
-            market_price=market_price,
-            position_size=position_size,
-            portfolio_value=portfolio_value,
-        )
-        gate_results.append(risk_result)
-        if not risk_result.passed:
+        # First failure determines action; later gates are already in
+        # ``gate_results`` so the audit is complete regardless of which
+        # gate rejected.
+        first_failure = next((gr for gr in gate_results if not gr.passed), None)
+        if first_failure is not None:
             return self._build_result(
                 start_time=start_time,
                 symbol=symbol,
@@ -241,9 +256,11 @@ class ExecutionOrchestrator:
                 consensus=consensus,
                 gate_results=gate_results,
                 action="REJECTED",
-                reason=risk_result.reason,
+                reason=first_failure.reason,
                 market_price=market_price,
                 portfolio_value=portfolio_value,
+                position_size=position_size,
+                position_value=position_value,
             )
 
         # All gates passed — execute paper order
@@ -354,6 +371,22 @@ class ExecutionOrchestrator:
 
         position_size = qty
         position_value = market_price * position_size
+
+        # Risk-limit gate (per-symbol quote-notional) is evaluated before
+        # the portfolio-wide exposure gate so a per-symbol rejection
+        # produces an auditable ``risk_limit`` result distinct from the
+        # exposure gate's portfolio-wide checks. Both gates are recorded
+        # in ``gate_results`` so the audit shows every verdict — the
+        # first failure determines ``action`` but later gates are not
+        # silently skipped.
+        risk_result = self._check_risk_limit_gate(
+            symbol=symbol,
+            market_price=market_price,
+            position_size=position_size,
+            portfolio_value=portfolio_value,
+        )
+        gate_results.append(risk_result)
+
         exposure_result = self._check_exposure_gate(
             symbol=symbol,
             position_value=position_value,
@@ -362,28 +395,9 @@ class ExecutionOrchestrator:
             current_positions=current_positions,
         )
         gate_results.append(exposure_result)
-        if not exposure_result.passed:
-            return self._build_result(
-                start_time=start_time,
-                symbol=symbol,
-                timeframe=timeframe,
-                consensus=consensus,
-                gate_results=gate_results,
-                action="REJECTED",
-                reason=exposure_result.reason,
-                market_price=market_price,
-                portfolio_value=portfolio_value,
-                position_size=position_size,
-            )
 
-        risk_result = self._check_risk_limit_gate(
-            symbol=symbol,
-            market_price=market_price,
-            position_size=position_size,
-            portfolio_value=portfolio_value,
-        )
-        gate_results.append(risk_result)
-        if not risk_result.passed:
+        first_failure = next((gr for gr in gate_results if not gr.passed), None)
+        if first_failure is not None:
             return self._build_result(
                 start_time=start_time,
                 symbol=symbol,
@@ -391,10 +405,11 @@ class ExecutionOrchestrator:
                 consensus=consensus,
                 gate_results=gate_results,
                 action="REJECTED",
-                reason=risk_result.reason,
+                reason=first_failure.reason,
                 market_price=market_price,
                 portfolio_value=portfolio_value,
                 position_size=position_size,
+                position_value=position_value,
             )
 
         order = self._execute_paper_order(
@@ -546,12 +561,16 @@ class ExecutionOrchestrator:
         portfolio_value: Decimal,
         current_positions: int,
     ) -> GateCheckResult:
-        """Check exposure limits (position size, total exposure, position count)."""
-        all_passed, reasons = self.exposure_checker.check_all(
-            symbol=symbol,
-            position_value=position_value,
+        """Check portfolio-wide exposure limits (total exposure + open position count).
+
+        Per-symbol position size is deliberately not enforced here; it
+        is owned by the ``risk_limit`` gate so each rejection reason is
+        attributable to one auditable gate.
+        """
+        all_passed, reasons = self.exposure_checker.check_portfolio_exposure(
             current_exposure=current_exposure,
             portfolio_value=portfolio_value,
+            new_position_value=position_value,
             current_positions=current_positions,
         )
 

@@ -138,6 +138,15 @@ class ExposureChecker:
 
         Returns:
             Tuple of (all_checks_passed, list_of_rejection_reasons)
+
+        Notes:
+            ``check_all`` retains its original aggregate behavior (per-symbol
+            position size + total exposure + position count) so existing
+            callers and tests that depend on the three-reason contract are
+            preserved. Gate orchestration uses the narrower
+            ``check_portfolio_exposure`` plus the per-symbol
+            ``check_position_size`` instead, so each gate owns a single
+            concern and no single gate collapses several safety limits.
         """
         reasons = []
 
@@ -152,6 +161,45 @@ class ExposureChecker:
             reasons.append(reason)
 
         # Check position count
+        allowed, reason = self.check_position_count(current_positions)
+        if not allowed and reason:
+            reasons.append(reason)
+
+        return len(reasons) == 0, reasons
+
+    def check_portfolio_exposure(
+        self,
+        current_exposure: Decimal,
+        portfolio_value: Decimal,
+        new_position_value: Decimal,
+        current_positions: int,
+    ) -> tuple[bool, list[str]]:
+        """Check portfolio-wide exposure and position count.
+
+        Deliberately excludes per-symbol position size, which is owned by
+        the risk-limit gate. This keeps gate responsibilities distinct:
+        ``exposure`` enforces portfolio-level limits and ``risk_limit``
+        enforces per-symbol notional. Mixing them collapses multiple
+        auditable safety contracts into one gate and hides which limit
+        actually rejected an order.
+
+        Args:
+            current_exposure: Current total exposure across all positions.
+            portfolio_value: Total portfolio value.
+            new_position_value: Quote-notional value of the proposed position.
+            current_positions: Number of currently open positions.
+
+        Returns:
+            Tuple of (all_portfolio_checks_passed, list_of_rejection_reasons).
+        """
+        reasons: list[str] = []
+
+        allowed, reason = self.check_total_exposure(
+            current_exposure, portfolio_value, new_position_value
+        )
+        if not allowed and reason:
+            reasons.append(reason)
+
         allowed, reason = self.check_position_count(current_positions)
         if not allowed and reason:
             reasons.append(reason)

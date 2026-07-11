@@ -396,12 +396,21 @@ def test_budget_exceeded_monthly(orchestrator):
 
 
 def test_exposure_limit_exceeded(orchestrator):
-    """Test that exposure limit blocks order when position too large."""
+    """Portfolio-wide exposure limit blocks order when total exposure exceeds cap.
+
+    Note: per-symbol position size is owned by the ``risk_limit`` gate
+    (see ``test_risk_limit_uses_notional_position_value``); the
+    ``exposure`` gate now enforces total exposure and position count
+    only.
+    """
     orch = ExecutionOrchestrator(
         paper_executor=PaperExecutor(),
         exposure_limits=ExposureLimits(
-            max_position_size_per_symbol=Decimal("100"),  # Very small
-            max_total_exposure=Decimal("0.5"),
+            # max_position_size_per_symbol is intentionally generous so
+            # the per-symbol risk-limit gate passes; the exposure gate
+            # is what should reject here.
+            max_position_size_per_symbol=Decimal("1000000"),
+            max_total_exposure=Decimal("0.05"),  # Tight 5% portfolio cap
             max_positions=5,
         ),
     )
@@ -419,9 +428,9 @@ def test_exposure_limit_exceeded(orchestrator):
         symbol="BTCUSD",
         market_price=Decimal("50000"),
         portfolio_value=Decimal("10000"),
+        current_exposure=Decimal("0"),
     )
 
-    # Should be rejected due to position size exceeding limit
     assert result.action == "REJECTED"
     exposure_gate = _find_gate(result, GateName.EXPOSURE)
     assert exposure_gate is not None
@@ -495,6 +504,55 @@ def test_risk_limit_calculation_success(orchestrator, buy_consensus):
     risk_gate = _find_gate(result, GateName.RISK_LIMIT)
     assert risk_gate is not None
     assert risk_gate.passed is True
+
+
+def test_boundary_multiple_gates_reject(buy_consensus):
+    """Both risk-limit and exposure must register when both would reject.
+
+    Boundary acceptance: when a proposed position trips both the
+    per-symbol risk-limit gate (max_position_size_per_symbol) and the
+    portfolio-wide exposure gate (max_total_exposure), both gates must
+    appear in ``gate_results`` with ``passed=False`` so audit can see
+    every limit that would have rejected the order.
+    """
+    orch = ExecutionOrchestrator(
+        paper_executor=PaperExecutor(),
+        exposure_limits=ExposureLimits(
+            # Per-symbol notional too small for the proposed position.
+            max_position_size_per_symbol=Decimal("80000"),
+            # Portfolio-wide cap so small that even the proposed
+            # notional (~92,500) on a 10,000 portfolio would breach it.
+            max_total_exposure=Decimal("1"),  # 100% of portfolio as cap
+            max_positions=5,
+        ),
+        confidence_threshold=0.6,
+    )
+
+    result = orch.evaluate_and_execute(
+        consensus=buy_consensus,
+        symbol="BTCUSD",
+        market_price=Decimal("50000"),
+        portfolio_value=Decimal("10000"),
+        current_exposure=Decimal("0"),
+    )
+
+    assert result.action == "REJECTED"
+    # First-failure wins (risk-limit precedes exposure), but both gates
+    # must be auditable in gate_results.
+    risk_gate = _find_gate(result, GateName.RISK_LIMIT)
+    assert risk_gate is not None
+    assert risk_gate.passed is False
+    exposure_gate = _find_gate(result, GateName.EXPOSURE)
+    assert exposure_gate is not None
+    assert exposure_gate.passed is False
+
+    # Audit entry must include both gate verdicts, not just the first
+    # one that triggered rejection.
+    audit = orch.get_decision_path("BTCUSD")
+    assert audit, "expected an audit entry for the rejected order"
+    audited_gate_names = {gr["gate"] for gr in audit[-1]["gate_results"]}
+    assert "risk_limit" in audited_gate_names
+    assert "exposure" in audited_gate_names
 
 
 # ---------------------------------------------------------------------------
