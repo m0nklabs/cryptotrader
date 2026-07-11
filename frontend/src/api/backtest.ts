@@ -57,6 +57,44 @@ export type BacktestResult = {
   num_trades: number
   trades: Trade[]
   equity_curve: number[]
+  // Walk-forward validation results from the backend
+  // (`BacktestComparisonResponse.walk_forward`).
+  // See `WalkForwardConfig.min_folds` — fewer than `min_folds` folds
+  // means validation is *insufficient* and must block any promotion verdict.
+  walk_forward: WalkForwardResult
+}
+
+// Minimum folds required for the OOS validation to be considered
+// statistically meaningful. Must match `WalkForwardConfig.min_folds`
+// in `core/strategy_eval/walk_forward.py`.
+export const MIN_WALK_FORWARD_FOLDS = 5
+
+export type WalkForwardFold = {
+  train_start: string
+  train_end: string
+  test_start: string
+  test_end: string
+  train_return: number
+  test_return: number
+  test_sharpe: number
+  test_max_dd: number
+  test_win_rate: number
+  test_trades: number
+  oos_decay: number
+}
+
+export type WalkForwardResult = {
+  n_folds: number
+  mean_train_return: number
+  mean_test_return: number
+  mean_oos_decay: number
+  in_sample_consistency: number
+  oos_significant: boolean
+  oos_sharpe: number
+  oos_max_dd: number
+  oos_win_rate: number
+  overfitting_risk: 'low' | 'medium' | 'high'
+  folds: WalkForwardFold[]
 }
 
 // ---------------------------------------------------------------------------

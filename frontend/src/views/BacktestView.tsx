@@ -8,6 +8,7 @@ import { useState } from 'react'
 import BacktestRunner from '../components/BacktestRunner'
 import BacktestResults from '../components/BacktestResults'
 import EquityCurve from '../components/EquityCurve'
+import WalkForwardPanel from '../components/WalkForwardPanel'
 import type { BacktestResult } from '../api/backtest'
 
 export default function BacktestView() {
@@ -28,6 +29,10 @@ export default function BacktestView() {
             initialCapital={results.initial_capital}
           />
           <BacktestResults results={results} />
+          {/* Walk-forward OOS validation. The panel gates any
+              live-promotion verdict: insufficient or failed validation
+              must be visually distinct from the gross backtest above. */}
+          <WalkForwardPanel walkForward={results.walk_forward} />
         </>
       )}
 
