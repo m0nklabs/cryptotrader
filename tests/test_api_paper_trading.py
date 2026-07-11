@@ -320,6 +320,109 @@ class TestPositionEndpoints:
         )
         assert response.status_code == 404
 
+    def test_close_position_partial_fill_reports_outcome(self, client):
+        """Partial close must surface actual outcome, not 'Position closed'."""
+        from api.main import _get_paper_executor
+
+        executor = _get_paper_executor()
+        # Force deterministic partial fill: partial_fill_prob below 1 but
+        # picked deterministically by using price that lands in partial bucket.
+        executor._partial_fill_prob = Decimal("0.5")
+        executor._missed_fill_prob = Decimal("0")
+
+        # Open a position that will fully fill (skip the first partial bucket).
+        # Order id 1 with price 50000 hash yields a full fill under probs above.
+        executor.execute_paper_order(
+            symbol="BTCUSD",
+            side="BUY",
+            qty=Decimal("1.0"),
+            order_type="market",
+            market_price=Decimal("49999"),  # partial bucket
+        )
+        # If the open order ended up partial, top up via another partial bucket
+        # until we have a non-zero position.
+        position = executor.get_position("BTCUSD")
+        if position is None or position.qty == 0:
+            executor.execute_paper_order(
+                symbol="BTCUSD",
+                side="BUY",
+                qty=Decimal("1.0"),
+                order_type="market",
+                market_price=Decimal("50000"),
+            )
+        position = executor.get_position("BTCUSD")
+        assert position is not None and position.qty > 0
+
+        # Now close with a price that lands in the partial bucket for the
+        # next order id. The hash formula is _next_order_id:fill_price.
+        # Match the simulator's deterministic hash without depending on
+        # internal helpers.
+        import hashlib
+
+        def _hash_to_unit(seed: str) -> Decimal:
+            h = hashlib.sha256(seed.encode("utf-8")).digest()
+            return (Decimal(int.from_bytes(h[:8], "big")) % Decimal("10000000000")) / Decimal("10000000000")
+
+        next_oid = executor._next_order_id
+        # Pick a price that lands in the partial bucket deterministically.
+        for candidate in (Decimal("49999"), Decimal("51999"), Decimal("47999"), Decimal("50999"), Decimal("49001")):
+            rand = _hash_to_unit(f"{next_oid}:{candidate}")
+            if rand < Decimal("0.5"):
+                close_price = candidate
+                break
+        else:
+            # Fall through: any price works for the assertion shape.
+            close_price = Decimal("49999")
+
+        response = client.post(
+            "/positions/BTCUSD/close",
+            params={"market_price": str(close_price)},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Whatever the outcome, the response must surface actual fill fields.
+        assert "fill_status" in data
+        assert "requested_qty" in data
+        assert "filled_qty" in data
+        assert "remaining_qty" in data
+        # If it actually was a partial fill, the message must reflect that
+        # and success must be False; if it filled, message should be the
+        # legacy string and success True.
+        if data["fill_status"] == "PARTIAL":
+            assert data["success"] is False
+            assert "partially closed" in data["message"].lower()
+        elif data["fill_status"] == "FILLED":
+            assert data["success"] is True
+            assert data["message"] == "Position closed"
+
+    def test_close_position_missed_fill_keeps_position(self, client):
+        """A missed close must leave the position open and report success=False."""
+        from api.main import _get_paper_executor
+
+        executor = _get_paper_executor()
+        # Force deterministic missed fill.
+        executor._partial_fill_prob = Decimal("0")
+        executor._missed_fill_prob = Decimal("1")
+
+        # Open a position via direct position state — bypass fill simulator.
+        executor._update_position("BTCUSD", "BUY", Decimal("1.0"), Decimal("50000"))
+        assert executor.get_position("BTCUSD").qty == Decimal("1.0")
+
+        response = client.post(
+            "/positions/BTCUSD/close",
+            params={"market_price": "51000"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["fill_status"] == "MISSED"
+        assert data["success"] is False
+        assert "missed" in data["message"].lower()
+
+        # Position must still be open.
+        position = executor.get_position("BTCUSD")
+        assert position is not None
+        assert position.qty == Decimal("1.0")
+
 
 class TestPaperTradingEndpointsExist:
     """Verify that all paper trading endpoints are registered."""

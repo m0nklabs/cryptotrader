@@ -181,7 +181,15 @@ class PaperExecutor:
             # Simulate partial or missed fill for market orders
             fill_result = self._simulate_fill(qty, fill_price)
             fill_qty = fill_result["fill_qty"]
-            status = fill_result["status"]
+            raw_status = fill_result["status"]
+
+            # Derive the persisted status: a filled order that did not fill
+            # the requested quantity is a PARTIAL fill, so reporters
+            # (summary, audit, API) see PARTIAL with requested/filled/remaining.
+            if raw_status == "FILLED" and fill_qty < qty:
+                status = "PARTIAL"
+            else:
+                status = raw_status
 
             # Calculate fees based on fill notional
             fill_notional = fill_price * fill_qty
@@ -193,7 +201,7 @@ class PaperExecutor:
                 fees = cost_estimate.estimated_total_cost
 
             if status in ("FILLED", "PARTIAL"):
-                self._update_position(symbol, side, qty, fill_price)
+                self._update_position(symbol, side, fill_qty, fill_price)
         else:
             # Limit order
             assert limit_price is not None

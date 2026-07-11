@@ -1168,7 +1168,38 @@ async def close_position(
         market_price=market_price,
     )
 
-    return {"success": True, "message": "Position closed", "close_order": _order_to_response(order)}
+    # Surface actual fill outcome so callers (UI, audit, reconciliation)
+    # can see when a close was only partial or missed entirely.
+    fill_status = order.status
+    fill_qty = order.fill_qty or Decimal("0")
+    remaining_qty = max(Decimal("0"), qty - fill_qty)
+
+    if fill_status == "FILLED":
+        message = "Position closed"
+        success = True
+    elif fill_status == "PARTIAL":
+        message = (
+            f"Position partially closed: requested {qty}, "
+            f"filled {fill_qty}, remaining {remaining_qty}"
+        )
+        success = False
+    elif fill_status == "MISSED":
+        message = f"Position close missed; position unchanged for {symbol}"
+        success = False
+    else:
+        message = f"Position close returned status {fill_status}"
+        success = False
+
+    response: dict[str, Any] = {
+        "success": success,
+        "message": message,
+        "close_order": _order_to_response(order),
+        "fill_status": fill_status,
+        "requested_qty": str(qty),
+        "filled_qty": str(fill_qty),
+        "remaining_qty": str(remaining_qty),
+    }
+    return response
 
 
 # =============================================================================
