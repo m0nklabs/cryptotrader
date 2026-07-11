@@ -71,6 +71,7 @@ class OrderIntent:
     order_type: Literal["market", "limit"] = "market"
     limit_price: Optional[Decimal] = None
     metadata: Mapping[str, str] = None
+    extra: Optional[Mapping[str, object]] = None
 
 
 @dataclass(frozen=True)

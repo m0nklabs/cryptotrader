@@ -261,13 +261,21 @@ class StrategyOrchestrator:
             # 3. Get current price
             current_price = await self.price_provider.get_current_price(symbol)
 
-            # 4. Build order intent
+            # 4. Build order intent. For paper trading we attach the
+            #    authoritative market price + timestamp under ``extra`` so
+            #    PaperExecutor.execute() can route through execute_paper_order()
+            #    instead of returning the legacy dry-run stub.
+            price_update_time = datetime.now(timezone.utc)
             intent = OrderIntent(
                 exchange=self.config.exchange,
                 symbol=symbol,
                 side=signal.side,
                 amount=self.config.default_position_size / current_price,
                 order_type="market",
+                extra={
+                    "market_price": current_price,
+                    "price_update_time": price_update_time,
+                },
             )
 
             # 5. Run safety checks
@@ -314,7 +322,15 @@ class StrategyOrchestrator:
             # 7. Update state
             if execution_result.accepted:
                 self.trade_history.add_trade(symbol, datetime.now(timezone.utc))
-                self._update_position(symbol, intent, price=current_price)
+
+                # For paper trading the position must be derived from the
+                # authoritative PaperExecutor ledger (recorded fills), not from
+                # the requested intent. This avoids double-tracking and prevents
+                # automation results from diverging from the API paper ledger.
+                if isinstance(self.executor, PaperExecutor):
+                    self._sync_position_from_paper(symbol)
+                else:
+                    self._update_position(symbol, intent, price=current_price)
 
                 # Update drawdown with new balance
                 self.drawdown_monitor.update_balance(self.current_balance)
@@ -325,6 +341,7 @@ class StrategyOrchestrator:
                 fees: Decimal | None = None
                 slippage_bps: int | None = None
                 fill_status: str | None = None
+                paper_order_id: str | None = None
 
                 if isinstance(self.executor, PaperExecutor):
                     fees = self.executor.get_fees_by_symbol(symbol)
@@ -334,6 +351,22 @@ class StrategyOrchestrator:
                         "maker": str(self.executor.get_fee_model().breakdown.maker_fee_rate),
                         "taker": str(self.executor.get_fee_model().breakdown.taker_fee_rate),
                     }
+                    # Pull fill metadata off the durable PaperOrder ledger so
+                    # the audit event carries the same facts the API layer
+                    # sees (issue #428 acceptance criteria).
+                    paper_order = self._latest_paper_order_for_symbol(symbol)
+                    if paper_order is not None:
+                        audit_context["order_id"] = str(paper_order.order_id)
+                        audit_context["symbol"] = paper_order.symbol
+                        paper_order_id = str(paper_order.order_id)
+                        fill_price = paper_order.fill_price
+                        fees = paper_order.fees if paper_order.fees is not None else fees
+                        slippage_bps = (
+                            int(paper_order.slippage_bps)
+                            if paper_order.slippage_bps is not None
+                            else None
+                        )
+                        fill_status = paper_order.status
 
                 self.audit_logger.log_trade_executed(
                     symbol=symbol,
@@ -345,7 +378,15 @@ class StrategyOrchestrator:
                     slippage_bps=slippage_bps,
                     fill_status=fill_status,
                 )
-                logger.info(f"Trade executed: {signal.side} {intent.amount} {symbol}")
+                logger.info(
+                    "Trade executed: %s %s %s (order_id=%s, fill_status=%s, fill_price=%s)",
+                    signal.side,
+                    intent.amount,
+                    symbol,
+                    paper_order_id or "n/a",
+                    fill_status or "n/a",
+                    fill_price if fill_price is not None else "n/a",
+                )
             else:
                 logger.error(f"Trade rejected by executor: {execution_result.reason}")
                 self.audit_logger.log_trade_rejected(symbol, execution_result.reason)
@@ -399,6 +440,37 @@ class StrategyOrchestrator:
             self.positions[symbol] = current + market_value
         else:
             self.positions[symbol] = current - market_value
+
+    def _sync_position_from_paper(self, symbol: str) -> None:
+        """Mirror the PaperExecutor ledger into self.positions.
+
+        Replaces the legacy intent-driven _update_position() for paper runs
+        so that risk/limit state and audit reconciliation reflect recorded
+        fills, not the requested intent. If the paper ledger has no position
+        for ``symbol`` (e.g. the fill missed), the orchestrator-side entry
+        is removed.
+        """
+        assert isinstance(self.executor, PaperExecutor), "expected PaperExecutor"
+        paper_position = self.executor.get_position(symbol)
+        if paper_position is None or paper_position.qty == 0:
+            self.positions.pop(symbol, None)
+            return
+        # Mirror in quote-currency market value so position-limit checks
+        # (which compare against max_position_size in quote currency)
+        # remain apples-to-apples with the legacy intent math.
+        self.positions[symbol] = paper_position.qty * paper_position.avg_entry
+
+    def _latest_paper_order_for_symbol(self, symbol: str):
+        """Return the most recent PaperOrder for ``symbol`` from the ledger,
+        or None if the executor is not a PaperExecutor / no order recorded."""
+        if not isinstance(self.executor, PaperExecutor):
+            return None
+        orders = self.executor.get_orders_by_symbol(symbol)
+        if not orders:
+            return None
+        # PaperOrder.order_id is monotonically increasing per executor instance,
+        # so the highest id corresponds to the most recent order.
+        return max(orders, key=lambda o: o.order_id)
 
     async def run_once(self) -> list[TradeDecision]:
         """Run one iteration of the trading loop."""

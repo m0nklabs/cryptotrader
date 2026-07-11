@@ -618,7 +618,14 @@ def test_complex_trading_scenario():
 
 
 def test_legacy_executor_compatibility():
-    """Test that legacy PaperExecutor.execute() still works."""
+    """PaperExecutor.execute(OrderIntent) routes through execute_paper_order.
+
+    Legacy compatibility means: the OrderExecutor.execute(intent) signature
+    is preserved, but the dispatch now records a real PaperOrder and returns
+    a durable order id + fill metadata. A market_price hint (or a previously
+    observed last price) is required for market orders so the gateway can
+    fill off an authoritative price.
+    """
     from core.types import OrderIntent
 
     executor = PaperExecutor()
@@ -629,12 +636,16 @@ def test_legacy_executor_compatibility():
         side="BUY",
         amount=Decimal("1.0"),
         order_type="market",
+        extra={"market_price": Decimal("50000")},
     )
 
     result = executor.execute(order)
     assert result.dry_run is True
     assert result.accepted is True
     assert result.reason == "paper-execution"
+    assert result.order_id is not None
+    # A real PaperOrder should now be recorded in the ledger.
+    assert len(executor.get_all_orders()) == 1
 
 
 def test_get_last_price():
