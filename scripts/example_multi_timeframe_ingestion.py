@@ -42,9 +42,13 @@ DEFAULT_SYMBOLS = [
 DEFAULT_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"]
 
 
-def parse_args() -> argparse.Namespace:
+def build_parser(
+    symbols: list[str],
+    timeframes: list[str],
+    description: str,
+) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Example multi-timeframe ingestion for common trading pairs",
+        description=description,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -63,16 +67,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--symbols",
         nargs="+",
-        default=DEFAULT_SYMBOLS,
-        help=f"Symbols to ingest (default: {' '.join(DEFAULT_SYMBOLS)})",
+        default=symbols,
+        help=f"Symbols to ingest (default: {' '.join(symbols)})",
     )
     parser.add_argument(
         "--timeframes",
         nargs="+",
-        default=DEFAULT_TIMEFRAMES,
-        help=f"Timeframes to ingest (default: {' '.join(DEFAULT_TIMEFRAMES)})",
+        default=timeframes,
+        help=f"Timeframes to ingest (default: {' '.join(timeframes)})",
     )
-    return parser.parse_args()
+    return parser
+
+
+def parse_args() -> argparse.Namespace:
+    return build_parser(
+        DEFAULT_SYMBOLS,
+        DEFAULT_TIMEFRAMES,
+        "Example multi-timeframe ingestion for common trading pairs",
+    ).parse_args()
 
 
 def main() -> int:
