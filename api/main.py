@@ -338,6 +338,20 @@ class FeesEstimateResponse(BaseModel):
     minimum_edge_bps: Decimal
 
 
+@app.get("/version")
+async def version() -> dict[str, Any]:
+    """Get API version information. No database dependency.
+
+    Returns:
+        JSON with version, environment, and application name.
+    """
+    return {
+        "version": "1.0.0",
+        "environment": "paper",
+        "application": "CryptoTrader API",
+    }
+
+
 @app.get("/health")
 @app.get("/healthz")
 async def health() -> dict[str, Any]:
@@ -394,6 +408,19 @@ async def health() -> dict[str, Any]:
                 },
             },
         ) from e
+
+
+@app.get("/version")
+async def version() -> dict[str, Any]:
+    """Get application version.
+
+    Returns:
+        JSON with the application version string from APP_VERSION env var.
+
+    Example response:
+        {"version": "0.1.0"}
+    """
+    return {"version": os.environ.get("APP_VERSION", "0.1.0")}
 
 
 @app.get("/ingestion/status")
@@ -1276,6 +1303,17 @@ async def get_paper_summary() -> dict[str, Any]:
 @app.get("/paper/kelly")
 async def get_kelly_info() -> dict[str, Any]:
     """Get Kelly sizing details for paper trading.
+
+    The paper trading endpoint uses full-Kelly (kelly_fraction=1.0) by default,
+    which produces larger position sizes than the orchestrator's half-Kelly (0.5).
+    This is deliberate: paper trading has no real money at risk, so the more
+    aggressive full-Kelly sizing is appropriate. The orchestrator uses half-Kelly
+    to conserve capital during live trading.
+
+    See also:
+        - execution_orchestrator.py:99  (orchestrator default: kelly_fraction=0.5)
+        - core/risk/sizing.py:133       (calculate_position_size fallback: 0.5)
+        - ROLLOUT_CHECKLIST.md:41,73   (half-Kelly rationale)
 
     Returns:
         JSON with Kelly criterion details including fraction, win rate,
