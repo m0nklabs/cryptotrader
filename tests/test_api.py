@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from conftest import route_paths
 
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +32,7 @@ def test_fastapi_app_configuration():
     assert app.version == "1.0.0"
 
 
-def test_health_endpoint_exists():
+def test_health_endpoint_exists(route_paths):
     """Test that the health endpoint is registered."""
     from api.main import app
 
@@ -41,7 +40,7 @@ def test_health_endpoint_exists():
     assert "/health" in routes
 
 
-def test_candles_endpoint_exists():
+def test_candles_endpoint_exists(route_paths):
     """Test that the candles/latest endpoint is registered."""
     from api.main import app
 

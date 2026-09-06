@@ -20,7 +20,6 @@ if str(ROOT) not in sys.path:
 
 from core.forecasting.service import MODEL_ID_DEFAULT, TimesFMConfig
 from core.forecasting.cache import get_forecast_cache
-from conftest import route_paths
 
 
 # ----------------------------------------------------------------------
@@ -119,7 +118,7 @@ def client():
 # ----------------------------------------------------------------------
 
 
-def test_forecast_routes_registered(client):
+def test_forecast_routes_registered(client, route_paths):
     """All three forecast endpoints are mounted on the app."""
     from api.main import app
 

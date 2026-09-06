@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from unittest.mock import patch
-from conftest import route_paths
 
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def test_market_cap_endpoint_exists():
+def test_market_cap_endpoint_exists(route_paths):
     """Test that the /market-cap endpoint is registered."""
     from api.main import app
 

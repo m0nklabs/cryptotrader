@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from conftest import route_paths
 
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,7 +157,7 @@ def test_get_connection_status():
     assert status["streams"] == []
 
 
-def test_stream_endpoint_exists():
+def test_stream_endpoint_exists(route_paths):
     """Test that the stream endpoint is registered."""
     from api.main import app
 
@@ -166,7 +165,7 @@ def test_stream_endpoint_exists():
     assert "/candles/stream" in routes
 
 
-def test_stream_status_endpoint_exists():
+def test_stream_status_endpoint_exists(route_paths):
     """Test that the stream status endpoint is registered."""
     from api.main import app
 
