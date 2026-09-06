@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from conftest import route_paths
 
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +18,7 @@ if str(ROOT) not in sys.path:
 def test_fees_estimate_endpoint_exists():
     from api.main import app
 
-    routes = [route.path for route in app.routes]
+    routes = route_paths(app)
     assert "/fees/estimate" in routes
 
 

@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app, _get_paper_executor
+from conftest import route_paths
 
 
 @pytest.fixture(autouse=True)
@@ -429,13 +430,13 @@ class TestPaperTradingEndpointsExist:
 
     def test_orders_endpoints_exist(self):
         """Test that order endpoints are registered."""
-        routes = [route.path for route in app.routes]
+        routes = route_paths(app)
         assert "/orders" in routes
         assert "/orders/{order_id}" in routes
 
     def test_positions_endpoints_exist(self):
         """Test that position endpoints are registered."""
-        routes = [route.path for route in app.routes]
+        routes = route_paths(app)
         assert "/positions" in routes
         assert "/positions/{symbol}/close" in routes
 

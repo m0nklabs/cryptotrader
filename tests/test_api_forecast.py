@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 
 from core.forecasting.service import MODEL_ID_DEFAULT, TimesFMConfig
 from core.forecasting.cache import get_forecast_cache
+from conftest import route_paths
 
 
 # ----------------------------------------------------------------------
@@ -122,7 +123,7 @@ def test_forecast_routes_registered(client):
     """All three forecast endpoints are mounted on the app."""
     from api.main import app
 
-    paths = [route.path for route in app.routes]
+    paths = route_paths(app)
     assert "/forecast" in paths
     assert "/forecast/batch" in paths
     assert "/forecast/status" in paths

@@ -47,3 +47,13 @@ def api_client():
     from api.main import app
 
     return TestClient(app)
+
+
+def route_paths(app) -> list[str]:
+    """All registered route paths of a FastAPI app.
+
+    Uses the OpenAPI schema so this works across FastAPI versions: fastapi
+    >= 0.139 keeps prefixed routers wrapped in ``_IncludedRouter`` objects
+    inside ``app.routes`` which expose no ``.path`` attribute.
+    """
+    return list(app.openapi()["paths"].keys())

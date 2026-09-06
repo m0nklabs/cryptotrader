@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from conftest import route_paths
 
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +37,7 @@ def test_health_endpoint_exists():
     """Test that the health endpoint is registered."""
     from api.main import app
 
-    routes = [route.path for route in app.routes]
+    routes = route_paths(app)
     assert "/health" in routes
 
 
@@ -44,7 +45,7 @@ def test_candles_endpoint_exists():
     """Test that the candles/latest endpoint is registered."""
     from api.main import app
 
-    routes = [route.path for route in app.routes]
+    routes = route_paths(app)
     assert "/candles/latest" in routes
 
 

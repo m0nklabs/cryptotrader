@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from conftest import route_paths
 
 
 @pytest.fixture
@@ -97,5 +98,5 @@ def test_system_status_endpoint_exists():
     """Test that the system status endpoint is registered."""
     from api.main import app
 
-    routes = [route.path for route in app.routes]
+    routes = route_paths(app)
     assert "/system/status" in routes
