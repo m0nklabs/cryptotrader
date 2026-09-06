@@ -70,9 +70,9 @@ def fm_client():
 
 
 class TestExecutionRoutesMounted:
-    def test_execution_routes_active(self, fm_client):
+    def test_execution_routes_active(self, fm_client, route_paths):
         """The /execution/* routes from api.routes.execution must be mounted."""
-        registered = {getattr(r, "path", "") for r in app.routes}
+        registered = set(route_paths(app))
         for path in EXECUTION_PATHS:
             assert path in registered, (
                 f"Expected execution route {path} to be mounted; missing route proves the gateway is unreachable."

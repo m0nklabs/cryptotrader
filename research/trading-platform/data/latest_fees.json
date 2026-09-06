@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-06-02T00:00:00Z",
+  "exchanges": {
+    "bitfinex": {
+      "trading": {
+        "maker": "0.001",
+        "taker": "0.002"
+      },
+      "funding": {
+        "annual_rate": "0.05",
+        "frequency": "8h"
+      },
+      "withdrawal_fees": {
+        "BTC": "0.0004",
+        "ETH": "0.00135",
+        "USDT": "1.8",
+        "USD": "0"
+      }
+    }
+  }
+}

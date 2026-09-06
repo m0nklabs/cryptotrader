@@ -55,3 +55,6 @@ related-repos/
 fee_proof_report.json
 .claude/
 .understand-anything/
+
+# Fee evidence data is checked in (proof gate needs it in CI)
+!research/trading-platform/data/latest_fees.json
