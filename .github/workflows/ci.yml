@@ -25,16 +25,18 @@ jobs:
       HAS_PAT: ${{ secrets.GH_PAT != '' }}
     steps:
       - name: Checkout (PAT)
+        id: pat_checkout
         uses: actions/checkout@v7
+        continue-on-error: true
         if: env.HAS_PAT == 'true'
         with:
           ref: ${{ github.head_ref }}
 
           token: ${{ secrets.GH_PAT }}
 
-      - name: Checkout (default token)
+      - name: Checkout (default token fallback)
         uses: actions/checkout@v7
-        if: env.HAS_PAT != 'true'
+        if: env.HAS_PAT != 'true' || steps.pat_checkout.outcome == 'failure'
         with:
           ref: ${{ github.head_ref }}
 
