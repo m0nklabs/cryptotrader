@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-06
+### TimesFM 3.0 backend (new default)
+- Add TimesFM 3.0 support to the forecasting lane behind the existing
+  `TimesFMService` interface: `timesfm3.TimesFM3Evaluator` with one
+  `predict_batch(..., return_quantiles=True, use_symmetric_averaging=False, make_positive=True)`
+  call per forecast; 3.0 quantiles are 9 columns (`p10=0`, `p50=4`, `p90=8`)
+  vs 2.5's 10 columns (`p10=1`, `p50=5`, `p90=9`), both surfacing identical
+  p10/p50/p90 API contracts.
+- New env knob `TIMESFM_BACKEND` (`auto` | `timesfm2_5` | `timesfm3`, default
+  `auto`; explicit value wins, `auto` derives the backend from the model id).
+- Flip the default `TIMESFM_MODEL_ID` to `google/timesfm-3.0-pytorch`; its
+  weights carry `timesfm-non-commercial-license-v1.0` (non-commercial only) —
+  deliberate operator choice for this personal self-hosted deployment;
+  Apache-2.0 2.5 stays selectable via `TIMESFM_MODEL_ID`/`TIMESFM_BACKEND`.
+- Preload/lifecycle paths are backend-agnostic; unit tests cover both backends
+  with stubs (39 passing). New docs page `docs/FORECASTING.md`.
+
 ## 2026-06-15
 ### Removed
 - Remove orphan CI/ops tooling `scripts/merge_routing.py` and its tracked state file `.merge-routing-state.json` (issue #384).

@@ -6,6 +6,9 @@ After=network.target
 Type=simple
 WorkingDirectory=%h/cryptotrader/frontend
 Environment=NODE_ENV=production
+# Proxy /api to the main-repo backend (:8000). Without this, vite.config.ts
+# falls back to PORT 50000 = the copilot-stack backend (to be decommissioned).
+Environment=VITE_API_PROXY_TARGET=http://127.0.0.1:8000
 
 # Run Vite preview (serves dist/) for speed (was dev server)
 # To revert to dev mode (hot reload), change this back to 'npm run dev'

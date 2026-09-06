@@ -10,6 +10,7 @@ export const VIEW_IDS = {
   PAPER_POSITIONS: 'paper-positions',
   // Backtesting
   BACKTEST: 'backtest',
+  FORECAST: 'forecast',
   // Analysis
   SIGNALS: 'signals',
   OPPORTUNITIES: 'opportunities',
@@ -80,6 +81,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Backtesting',
     items: [
       { id: VIEW_IDS.BACKTEST, label: 'Backtest', icon: '🔬', status: 'new' },
+      { id: VIEW_IDS.FORECAST, label: 'Forecast', icon: '🔮', status: 'new' },
     ],
   },
   {
