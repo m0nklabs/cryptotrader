@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const BACKEND_PORT = process.env.PORT || '50000'
-const FRONTEND_PORT = Number(process.env.FRONTEND_PORT || '50176')
+const BACKEND_PORT = process.env.PORT || '8000'
+const FRONTEND_PORT = Number(process.env.FRONTEND_PORT || '5176')
 const BACKEND_HTTP = process.env.VITE_API_PROXY_TARGET || `http://127.0.0.1:${BACKEND_PORT}`
 const BACKEND_WS = process.env.VITE_WS_PROXY_TARGET || BACKEND_HTTP.replace(/^http/, 'ws')
 // Set VITE_DISABLE_SSL_VERIFY=true for self-signed certs in local dev.

@@ -4,47 +4,30 @@ This document covers how to run the `cryptotrader` dashboard and related v2 comp
 
 ## Ports
 
-- Shared PostgreSQL for both workspaces: `50432`
-- Copilot backend / frontend / legacy helper: `50000`, `50176`, `50787`
-  - LAN URL example (if host is `192.168.1.6`): `http://192.168.1.6:50176/`
-- Hermes backend / frontend / legacy helper: `51000`, `51176`, `51787`
-- Ingestion daemon ports are reserved as `50100` (Copilot) and `51100` (Hermes)
+- Main FastAPI backend: `8000` (`cryptotrader-api.service`)
+- Frontend dashboard: `5176` (`cryptotrader-frontend.service`, `vite preview`; proxies `/api` → `127.0.0.1:8000`)
+  - LAN URL example (if host is `192.168.1.6`): `http://192.168.1.6:5176/`
+- Legacy dashboard API: `8787` (`cryptotrader-dashboard-api.service`; serves `/api/wallet/balances`, see issue #452)
+- PostgreSQL (docker container `cryptotrader-postgres`): `50432`
 
 Notes:
 
-- Both workspaces share the same Postgres endpoint on `50432`, but must never share 50k/51k app ports.
-- `INGESTION_PORT` is reserved for a future standalone market-data daemon. This repo still uses timer-based Bitfinex ingestion units.
+- Full port map, including the retired 50000/50176/50787/51000 ranges: see [PORTS.md](PORTS.md).
+- Ingestion is timer-based via the `cryptotrader-bitfinex-*` user units; no port is bound for it.
 
-## Dual-Stack Services (system scope)
+## Services (systemd user units)
 
-Install the systemd templates from `deployment/systemd/` into `/etc/systemd/system/`.
+All units are systemd **user** units, symlinked from `~/.config/systemd/user/` into `/home/flip/cryptotrader/systemd/` (the source of truth for unit templates). See `deployment/systemd/README.md` for the full unit set and install pattern.
 
-- Copilot units live in `deployment/systemd/copilot/`
-- Hermes units live in `deployment/systemd/hermes/`
-
-Install + start:
-
-- `sudo cp /home/flip/cryptotrader_copilot/deployment/systemd/copilot/*.service /etc/systemd/system/`
-- `sudo cp /home/flip/cryptotrader_copilot/deployment/systemd/hermes/*.service /etc/systemd/system/`
-- `sudo systemctl daemon-reload`
-- `sudo systemctl enable --now ct-backend-copilot ct-frontend-copilot ct-legacy-copilot`
+- Install/update a unit: symlink it into `~/.config/systemd/user/`, then `systemctl --user daemon-reload`
+- Enable + start the always-on services: `systemctl --user enable --now cryptotrader-api cryptotrader-frontend cryptotrader-dashboard-api cryptotrader-approve-workflows`
 
 Status / logs:
 
-- `sudo systemctl status ct-backend-copilot ct-frontend-copilot ct-legacy-copilot`
-- `journalctl -u ct-backend-copilot -u ct-frontend-copilot -u ct-legacy-copilot -f`
+- `systemctl --user status cryptotrader-api`
+- `journalctl --user -u cryptotrader-api -f`
 
-Restart / stop:
-
-- `sudo systemctl restart ct-backend-copilot ct-frontend-copilot ct-legacy-copilot`
-- `sudo systemctl stop ct-backend-copilot ct-frontend-copilot ct-legacy-copilot`
-
-Hermes automation rules:
-
-- Hermes may only start and stop `ct-*-hermes` units during tests.
-- Example start: `sudo systemctl start ct-backend-hermes ct-frontend-hermes ct-legacy-hermes`
-- Example stop: `sudo systemctl stop ct-backend-hermes ct-frontend-hermes ct-legacy-hermes`
-- There is no `ct-ingestion-*` daemon yet in this repo. Keep using the existing `cryptotrader-bitfinex-*` timer units, or the separate `market-data` repo when you need a port-bound ingestion API.
+The former copilot stack (`ct-*-copilot`, ports 50000/50176/50787) and hermes stack (`ct-*-hermes`, port 51000) are decommissioned: their units are removed and the workspace directories `/home/flip/cryptotrader_copilot` and `/home/flip/cryptotrader_hermes` were deleted. The templates in `deployment/systemd/copilot|hermes/` are historical reference only.
 
 ## Offline vs online
 
@@ -54,7 +37,7 @@ Hermes automation rules:
 ## Common checks
 
 - Verify port is listening:
-  - `ss -tulpen | grep -E '50432|50000|50176|50787|51000|51176|51787'`
+  - `ss -tulpen | grep -E '50432|8000|8787|5176'`
 
 - If the unit file changed:
   - `sudo systemctl daemon-reload`
@@ -75,9 +58,9 @@ Hermes automation rules:
 
 ### Postgres container (docker compose)
 
-- Shared DB endpoint for both `cryptotrader_copilot` and `../cryptotrader_hermes`: `localhost:50432`
-- Keep only one shared Postgres container running; other workspaces should connect to it instead of creating a second DB.
-- Keep API/frontend/ingestion host ports separate between workspaces: prefer 50xxx for Copilot and 51xxx for Hermes.
+- DB endpoint: `localhost:50432` (docker container `cryptotrader-postgres`, `postgres:16`)
+- Databases: `cryptotrader` (live, used via `DATABASE_URL` in `.env`), `cryptotrader_archive_20260602` (frozen 2026-06-02 snapshot), `cryptotrader_test` (empty).
+- Keep only one Postgres container for this repo; connect to the existing one instead of creating a second DB.
 - Check status: `docker compose ps`
 - Tail logs: `docker compose logs -f postgres`
 - Quick health query: `docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT 1;"'`
@@ -195,7 +178,7 @@ Expected output: 4 role configs (one per role) and 4 active prompts (one per rol
 
 The frontend proxies `/api/*`, `/candles/*`, `/ws/*` and other routes to FastAPI.
 
-- Command (dev): `PORT=50000 python scripts/run_api.py --host 0.0.0.0`
+- Command (dev): `PORT=8000 python scripts/run_api.py --host 0.0.0.0`
 
 In addition to REST endpoints, the backend serves:
 
@@ -206,14 +189,13 @@ In addition to REST endpoints, the backend serves:
 
 Older iterations used a separate DB-backed helper API. It is optional now.
 
-- Script: `LEGACY_PORT=50787 python scripts/api_server.py --host 127.0.0.1`
-- Unit file: `deployment/systemd/copilot/ct-legacy-copilot.service`
+- Script: `python scripts/api_server.py --host 127.0.0.1 --port 8787`
+- Unit file: `systemd/cryptotrader-dashboard-api.service` (user unit, symlinked into `~/.config/systemd/user/`)
 
-Install + start:
+Enable + start:
 
-- `sudo cp /home/flip/cryptotrader_copilot/deployment/systemd/copilot/ct-legacy-copilot.service /etc/systemd/system/`
-- `sudo systemctl daemon-reload`
-- `sudo systemctl enable --now ct-legacy-copilot`
+- `systemctl --user daemon-reload`
+- `systemctl --user enable --now cryptotrader-dashboard-api.service`
 
 Status / logs:
 
