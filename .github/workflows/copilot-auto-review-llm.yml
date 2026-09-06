@@ -18,7 +18,7 @@ permissions:
 jobs:
   auto-review:
     name: LLM Auto-Review
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     if: github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Run header

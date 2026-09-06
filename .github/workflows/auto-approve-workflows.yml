@@ -9,7 +9,7 @@ on:
 jobs:
   auto-trigger:
     name: Trigger workflows for blocked Copilot PRs
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     steps:
       - name: Run header
         uses: m0nklabs/cryptotrader/.github/actions/run-header@master

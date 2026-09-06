@@ -22,7 +22,7 @@ permissions:
 jobs:
   mark-ready:
     name: Mark Copilot PR as ready for review
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     # Only run if CI succeeded and it's from a Copilot branch
     if: >
       github.event.workflow_run.conclusion == 'success' &&
@@ -66,7 +66,7 @@ jobs:
 
   scan-ready:
     name: Scan Copilot draft PRs (>=1h)
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     if: github.event_name != 'workflow_run'
     steps:
       - name: Mark eligible draft PRs ready
