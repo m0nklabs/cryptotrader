@@ -99,6 +99,8 @@ jobs:
 
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
+        env:
+          PRE_COMMIT_HOME: ${{ runner.temp }}/pre-commit-cache
 
   backend:
     name: Backend (ruff + pytest)
@@ -112,6 +114,22 @@ jobs:
       BITFINEX_API_SECRET: ${{ secrets.BITFINEX_API_SECRET }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       PAPER_TRADING: "true"
+
+    # Throwaway postgres for tests; never touch the production container on :50432.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cryptotrader
+          POSTGRES_PASSWORD: cryptotrader
+          POSTGRES_DB: cryptotrader_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cryptotrader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
