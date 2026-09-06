@@ -317,9 +317,9 @@ class TestOOSLookahead:
 
         for fold in result.folds:
             # Train end should equal test start (no gap, no overlap)
-            assert (
-                fold.train_end == fold.test_start
-            ), f"Train/test boundary mismatch: train_end={fold.train_end}, test_start={fold.test_start}"
+            assert fold.train_end == fold.test_start, (
+                f"Train/test boundary mismatch: train_end={fold.train_end}, test_start={fold.test_start}"
+            )
             # Test end should be after test start
             assert fold.test_end > fold.test_start
 

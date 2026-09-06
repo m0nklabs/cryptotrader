@@ -144,7 +144,7 @@ class GuardianProvider(LLMProvider):
         api_key = os.environ.get(self.config.api_key_env, "")
         if not api_key:
             logger.debug(
-                "GuardianProvider.health_check: short-circuit — " "GUARDIAN_API_KEY not set",
+                "GuardianProvider.health_check: short-circuit — GUARDIAN_API_KEY not set",
             )
             return False
         try:

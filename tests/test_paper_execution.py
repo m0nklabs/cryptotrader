@@ -719,8 +719,7 @@ def test_partial_fill_records_qty_and_status_for_full_open():
     pos = executor.get_position("BTCUSD")
     assert pos is not None
     assert pos.qty == order.fill_qty, (
-        f"position.qty should reflect fill_qty, "
-        f"got pos.qty={pos.qty} fill_qty={order.fill_qty}"
+        f"position.qty should reflect fill_qty, got pos.qty={pos.qty} fill_qty={order.fill_qty}"
     )
 
 
@@ -843,6 +842,5 @@ def test_meta_two_partial_fills_track_cumulative_qty():
     assert pos is not None
     expected = qty_a.fill_qty + qty_b.fill_qty
     assert pos.qty == expected, (
-        f"multi-fill position should be cumulative filled qty; "
-        f"expected {expected}, got {pos.qty}"
+        f"multi-fill position should be cumulative filled qty; expected {expected}, got {pos.qty}"
     )

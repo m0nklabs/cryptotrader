@@ -51,9 +51,7 @@ class _FakeCandleProvider:
     def __init__(self, price: Decimal = Decimal("100")) -> None:
         self._price = price
 
-    async def get_latest_candles(
-        self, symbol: str, timeframe: str, limit: int = 100
-    ) -> list[Candle]:
+    async def get_latest_candles(self, symbol: str, timeframe: str, limit: int = 100) -> list[Candle]:
         now = datetime.now(timezone.utc)
         return [
             Candle(

@@ -124,9 +124,7 @@ class BacktestEngine:
             BacktestResult with trades and performance metrics
         """
         if not (0 < stop_loss_pct < 1):
-            raise ValueError(
-                f"stop_loss_pct must be in (0, 1), got {stop_loss_pct}"
-            )
+            raise ValueError(f"stop_loss_pct must be in (0, 1), got {stop_loss_pct}")
 
         trades: list[Trade] = []
         equity_curve: list[float] = [self.initial_capital]

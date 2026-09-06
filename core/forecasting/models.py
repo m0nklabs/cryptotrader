@@ -71,9 +71,7 @@ class ForecastResult:
             points, cache, latency_ms (plus context_len and device metadata).
         """
         resolved_cache = cache if cache is not None else self.meta.get("cache", "miss")
-        resolved_latency = (
-            latency_ms if latency_ms is not None else self.meta.get("latency_ms")
-        )
+        resolved_latency = latency_ms if latency_ms is not None else self.meta.get("latency_ms")
         return {
             "symbol": self.symbol,
             "timeframe": self.timeframe,
@@ -82,10 +80,7 @@ class ForecastResult:
             "generated_at": self.generated_at,
             "context_len": self.context_len,
             "device": self.meta.get("device"),
-            "points": [
-                {"ts": p.ts, "p10": p.p10, "p50": p.p50, "p90": p.p90}
-                for p in self.points
-            ],
+            "points": [{"ts": p.ts, "p10": p.p10, "p50": p.p50, "p90": p.p90} for p in self.points],
             "cache": resolved_cache,
             "latency_ms": resolved_latency,
         }

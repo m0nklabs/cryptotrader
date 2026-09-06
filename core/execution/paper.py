@@ -148,7 +148,9 @@ class PaperExecutor:
                     )
                 market_price = last_price
             else:
-                market_price = market_price_hint if isinstance(market_price_hint, Decimal) else Decimal(str(market_price_hint))
+                market_price = (
+                    market_price_hint if isinstance(market_price_hint, Decimal) else Decimal(str(market_price_hint))
+                )
 
             paper_order = self.execute_paper_order(
                 symbol=order.symbol,

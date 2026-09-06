@@ -194,9 +194,7 @@ class ExposureChecker:
         """
         reasons: list[str] = []
 
-        allowed, reason = self.check_total_exposure(
-            current_exposure, portfolio_value, new_position_value
-        )
+        allowed, reason = self.check_total_exposure(current_exposure, portfolio_value, new_position_value)
         if not allowed and reason:
             reasons.append(reason)
 

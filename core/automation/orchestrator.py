@@ -361,11 +361,7 @@ class StrategyOrchestrator:
                         paper_order_id = str(paper_order.order_id)
                         fill_price = paper_order.fill_price
                         fees = paper_order.fees if paper_order.fees is not None else fees
-                        slippage_bps = (
-                            int(paper_order.slippage_bps)
-                            if paper_order.slippage_bps is not None
-                            else None
-                        )
+                        slippage_bps = int(paper_order.slippage_bps) if paper_order.slippage_bps is not None else None
                         fill_status = paper_order.status
 
                 self.audit_logger.log_trade_executed(

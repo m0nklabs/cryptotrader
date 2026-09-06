@@ -118,9 +118,7 @@ def load_database_url() -> str:
     raise SystemExit("DATABASE_URL not found in environment or .env")
 
 
-def fetch_candles(
-    database_url: str, exchange: str, symbol: str, timeframe: str
-) -> tuple[list[int], np.ndarray]:
+def fetch_candles(database_url: str, exchange: str, symbol: str, timeframe: str) -> tuple[list[int], np.ndarray]:
     """Fetch all candles for the series, ascending by open time.
 
     Reuses the same table/columns as the ``/forecast`` route (``candles``
@@ -145,9 +143,7 @@ def fetch_candles(
     )
     try:
         with engine.connect() as conn:
-            rows = conn.execute(
-                stmt, {"exchange": exchange, "symbol": symbol, "timeframe": timeframe}
-            ).fetchall()
+            rows = conn.execute(stmt, {"exchange": exchange, "symbol": symbol, "timeframe": timeframe}).fetchall()
     finally:
         engine.dispose()
 
@@ -258,9 +254,7 @@ def build_origins(
 
 def baseline_persistence(origins: list[Origin], horizon: int) -> np.ndarray:
     """Last observed close repeated for every forecast step. Shape (origins, horizon)."""
-    return np.tile(
-        np.asarray([o.last_close for o in origins], dtype=np.float64)[:, None], (1, horizon)
-    )
+    return np.tile(np.asarray([o.last_close for o in origins], dtype=np.float64)[:, None], (1, horizon))
 
 
 def baseline_seasonal_naive(
@@ -453,9 +447,7 @@ def print_table(columns: list[tuple[str, dict[str, float | int]]]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Walk-forward forecast-quality evaluation for the TimesFM lane."
-    )
+    parser = argparse.ArgumentParser(description="Walk-forward forecast-quality evaluation for the TimesFM lane.")
     parser.add_argument("--exchange", default="bitfinex", help="Exchange code (default: bitfinex)")
     parser.add_argument("--symbol", default="BTCUSD", help="Symbol without slash (default: BTCUSD)")
     parser.add_argument("--timeframe", default="1h", help="Candle timeframe, e.g. 1h, 1m")
@@ -531,10 +523,7 @@ def main() -> int:
 
     persistence = baseline_persistence(origins_list, horizon)
     seasonal, seasonal_fallbacks = baseline_seasonal_naive(origins_list, ts_to_close, seasonal_delta_ms)
-    print(
-        f"  seasonal-naive fallback steps (missing seasonal slot): {seasonal_fallbacks}"
-        f" / {origins * horizon}"
-    )
+    print(f"  seasonal-naive fallback steps (missing seasonal slot): {seasonal_fallbacks} / {origins * horizon}")
 
     backends = [BACKEND_3_0, BACKEND_2_5] if args.backend == "both" else [args.backend]
 
@@ -563,9 +552,7 @@ def main() -> int:
         p50, p10, p90, _ = bands_to_arrays(bands, horizon)
         metrics = compute_metrics(p50, origins_list, band=(p10, p50, p90))
         results[backend] = metrics
-        per_origin_mae[backend] = np.mean(
-            np.abs(p50 - np.stack([o.actuals for o in origins_list])), axis=1
-        ).tolist()
+        per_origin_mae[backend] = np.mean(np.abs(p50 - np.stack([o.actuals for o in origins_list])), axis=1).tolist()
         columns.append((f"{label} p50", metrics))
 
     columns.append(("Persistence", persistence_metrics))

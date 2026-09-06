@@ -1007,8 +1007,7 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
                         "error": "orchestrator_rejected",
                         "message": decision.reason,
                         "gate_results": [
-                            {"gate": gr.gate, "passed": gr.passed, "reason": gr.reason}
-                            for gr in decision.gate_results
+                            {"gate": gr.gate, "passed": gr.passed, "reason": gr.reason} for gr in decision.gate_results
                         ],
                     },
                 )
@@ -1196,10 +1195,7 @@ async def close_position(
         message = "Position closed"
         success = True
     elif fill_status == "PARTIAL":
-        message = (
-            f"Position partially closed: requested {qty}, "
-            f"filled {fill_qty}, remaining {remaining_qty}"
-        )
+        message = f"Position partially closed: requested {qty}, filled {fill_qty}, remaining {remaining_qty}"
         success = False
     elif fill_status == "MISSED":
         message = f"Position close missed; position unchanged for {symbol}"

@@ -74,27 +74,27 @@ def evaluate_rejection(
 
     # Check net return
     if net_return < criteria.min_net_return:
-        reasons.append(f"Net return too low: {net_return:.2%} < " f"{criteria.min_net_return:.2%} minimum after costs")
+        reasons.append(f"Net return too low: {net_return:.2%} < {criteria.min_net_return:.2%} minimum after costs")
         rejected = True
 
     # Check Sharpe
     if sharpe < criteria.min_sharpe:
-        reasons.append(f"Sharpe ratio too low: {sharpe:.2f} < " f"{criteria.min_sharpe} minimum")
+        reasons.append(f"Sharpe ratio too low: {sharpe:.2f} < {criteria.min_sharpe} minimum")
         rejected = True
 
     # Check win rate
     if win_rate < criteria.min_win_rate:
-        reasons.append(f"Win rate too low: {win_rate:.2%} < " f"{criteria.min_win_rate} minimum")
+        reasons.append(f"Win rate too low: {win_rate:.2%} < {criteria.min_win_rate} minimum")
         rejected = True
 
     # Check profit factor
     if profit_factor < criteria.min_profit_factor:
-        reasons.append(f"Profit factor too low: {profit_factor:.2f} < " f"{criteria.min_profit_factor} minimum")
+        reasons.append(f"Profit factor too low: {profit_factor:.2f} < {criteria.min_profit_factor} minimum")
         rejected = True
 
     # Check drawdown
     if max_drawdown > criteria.max_drawdown_limit:
-        reasons.append(f"Max drawdown too high: {max_drawdown:.2%} > " f"{criteria.max_drawdown_limit:.2%} limit")
+        reasons.append(f"Max drawdown too high: {max_drawdown:.2%} > {criteria.max_drawdown_limit:.2%} limit")
         rejected = True
 
     # Check cost ratio
@@ -106,7 +106,7 @@ def evaluate_rejection(
     if regime_performance:
         regime_diversity = sum(1 for r in regime_performance if r.n_trades >= criteria.min_trade_count_per_regime)
         if regime_diversity < 2:
-            reasons.append(f"Limited regime diversity: only {regime_diversity} regimes " f"with sufficient trades")
+            reasons.append(f"Limited regime diversity: only {regime_diversity} regimes with sufficient trades")
             rejected = True
 
     # Statistical significance test
@@ -116,7 +116,7 @@ def evaluate_rejection(
         is_significant, p_value = False, 1.0
 
     if not is_significant:
-        reasons.append(f"Not statistically significant: p={p_value:.3f} >= " f"{criteria.significance_level}")
+        reasons.append(f"Not statistically significant: p={p_value:.3f} >= {criteria.significance_level}")
         rejected = True
 
     return RejectionResult(

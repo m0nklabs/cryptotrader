@@ -173,15 +173,11 @@ def load_config_from_env(env: dict[str, str] | None = None) -> TimesFMConfig:
 
     backend = source.get("TIMESFM_BACKEND", BACKEND_AUTO).strip().lower() or BACKEND_AUTO
     if backend not in _VALID_BACKENDS:
-        raise ValueError(
-            f"TIMESFM_BACKEND must be one of {_VALID_BACKENDS}, got {backend!r}"
-        )
+        raise ValueError(f"TIMESFM_BACKEND must be one of {_VALID_BACKENDS}, got {backend!r}")
 
     device = source.get("TIMESFM_DEVICE", "auto").strip().lower() or "auto"
     if device not in _VALID_DEVICES:
-        raise ValueError(
-            f"TIMESFM_DEVICE must be one of {_VALID_DEVICES}, got {device!r}"
-        )
+        raise ValueError(f"TIMESFM_DEVICE must be one of {_VALID_DEVICES}, got {device!r}")
 
     def _positive_int(name: str, default: int) -> int:
         raw = source.get(name, "").strip()
@@ -242,9 +238,7 @@ def extract_quantile_band_3_0(
     """
     band = np.asarray(quantiles)
     if band.shape[-1] != 9:
-        raise ValueError(
-            f"TimesFM 3.0 quantiles must have 9 columns (0.1..0.9), got shape {band.shape}"
-        )
+        raise ValueError(f"TimesFM 3.0 quantiles must have 9 columns (0.1..0.9), got shape {band.shape}")
     return (
         band[..., QUANTILE_P10_IDX_3_0],
         band[..., QUANTILE_P50_IDX_3_0],
@@ -280,10 +274,7 @@ def _max_free_vram_bytes() -> int | None:
         import torch
 
         if torch.cuda.is_available():
-            return max(
-                torch.cuda.mem_get_info(device)[0]
-                for device in range(torch.cuda.device_count())
-            )
+            return max(torch.cuda.mem_get_info(device)[0] for device in range(torch.cuda.device_count()))
     except Exception:
         pass
     return None
@@ -368,9 +359,7 @@ class TimesFMService:
             if self._load_failure is not None:
                 failed_at, error = self._load_failure
                 if time.monotonic() - failed_at < LOAD_FAILURE_COOLDOWN_SECONDS:
-                    raise RuntimeError(
-                        "TimesFM model load failed recently; retry later"
-                    ) from error
+                    raise RuntimeError("TimesFM model load failed recently; retry later") from error
                 self._load_failure = None
             try:
                 device = self._resolve_device()
@@ -539,9 +528,7 @@ class TimesFMService:
         if not series:
             raise ValueError("series must contain at least one array")
         if not 1 <= int(horizon) <= self._config.max_horizon:
-            raise ValueError(
-                f"horizon must be between 1 and {self._config.max_horizon}, got {horizon}"
-            )
+            raise ValueError(f"horizon must be between 1 and {self._config.max_horizon}, got {horizon}")
 
         inputs = [np.asarray(s, dtype=np.float32) for s in series]
         for idx, values in enumerate(inputs):
@@ -562,21 +549,15 @@ class TimesFMService:
                 )
             )
             if len(outputs) != len(inputs):
-                raise RuntimeError(
-                    f"TimesFM 3.0 returned {len(outputs)} outputs for {len(inputs)} inputs"
-                )
-            per_series_bands = [
-                extract_quantile_band_3_0(np.asarray(output.quantiles)) for output in outputs
-            ]
+                raise RuntimeError(f"TimesFM 3.0 returned {len(outputs)} outputs for {len(inputs)} inputs")
+            per_series_bands = [extract_quantile_band_3_0(np.asarray(output.quantiles)) for output in outputs]
         else:
             _, quantile_forecast = self._model.forecast(
                 horizon=int(horizon),
                 inputs=inputs,
             )
             p10_all, p50_all, p90_all = extract_quantile_band(np.asarray(quantile_forecast))
-            per_series_bands = [
-                (p10_all[idx], p50_all[idx], p90_all[idx]) for idx in range(len(inputs))
-            ]
+            per_series_bands = [(p10_all[idx], p50_all[idx], p90_all[idx]) for idx in range(len(inputs))]
         latency_ms = (time.perf_counter() - started) * 1000.0
         logger.debug(
             "TimesFM forecast: backend=%s batch=%d horizon=%d latency_ms=%.1f",

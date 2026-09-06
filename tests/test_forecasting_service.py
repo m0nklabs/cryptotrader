@@ -477,9 +477,7 @@ def test_service_resolves_backend_at_construction():
     legacy = TimesFMService(config=TimesFMConfig(model_id=MODEL_ID_DEFAULT_2_5))
     assert legacy.backend == BACKEND_TIMESFM2_5
 
-    forced = TimesFMService(
-        config=TimesFMConfig(model_id=MODEL_ID_DEFAULT_2_5, backend=BACKEND_TIMESFM3)
-    )
+    forced = TimesFMService(config=TimesFMConfig(model_id=MODEL_ID_DEFAULT_2_5, backend=BACKEND_TIMESFM3))
     assert forced.backend == BACKEND_TIMESFM3
 
     with pytest.raises(ValueError, match="TIMESFM_BACKEND"):

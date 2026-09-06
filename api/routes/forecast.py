@@ -246,9 +246,7 @@ def _forecast_symbol_sync(exchange: str, symbol: str, timeframe: str, horizon: i
     service = _get_service()
     service.load()
 
-    open_times_ms, closes = _fetch_closes(
-        exchange, symbol, timeframe, limit=service.config.max_context
-    )
+    open_times_ms, closes = _fetch_closes(exchange, symbol, timeframe, limit=service.config.max_context)
     last_closed_ts = open_times_ms[-1]
 
     cache = get_forecast_cache()
@@ -284,14 +282,10 @@ def _forecast_symbol_sync(exchange: str, symbol: str, timeframe: str, horizon: i
         meta={**_service_metadata(service), "cache": "miss"},
     )
     cache.set(symbol, timeframe, horizon, last_closed_ts, result)
-    return result.to_api_dict(
-        cache="miss", latency_ms=(time.perf_counter() - started) * 1000.0
-    )
+    return result.to_api_dict(cache="miss", latency_ms=(time.perf_counter() - started) * 1000.0)
 
 
-def _forecast_batch_sync(
-    exchange: str, symbols: list[str], timeframe: str, horizon: int
-) -> dict[str, Any]:
+def _forecast_batch_sync(exchange: str, symbols: list[str], timeframe: str, horizon: int) -> dict[str, Any]:
     """Forecast many symbols; all cache misses share ONE ``service.forecast`` call."""
     started = time.perf_counter()
     service = _get_service()
@@ -304,9 +298,7 @@ def _forecast_batch_sync(
 
     for symbol in unique_symbols:
         try:
-            open_times_ms, closes = _fetch_closes(
-                exchange, symbol, timeframe, limit=service.config.max_context
-            )
+            open_times_ms, closes = _fetch_closes(exchange, symbol, timeframe, limit=service.config.max_context)
         except HTTPException as exc:
             errors[symbol] = exc.detail
             continue
@@ -331,9 +323,7 @@ def _forecast_batch_sync(
     for symbol, (last_closed_ts, closes) in fetched.items():
         cached = cache.get(symbol, timeframe, horizon, last_closed_ts)
         if cached is not None:
-            results[symbol] = cached.to_api_dict(
-                cache="hit", latency_ms=(time.perf_counter() - started) * 1000.0
-            )
+            results[symbol] = cached.to_api_dict(cache="hit", latency_ms=(time.perf_counter() - started) * 1000.0)
         else:
             pending_symbols.append(symbol)
             pending_series.append(closes)
@@ -357,9 +347,7 @@ def _forecast_batch_sync(
                 meta={**_service_metadata(service), "cache": "miss"},
             )
             cache.set(symbol, timeframe, horizon, last_closed_ts, result)
-            results[symbol] = result.to_api_dict(
-                cache="miss", latency_ms=(time.perf_counter() - started) * 1000.0
-            )
+            results[symbol] = result.to_api_dict(cache="miss", latency_ms=(time.perf_counter() - started) * 1000.0)
 
     return {
         "timeframe": timeframe,
