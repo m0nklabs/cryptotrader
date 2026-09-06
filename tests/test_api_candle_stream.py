@@ -157,19 +157,19 @@ def test_get_connection_status():
     assert status["streams"] == []
 
 
-def test_stream_endpoint_exists():
+def test_stream_endpoint_exists(route_paths):
     """Test that the stream endpoint is registered."""
     from api.main import app
 
-    routes = [route.path for route in app.routes]
+    routes = route_paths(app)
     assert "/candles/stream" in routes
 
 
-def test_stream_status_endpoint_exists():
+def test_stream_status_endpoint_exists(route_paths):
     """Test that the stream status endpoint is registered."""
     from api.main import app
 
-    routes = [route.path for route in app.routes]
+    routes = route_paths(app)
     assert "/candles/stream/status" in routes
 
 

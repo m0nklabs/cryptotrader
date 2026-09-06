@@ -11,7 +11,7 @@ permissions:
 jobs:
   release:
     name: Create Release
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
 
     steps:
       - name: Checkout

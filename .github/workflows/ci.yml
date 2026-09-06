@@ -17,22 +17,26 @@ permissions:
 jobs:
   autofix:
     name: Auto-fix style (PRs only)
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     if: github.event_name == 'pull_request'
     permissions:
       contents: write
+    env:
+      HAS_PAT: ${{ secrets.GH_PAT != '' }}
     steps:
       - name: Checkout (PAT)
+        id: pat_checkout
         uses: actions/checkout@v7
-        if: ${{ secrets.GH_PAT != '' }}
+        continue-on-error: true
+        if: env.HAS_PAT == 'true'
         with:
           ref: ${{ github.head_ref }}
 
           token: ${{ secrets.GH_PAT }}
 
-      - name: Checkout (default token)
+      - name: Checkout (default token fallback)
         uses: actions/checkout@v7
-        if: ${{ secrets.GH_PAT == '' }}
+        if: env.HAS_PAT != 'true' || steps.pat_checkout.outcome == 'failure'
         with:
           ref: ${{ github.head_ref }}
 
@@ -73,32 +77,9 @@ jobs:
             echo "Style fixes pushed - CI will re-run"
           fi
 
-  pre-commit:
-    name: Pre-commit checks
-    runs-on: [self-hosted, Linux, org]
-    needs: [autofix]
-    if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Run header
-        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
-        with:
-          title: "CI / Pre-commit"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Run pre-commit
-        uses: pre-commit/action@v3.0.1
-
   backend:
     name: Backend (ruff + pytest)
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     needs: [autofix]
     if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
 
@@ -108,6 +89,22 @@ jobs:
       BITFINEX_API_SECRET: ${{ secrets.BITFINEX_API_SECRET }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       PAPER_TRADING: "true"
+
+    # Throwaway postgres for tests; never touch the production container on :50432.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cryptotrader
+          POSTGRES_PASSWORD: cryptotrader
+          POSTGRES_DB: cryptotrader_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cryptotrader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -159,7 +156,7 @@ jobs:
 
   frontend:
     name: Frontend (build)
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     needs: [autofix]
     if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
 

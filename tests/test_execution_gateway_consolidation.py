@@ -70,13 +70,12 @@ def fm_client():
 
 
 class TestExecutionRoutesMounted:
-    def test_execution_routes_active(self, fm_client):
+    def test_execution_routes_active(self, fm_client, route_paths):
         """The /execution/* routes from api.routes.execution must be mounted."""
-        registered = {getattr(r, "path", "") for r in app.routes}
+        registered = set(route_paths(app))
         for path in EXECUTION_PATHS:
             assert path in registered, (
-                f"Expected execution route {path} to be mounted; "
-                f"missing route proves the gateway is unreachable."
+                f"Expected execution route {path} to be mounted; missing route proves the gateway is unreachable."
             )
 
 
@@ -128,9 +127,7 @@ class TestOrderAuditLogPersistence:
         entry = audit[-1]
         assert entry["symbol"] == "BTCUSD"
         assert entry["action"] in {"EXECUTED", "REJECTED"}
-        assert entry["gate_results"], (
-            "Every audit entry must capture the full gate decision."
-        )
+        assert entry["gate_results"], "Every audit entry must capture the full gate decision."
         assert entry.get("paper_order_id") is not None, (
             "Accepted orders persist paper_order_id; the orchestrator must "
             "have executed through paper_executor (the single source of truth)."
@@ -186,8 +183,7 @@ class TestOrdersGoesThroughOrchestrator:
             },
         )
         assert response.status_code == 200, (
-            "POST /orders must succeed via the orchestrator gateway; "
-            f"got {response.status_code}: {response.text}"
+            f"POST /orders must succeed via the orchestrator gateway; got {response.status_code}: {response.text}"
         )
         assert len(calls) == 1, (
             "POST /orders must call orchestrator.execute_with_explicit_qty "

@@ -12,11 +12,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def test_market_cap_endpoint_exists():
+def test_market_cap_endpoint_exists(route_paths):
     """Test that the /market-cap endpoint is registered."""
     from api.main import app
 
-    routes = [route.path for route in app.routes]
+    routes = route_paths(app)
     assert "/market-cap" in routes
 
 

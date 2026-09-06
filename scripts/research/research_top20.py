@@ -79,9 +79,7 @@ def research_top20():
             results.append(result)
 
             print(
-                f"  ✓ spread {spread_pct:.4f}% | "
-                f"24h change {day_change_pct:.2f}% | "
-                f"avg 1h range {avg_range_pct:.2f}%"
+                f"  ✓ spread {spread_pct:.4f}% | 24h change {day_change_pct:.2f}% | avg 1h range {avg_range_pct:.2f}%"
             )
         except Exception as exc:
             print(f"  ✗ {str(exc)[:80]}")

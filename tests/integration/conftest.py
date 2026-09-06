@@ -28,8 +28,7 @@ DISPOSABLE_DB_CONTAINER = os.environ.get("INTEGRATION_CONTAINER_NAME", "cryptotr
 KEEP_DISPOSABLE_DB_ENV = "CRYPTOTRADER_KEEP_DISPOSABLE_DB"
 CLEAN_DISPOSABLE_DB_ENV = "CRYPTOTRADER_CLEAN_DISPOSABLE_DB"
 DISPOSABLE_DB_URL = (
-    f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}"
-    f"@127.0.0.1:{DISPOSABLE_DB_PORT}/{DISPOSABLE_DB_NAME}"
+    f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}@127.0.0.1:{DISPOSABLE_DB_PORT}/{DISPOSABLE_DB_NAME}"
 )
 
 
@@ -190,7 +189,7 @@ def start_disposable_db(port: int = DISPOSABLE_DB_PORT) -> str:
             timeout=10,
         )
         raise RuntimeError(f"PostgreSQL did not become ready on port {port}.\n{logs.stdout[-500:]}")
-    return f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}" f"@127.0.0.1:{port}/{DISPOSABLE_DB_NAME}"
+    return f"postgresql://{DISPOSABLE_DB_USER}:{DISPOSABLE_DB_PASSWORD}@127.0.0.1:{port}/{DISPOSABLE_DB_NAME}"
 
 
 def stop_disposable_db() -> None:

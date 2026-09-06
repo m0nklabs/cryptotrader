@@ -427,15 +427,15 @@ class TestPositionEndpoints:
 class TestPaperTradingEndpointsExist:
     """Verify that all paper trading endpoints are registered."""
 
-    def test_orders_endpoints_exist(self):
+    def test_orders_endpoints_exist(self, route_paths):
         """Test that order endpoints are registered."""
-        routes = [route.path for route in app.routes]
+        routes = route_paths(app)
         assert "/orders" in routes
         assert "/orders/{order_id}" in routes
 
-    def test_positions_endpoints_exist(self):
+    def test_positions_endpoints_exist(self, route_paths):
         """Test that position endpoints are registered."""
-        routes = [route.path for route in app.routes]
+        routes = route_paths(app)
         assert "/positions" in routes
         assert "/positions/{symbol}/close" in routes
 

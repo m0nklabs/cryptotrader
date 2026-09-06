@@ -20,6 +20,7 @@ import { RiskCalculator } from './components/RiskCalculator'
 import AiEvaluationPanel from './components/AiEvaluationPanel'
 import { AiConfigPanel } from './components/AiConfigPanel'
 import BacktestView from './views/BacktestView'
+import ForecastPanel from './components/ForecastPanel'
 import { sampleEquityCurve } from './data/performanceSample'
 import {
   placeOrder,
@@ -2054,6 +2055,9 @@ export default function App() {
 
           {/* Backtest view — run backtests on historical data */}
           {activeView === VIEW_IDS.BACKTEST && <BacktestView />}
+
+          {/* Forecast view — TimesFM quantile forecasting */}
+          {activeView === VIEW_IDS.FORECAST && <ForecastPanel />}
         </main>
 
         <footer className="border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">

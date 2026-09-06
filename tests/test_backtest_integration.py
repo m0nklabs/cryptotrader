@@ -204,9 +204,9 @@ def test_backtest_engine_dynamic_kelly_sizing() -> None:
             expected_pnl = float(trade.exit_price - trade.entry_price) * float(trade.size)
         else:
             expected_pnl = float(trade.entry_price - trade.exit_price) * float(trade.size)
-        assert (
-            abs(float(trade.pnl) - expected_pnl) < FLOAT_TOLERANCE
-        ), f"PnL mismatch: expected {expected_pnl}, got {float(trade.pnl)}"
+        assert abs(float(trade.pnl) - expected_pnl) < FLOAT_TOLERANCE, (
+            f"PnL mismatch: expected {expected_pnl}, got {float(trade.pnl)}"
+        )
 
 
 def test_backtest_engine_fixed_sizing_still_works() -> None:

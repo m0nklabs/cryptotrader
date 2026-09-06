@@ -174,7 +174,7 @@ class MultiAgentPredictionService:
         """
         if not self.api_key:
             logger.debug(
-                "MultiBrain is_available: short-circuit — " "GUARDIAN_API_KEY not set",
+                "MultiBrain is_available: short-circuit — GUARDIAN_API_KEY not set",
             )
             return False
         try:
@@ -589,9 +589,7 @@ class MultiAgentPredictionService:
         from core.signals.llm import GuardianUnauthenticated
 
         if not self.api_key:
-            raise GuardianUnauthenticated(
-                "GUARDIAN_API_KEY is not set. " "Cannot query Guardian without authentication."
-            )
+            raise GuardianUnauthenticated("GUARDIAN_API_KEY is not set. Cannot query Guardian without authentication.")
         async with httpx.AsyncClient(
             base_url=self.guardian_host,
             timeout=httpx.Timeout(180.0),

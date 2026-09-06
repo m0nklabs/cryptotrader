@@ -475,8 +475,7 @@ class ExecutionOrchestrator:
                 gate=GateName.VETO,
                 passed=False,
                 reason=(
-                    f"Consensus action not executable: {consensus.final_action} "
-                    f"(conf={consensus.final_confidence:.2f})"
+                    f"Consensus action not executable: {consensus.final_action} (conf={consensus.final_confidence:.2f})"
                 ),
                 details={
                     "final_action": consensus.final_action,

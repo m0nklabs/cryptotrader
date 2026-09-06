@@ -64,6 +64,7 @@ from api.routes import (
     backtest as backtest_routes,
     execution as execution_routes,
     smoke as smoke_routes,
+    forecast as forecast_routes,
 )
 
 # Import middleware for rate limit tracking
@@ -78,6 +79,23 @@ async def lifespan(app: FastAPI):
         await ai_routes.bootstrap_ai()
     except Exception:
         logger.exception("AI bootstrap failed")
+
+    # Optional TimesFM preload (fail-open): warm the forecasting model in a
+    # daemon thread so the first /forecast call does not pay the load cost.
+    # Disable with TIMESFM_PRELOAD=0 (e.g. in tests or minimal deployments).
+    if os.environ.get("TIMESFM_PRELOAD", "1") != "0":
+
+        def _preload_timesfm() -> None:
+            try:
+                forecast_routes._get_service().load()
+                logger.info("TimesFM model preloaded")
+            except Exception:
+                logger.warning(
+                    "TimesFM preload failed; /forecast endpoints will load lazily",
+                    exc_info=True,
+                )
+
+        threading.Thread(target=_preload_timesfm, name="timesfm-preload", daemon=True).start()
 
     try:
         yield
@@ -989,8 +1007,7 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
                         "error": "orchestrator_rejected",
                         "message": decision.reason,
                         "gate_results": [
-                            {"gate": gr.gate, "passed": gr.passed, "reason": gr.reason}
-                            for gr in decision.gate_results
+                            {"gate": gr.gate, "passed": gr.passed, "reason": gr.reason} for gr in decision.gate_results
                         ],
                     },
                 )
@@ -1178,10 +1195,7 @@ async def close_position(
         message = "Position closed"
         success = True
     elif fill_status == "PARTIAL":
-        message = (
-            f"Position partially closed: requested {qty}, "
-            f"filled {fill_qty}, remaining {remaining_qty}"
-        )
+        message = f"Position partially closed: requested {qty}, filled {fill_qty}, remaining {remaining_qty}"
         success = False
     elif fill_status == "MISSED":
         message = f"Position close missed; position unchanged for {symbol}"
@@ -2482,3 +2496,4 @@ app.include_router(alerts_routes.router)
 app.include_router(backtest_routes.router)
 app.include_router(smoke_routes.router)
 app.include_router(execution_routes.router)
+app.include_router(forecast_routes.router)

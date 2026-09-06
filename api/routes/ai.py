@@ -818,13 +818,13 @@ async def evaluate_opportunity(request: EvaluationRequest):
         if budget_status["exceeded"]:
             error_detail = {"error": "Budget exceeded", "budget_status": budget_status}
             if budget_status["daily_exceeded"]:
-                error_detail[
-                    "message"
-                ] = f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
+                error_detail["message"] = (
+                    f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
+                )
             elif budget_status["monthly_exceeded"]:
-                error_detail[
-                    "message"
-                ] = f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
+                error_detail["message"] = (
+                    f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
+                )
             raise HTTPException(status_code=429, detail=error_detail)
 
         # Check per-role budgets for all roles that will be evaluated
@@ -835,13 +835,13 @@ async def evaluate_opportunity(request: EvaluationRequest):
             if role_budget_status["exceeded"]:
                 error_detail = {"error": "Budget exceeded", "role": role.value, "budget_status": role_budget_status}
                 if role_budget_status["daily_exceeded"]:
-                    error_detail[
-                        "message"
-                    ] = f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
+                    error_detail["message"] = (
+                        f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
+                    )
                 elif role_budget_status["monthly_exceeded"]:
-                    error_detail[
-                        "message"
-                    ] = f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
+                    error_detail["message"] = (
+                        f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
+                    )
                 raise HTTPException(status_code=429, detail=error_detail)
 
     # Log incoming evaluation request
@@ -1006,13 +1006,13 @@ async def evaluate_single_role(request: EvaluationRequest):
         if budget_status["exceeded"]:
             error_detail = {"error": "Budget exceeded", "budget_status": budget_status}
             if budget_status["daily_exceeded"]:
-                error_detail[
-                    "message"
-                ] = f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
+                error_detail["message"] = (
+                    f"Daily budget limit of ${budget_status['daily_limit']:.2f} exceeded (spent: ${budget_status['daily_spent']:.4f})"
+                )
             elif budget_status["monthly_exceeded"]:
-                error_detail[
-                    "message"
-                ] = f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
+                error_detail["message"] = (
+                    f"Monthly budget limit of ${budget_status['monthly_limit']:.2f} exceeded (spent: ${budget_status['monthly_spent']:.4f})"
+                )
             raise HTTPException(status_code=429, detail=error_detail)
 
         # Check role-specific budget
@@ -1020,13 +1020,13 @@ async def evaluate_single_role(request: EvaluationRequest):
         if role_budget_status["exceeded"]:
             error_detail = {"error": "Budget exceeded", "role": role.value, "budget_status": role_budget_status}
             if role_budget_status["daily_exceeded"]:
-                error_detail[
-                    "message"
-                ] = f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
+                error_detail["message"] = (
+                    f"Daily budget limit for role '{role.value}' of ${role_budget_status['daily_limit']:.2f} exceeded (spent: ${role_budget_status['daily_spent']:.4f})"
+                )
             elif role_budget_status["monthly_exceeded"]:
-                error_detail[
-                    "message"
-                ] = f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
+                error_detail["message"] = (
+                    f"Monthly budget limit for role '{role.value}' of ${role_budget_status['monthly_limit']:.2f} exceeded (spent: ${role_budget_status['monthly_spent']:.4f})"
+                )
             raise HTTPException(status_code=429, detail=error_detail)
 
     # Run evaluation with single role

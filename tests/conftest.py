@@ -47,3 +47,18 @@ def api_client():
     from api.main import app
 
     return TestClient(app)
+
+
+@pytest.fixture
+def route_paths():
+    """Callable returning all registered route paths of a FastAPI app.
+
+    Uses the OpenAPI schema so this works across FastAPI versions: fastapi
+    >= 0.139 keeps prefixed routers wrapped in ``_IncludedRouter`` objects
+    inside ``app.routes`` which expose no ``.path`` attribute.
+    """
+
+    def _route_paths(app):
+        return list(app.openapi()["paths"].keys())
+
+    return _route_paths

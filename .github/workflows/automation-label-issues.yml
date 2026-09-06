@@ -6,7 +6,7 @@ on:
 
 jobs:
   label:
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     permissions:
       issues: write
 

@@ -23,8 +23,9 @@ frontend/.vite/
 frontend/tsconfig.tsbuildinfo
 frontend/coverage/
 
-# Research (local scratch + imported specs)
-research/
+# Research (local scratch + imported specs) — anchored to the repo root only,
+# so scripts/research/ stays tracked.
+/research/
 
 # Logs (keep directory but ignore log files)
 logs/*.log
@@ -49,3 +50,11 @@ related-repos/
 .vscode/
 .workflow-approver-state.json
 .aider*
+
+# Generated artifacts & tool dirs (root hygiene)
+fee_proof_report.json
+.claude/
+.understand-anything/
+
+# Fee evidence data is checked in (proof gate needs it in CI)
+!research/trading-platform/data/latest_fees.json

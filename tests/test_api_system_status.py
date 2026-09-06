@@ -93,9 +93,9 @@ def test_system_status_endpoint_database_error(client):
         assert "error" in data["database"]
 
 
-def test_system_status_endpoint_exists():
+def test_system_status_endpoint_exists(route_paths):
     """Test that the system status endpoint is registered."""
     from api.main import app
 
-    routes = [route.path for route in app.routes]
+    routes = route_paths(app)
     assert "/system/status" in routes

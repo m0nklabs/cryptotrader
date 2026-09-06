@@ -278,9 +278,9 @@ def test_min_edge_thresholds_defined():
     """MIN_EDGE_THRESHOLDS has thresholds for all signal types."""
     expected_signals = {"RSI", "MACD", "STOCHASTIC", "BOLLINGER", "ATR", "MA_CROSS", "VOLUME_SPIKE", "HIGH_LOW"}
     actual_signals = set(MIN_EDGE_THRESHOLDS.keys())
-    assert (
-        expected_signals == actual_signals
-    ), f"Missing: {expected_signals - actual_signals}, Extra: {actual_signals - expected_signals}"
+    assert expected_signals == actual_signals, (
+        f"Missing: {expected_signals - actual_signals}, Extra: {actual_signals - expected_signals}"
+    )
 
     # All thresholds should be positive
     for code, threshold in MIN_EDGE_THRESHOLDS.items():

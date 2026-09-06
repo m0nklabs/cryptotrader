@@ -23,7 +23,7 @@ permissions:
 jobs:
   ci:
     name: Run CI checks
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     env:
       DATABASE_URL: postgresql+asyncpg://cryptotrader:cryptotrader@localhost:5432/cryptotrader_test
       BITFINEX_API_KEY: ${{ secrets.BITFINEX_API_KEY }}

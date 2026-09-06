@@ -14,10 +14,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def test_fees_estimate_endpoint_exists():
+def test_fees_estimate_endpoint_exists(route_paths):
     from api.main import app
 
-    routes = [route.path for route in app.routes]
+    routes = route_paths(app)
     assert "/fees/estimate" in routes
 
 

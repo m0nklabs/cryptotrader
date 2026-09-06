@@ -11,6 +11,7 @@ This folder contains the project documentation for `cryptotrader`.
 - [Frontend](FRONTEND.md): Dashboard UI documentation
 - [Operations](OPERATIONS.md): Runbook (ports, services)
 - [WebSocket](WEBSOCKET.md): Real-time market data streaming
+- [Forecasting](FORECASTING.md): TimesFM forecasting lane (endpoints, backends, env knobs)
 - [Orchestration](ORCHESTRATION.md): How we delegate work via Issues/PRs
 
 ## Additional Docs

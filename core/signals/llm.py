@@ -275,9 +275,7 @@ CONFIDENCE: (your confidence in the analysis)"""
     async def _fetch_model_ids(self) -> list[str]:
         """Fetch Guardian model ids with a single authenticated request."""
         if not self._api_key:
-            raise GuardianUnauthenticated(
-                "GUARDIAN_API_KEY is not set. " "Set the env var or skip Guardian LLM features."
-            )
+            raise GuardianUnauthenticated("GUARDIAN_API_KEY is not set. Set the env var or skip Guardian LLM features.")
 
         async with httpx.AsyncClient(headers=self._headers) as client:
             response = await client.get(f"{self.host}/v1/models", timeout=5.0)
@@ -309,9 +307,7 @@ CONFIDENCE: (your confidence in the analysis)"""
         "eval_count" with the token count — matching the shape callers expect.
         """
         if not self._api_key:
-            raise GuardianUnauthenticated(
-                "GUARDIAN_API_KEY is not set. " "Cannot query Guardian without authentication."
-            )
+            raise GuardianUnauthenticated("GUARDIAN_API_KEY is not set. Cannot query Guardian without authentication.")
 
         url = f"{self.host}/v1/chat/completions"
 
@@ -454,12 +450,10 @@ Note: LLM analysis unavailable ({error}). This is rule-based analysis only."""
         """
         if not self._api_key:
             logger.debug(
-                "Guardian is_available: short-circuit — " "GUARDIAN_API_KEY not set (value=%r)",
+                "Guardian is_available: short-circuit — GUARDIAN_API_KEY not set (value=%r)",
                 self._api_key,
             )
-            raise GuardianUnauthenticated(
-                "GUARDIAN_API_KEY is not set. " "Set the env var or skip Guardian LLM features."
-            )
+            raise GuardianUnauthenticated("GUARDIAN_API_KEY is not set. Set the env var or skip Guardian LLM features.")
         available, _ = await self.get_models_status()
         return available
 
@@ -470,7 +464,7 @@ Note: LLM analysis unavailable ({error}). This is rule-based analysis only."""
         """
         if not self._api_key:
             logger.debug(
-                "Guardian list_models: short-circuit — " "GUARDIAN_API_KEY not set",
+                "Guardian list_models: short-circuit — GUARDIAN_API_KEY not set",
             )
             return []
         _, models = await self.get_models_status()

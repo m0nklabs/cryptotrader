@@ -13,7 +13,7 @@ jobs:
   agent-response:
     # Only run if the comment starts with /agent
     if: startsWith(github.event.comment.body, '/agent')
-    runs-on: [self-hosted, Linux, org]
+    runs-on: [self-hosted, Linux]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
