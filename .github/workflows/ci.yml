@@ -77,31 +77,6 @@ jobs:
             echo "Style fixes pushed - CI will re-run"
           fi
 
-  pre-commit:
-    name: Pre-commit checks
-    runs-on: [self-hosted, Linux]
-    needs: [autofix]
-    if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Run header
-        uses: m0nklabs/cryptotrader/.github/actions/run-header@master
-        with:
-          title: "CI / Pre-commit"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Run pre-commit
-        uses: pre-commit/action@v3.0.1
-        env:
-          PRE_COMMIT_HOME: ${{ runner.temp }}/pre-commit-cache
-
   backend:
     name: Backend (ruff + pytest)
     runs-on: [self-hosted, Linux]
