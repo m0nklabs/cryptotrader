@@ -501,7 +501,9 @@ async def test_log_decision_with_usage_rolls_back_on_failure(db_session):
 @pytest.mark.asyncio
 async def test_get_daily_usage_buckets_and_order(db_session):
     """Validate UTC bucketing, ordering, and success_rate calculations."""
-    base = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+    # Anchor one hour in the past (not a fixed 12:00 UTC): a fixed anchor lands
+    # in the future when CI runs before noon UTC and the query filters it out.
+    base = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
     day_one = base - timedelta(days=1)
     day_two = base
 
