@@ -15,7 +15,7 @@ psycopg2-binary>=2.9.12
 asyncpg>=0.31.0  # Async PostgreSQL driver for SQLAlchemy async sessions
 
 # FastAPI (for read-only API)
-fastapi>=0.138.0
+fastapi>=0.141.1
 uvicorn>=0.51.0,<0.52.0
 httpx>=0.25.0  # Async HTTP client for notifications
 
