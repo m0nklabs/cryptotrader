@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-07
+### Wallet endpoint on the main API (issue #452)
+- Add `GET /wallet/balances` to the main API (`api/routes/wallet.py`): the
+  dashboard wallet card works through the vite `/api` proxy again. Same
+  contract as the legacy helper (`{"wallets": [{type, currency, balance,
+  available}]}`, mock balances in paper-trading mode, real Bitfinex balances
+  with credentials), upstream failures surface as HTTP 502.
+- The legacy helper on :8787 keeps serving the same endpoint.
+
 ## 2026-09-06
 ### TimesFM 3.0 backend (new default)
 - Add TimesFM 3.0 support to the forecasting lane behind the existing
