@@ -64,16 +64,13 @@ def test_wallet_balances_real_client_path(monkeypatch: pytest.MonkeyPatch) -> No
 
         def get_wallets(self) -> list[dict[str, Any]]:
             return [
-                {"type": "exchange", "currency": "USD", "balance": 5.0,
-                 "available_balance": 4.0},
+                {"type": "exchange", "currency": "USD", "balance": 5.0, "available_balance": 4.0},
                 {"type": "margin", "currency": "BTC", "balance": 1.0},
             ]
 
     monkeypatch.setenv("BITFINEX_API_KEY", "k")
     monkeypatch.setenv("BITFINEX_API_SECRET", "s")
-    monkeypatch.setattr(
-        "cex.bitfinex.api.bitfinex_client_v2.BitfinexClient", _FakeClient
-    )
+    monkeypatch.setattr("cex.bitfinex.api.bitfinex_client_v2.BitfinexClient", _FakeClient)
 
     resp = client.get("/wallet/balances")
     assert resp.status_code == 200
@@ -97,9 +94,7 @@ def test_wallet_balances_upstream_failure_is_502(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setenv("BITFINEX_API_KEY", "k")
     monkeypatch.setenv("BITFINEX_API_SECRET", "s")
-    monkeypatch.setattr(
-        "cex.bitfinex.api.bitfinex_client_v2.BitfinexClient", _BrokenClient
-    )
+    monkeypatch.setattr("cex.bitfinex.api.bitfinex_client_v2.BitfinexClient", _BrokenClient)
 
     resp = client.get("/wallet/balances")
     assert resp.status_code == 502
