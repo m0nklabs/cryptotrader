@@ -150,7 +150,7 @@ cd frontend && npm run build
 # live chain (dashboard → API → DB)
 curl -fsS 'http://127.0.0.1:5176/api/health'
 curl -fsS 'http://127.0.0.1:5176/api/candles?symbol=BTCUSD&timeframe=1h&limit=2'
-curl -fsS http://127.0.0.1:8787/api/wallet/balances   # legacy wallet endpoint
+curl -fsS http://127.0.0.1:8000/wallet/balances      # wallet endpoint (legacy helper on :8787 still serves it)
 ```
 
 Symbol format for the candle store is without slash (`BTCUSD`, not `BTC/USD`).

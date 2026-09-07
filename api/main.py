@@ -65,6 +65,7 @@ from api.routes import (
     execution as execution_routes,
     smoke as smoke_routes,
     forecast as forecast_routes,
+    wallet as wallet_routes,
 )
 
 # Import middleware for rate limit tracking
@@ -2497,3 +2498,4 @@ app.include_router(backtest_routes.router)
 app.include_router(smoke_routes.router)
 app.include_router(execution_routes.router)
 app.include_router(forecast_routes.router)
+app.include_router(wallet_routes.router)
