@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 
 from api.candle_stream import get_candle_stream_service
 from core.execution.paper import PaperExecutor, PaperOrder, PaperPosition
-from execution_orchestrator import ExecutionOrchestrator
+from core.execution.execution_orchestrator import ExecutionOrchestrator
 from core.fees.model import FeeModel
 from core.market_cap.coingecko import CoinGeckoClient
 from core.storage.postgres.config import PostgresConfig
