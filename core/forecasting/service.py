@@ -34,10 +34,16 @@ Design notes:
   With ``auto``, CUDA is preferred when available; if loading/inference on
   CUDA fails (e.g. out of VRAM on a shared GPU) the service fails open by
   retrying once on CPU.
+- Idle unload: ``TIMESFM_IDLE_UNLOAD`` (seconds; ``0`` = disabled) starts a
+  daemon watchdog after the first successful load that drops the model once
+  no successful forecast happened for that long, so an idle API process holds
+  zero model memory (it otherwise keeps ~1.5 GB resident). The next
+  forecast/status request transparently reloads (~2-7 s on CPU).
 """
 
 from __future__ import annotations
 
+import gc
 import logging
 import os
 import subprocess
@@ -86,6 +92,11 @@ MIN_FREE_VRAM_BYTES = 2 * 1024**3
 
 # Seconds a failed model load is remembered before the next load attempt.
 LOAD_FAILURE_COOLDOWN_SECONDS = 30.0
+
+# Upper bound for the idle-unload watchdog's poll interval. With the intended
+# TTL of 900 s (15 min) the watchdog polls every 30 s, so an idle model is
+# unloaded at most ~30 s past its TTL.
+IDLE_WATCHDOG_MAX_POLL_SECONDS = 30.0
 
 # Layout of the last axis of TimesFM 2.5's quantile_forecast
 # (batch, horizon, 10): index 0 = mean, 1 = q10, ..., 5 = median (= point
@@ -144,6 +155,10 @@ class TimesFMConfig:
         max_horizon: Maximum forecast horizon in steps (also
             ``ForecastConfig.max_horizon`` for 2.5; timesfm rounds it up
             internally to a multiple of the output patch size).
+        idle_unload_seconds: Seconds without a successful forecast after which
+            a daemon watchdog drops the model from memory (0 = disabled: the
+            model stays resident until process exit). Reload cost is paid by
+            the next request.
     """
 
     model_id: str = MODEL_ID_DEFAULT
@@ -151,6 +166,7 @@ class TimesFMConfig:
     device: str = "auto"
     max_context: int = MAX_CONTEXT_DEFAULT
     max_horizon: int = MAX_HORIZON_DEFAULT
+    idle_unload_seconds: float = 0.0
 
 
 def load_config_from_env(env: dict[str, str] | None = None) -> TimesFMConfig:
@@ -164,8 +180,9 @@ def load_config_from_env(env: dict[str, str] | None = None) -> TimesFMConfig:
 
     Raises:
         ValueError: If ``TIMESFM_DEVICE`` is not one of auto/cpu/cuda, if
-            ``TIMESFM_BACKEND`` is not one of auto/timesfm2_5/timesfm3 or if
-            the numeric settings are not positive integers.
+            ``TIMESFM_BACKEND`` is not one of auto/timesfm2_5/timesfm3, if
+            the integer settings are not positive integers or if
+            ``TIMESFM_IDLE_UNLOAD`` is not a non-negative number.
     """
     source = os.environ if env is None else env
 
@@ -191,8 +208,22 @@ def load_config_from_env(env: dict[str, str] | None = None) -> TimesFMConfig:
             raise ValueError(f"{name} must be a positive integer, got {value}")
         return value
 
+    def _non_negative_float(name: str, default: float) -> float:
+        raw = source.get(name, "").strip()
+        if not raw:
+            return default
+        try:
+            value = float(raw)
+        except ValueError as exc:
+            raise ValueError(f"{name} must be a number, got {raw!r}") from exc
+        if value < 0:
+            raise ValueError(f"{name} must be >= 0, got {value}")
+        return value
+
     max_context = _positive_int("TIMESFM_MAX_CONTEXT", MAX_CONTEXT_DEFAULT)
     max_horizon = _positive_int("TIMESFM_MAX_HORIZON", MAX_HORIZON_DEFAULT)
+    # 0 disables the idle unload (model stays resident until process exit).
+    idle_unload_seconds = _non_negative_float("TIMESFM_IDLE_UNLOAD", 0.0)
 
     return TimesFMConfig(
         model_id=model_id,
@@ -200,6 +231,7 @@ def load_config_from_env(env: dict[str, str] | None = None) -> TimesFMConfig:
         device=device,
         max_context=max_context,
         max_horizon=max_horizon,
+        idle_unload_seconds=idle_unload_seconds,
     )
 
 
@@ -244,6 +276,24 @@ def extract_quantile_band_3_0(
         band[..., QUANTILE_P50_IDX_3_0],
         band[..., QUANTILE_P90_IDX_3_0],
     )
+
+
+def _empty_cuda_cache() -> None:
+    """Best-effort release of torch's cached CUDA blocks back to the driver.
+
+    Dropping a CUDA model only returns its blocks to torch's caching
+    allocator; without ``torch.cuda.empty_cache()`` the driver would still
+    report the memory as allocated (the exact metric this feature exists to
+    fix). Never raises: torch may be absent (not imported yet) or CUDA
+    unavailable.
+    """
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:  # pragma: no cover - best-effort cleanup, never fatal
+        logger.debug("TimesFM: CUDA cache release skipped", exc_info=True)
 
 
 def _max_free_vram_bytes() -> int | None:
@@ -304,6 +354,11 @@ class TimesFMService:
         self._device: str | None = None
         self._load_lock = threading.Lock()
         self._load_failure: tuple[float, Exception] | None = None
+        # Idle-unload bookkeeping: monotonic timestamp of the last successful
+        # use (load or forecast; None while unloaded) and the single watchdog
+        # thread that drops the model once the idle TTL is exceeded.
+        self._last_used_monotonic: float | None = None
+        self._idle_watchdog: threading.Thread | None = None
 
     # ------------------------------------------------------------------
     # State
@@ -330,12 +385,25 @@ class TimesFMService:
         return self._device
 
     def status(self) -> dict[str, Any]:
-        """Status payload for ``GET /forecast/status``."""
+        """Status payload for ``GET /forecast/status``.
+
+        ``idle_seconds`` is seconds since the last successful use (load or
+        forecast); ``None`` while the model is unloaded (or its last-use time
+        is unknown). ``idle_unload_seconds`` mirrors the configured idle TTL
+        (``0.0`` = idle unload disabled).
+        """
+        idle_seconds: float | None = None
+        if self.loaded:
+            last_used = self._last_used_monotonic
+            if last_used is not None:
+                idle_seconds = time.monotonic() - last_used
         return {
             "loaded": self.loaded,
             "model_id": self._config.model_id,
             "device": self._device,
             "ready": self.loaded,
+            "idle_seconds": idle_seconds,
+            "idle_unload_seconds": self._config.idle_unload_seconds,
         }
 
     # ------------------------------------------------------------------
@@ -367,6 +435,11 @@ class TimesFMService:
             except Exception as exc:
                 self._load_failure = (time.monotonic(), exc)
                 raise
+            # Successful load counts as a use: the idle TTL restarts here.
+            # (The unlocked fast path above deliberately does NOT refresh the
+            # stamp, so status polls never keep an idle model resident.)
+            self._last_used_monotonic = time.monotonic()
+            self._ensure_idle_watchdog()
 
     def _resolve_device(self) -> str:
         """Resolve the requested device to an actual placement.
@@ -496,6 +569,98 @@ class TimesFMService:
         self.load()
 
     # ------------------------------------------------------------------
+    # Idle unload
+    # ------------------------------------------------------------------
+
+    def unload(self) -> None:
+        """Drop the loaded model so the process holds no model memory.
+
+        Idempotent and thread-safe: the state swap happens under the load
+        lock, so this is safe to call from the idle watchdog thread, a request
+        thread or an operator shell. The next :meth:`load` / :meth:`forecast`
+        transparently reloads the model (paying the load cost again).
+        """
+        with self._load_lock:
+            self._drop_model_locked()
+
+    def _drop_model_locked(self) -> None:
+        """Release all model state. Caller must hold ``self._load_lock``."""
+        had_model = self._model is not None
+        device = self._device
+        self._model = None
+        self._device = None
+        self._load_failure = None
+        self._last_used_monotonic = None
+        if had_model:
+            # Break reference cycles (tokenizer <-> model hooks etc.) so the
+            # tensors are actually deallocated, and hand CUDA memory back to
+            # the driver (torch's caching allocator would otherwise keep it
+            # reserved and nvidia-smi would still report it as used). CPU
+            # pages freed this way may be retained by the allocator for
+            # reuse; no live model objects remain either way.
+            gc.collect()
+            if device == "cuda":
+                _empty_cuda_cache()
+            logger.info("TimesFM model unloaded; model memory released")
+
+    def _unload_if_idle(self, ttl_seconds: float) -> bool:
+        """Unload only when the model has been idle longer than ``ttl_seconds``.
+
+        The decision is (re-)checked while holding the load lock, so a load
+        that completed in the meantime (it refreshes the last-used stamp) is
+        never dropped because of a stale watchdog decision.
+
+        Args:
+            ttl_seconds: Idle TTL in seconds.
+
+        Returns:
+            ``True`` when this call unloaded the model.
+        """
+        with self._load_lock:
+            last_used = self._last_used_monotonic
+            if self._model is None or last_used is None:
+                return False
+            if time.monotonic() - last_used <= ttl_seconds:
+                return False
+            self._drop_model_locked()
+        return True
+
+    def _ensure_idle_watchdog(self) -> None:
+        """Start the idle-unload watchdog once per service instance.
+
+        Called from :meth:`load` with ``self._load_lock`` held, which
+        serializes the duplicate guard. The thread is a daemon so it never
+        blocks interpreter shutdown; it polls for the process lifetime and
+        keeps working across unload/reload cycles (a reload does not spawn a
+        second watchdog).
+        """
+        if self._config.idle_unload_seconds <= 0:
+            return
+        if self._idle_watchdog is not None and self._idle_watchdog.is_alive():
+            return
+        self._idle_watchdog = threading.Thread(
+            target=self._idle_watchdog_loop,
+            name="timesfm-idle-watchdog",
+            daemon=True,
+        )
+        self._idle_watchdog.start()
+        logger.info(
+            "TimesFM idle watchdog started (ttl=%.1fs)",
+            self._config.idle_unload_seconds,
+        )
+
+    def _idle_watchdog_loop(self) -> None:
+        """Poll last-use and unload the model once the idle TTL is exceeded."""
+        ttl_seconds = self._config.idle_unload_seconds
+        poll_interval = min(IDLE_WATCHDOG_MAX_POLL_SECONDS, ttl_seconds / 4.0)
+        while True:
+            time.sleep(poll_interval)
+            try:
+                self._unload_if_idle(ttl_seconds)
+            except Exception:  # pragma: no cover - the watchdog must never die
+                logger.exception("TimesFM idle watchdog iteration failed")
+
+    # ------------------------------------------------------------------
     # Inference
     # ------------------------------------------------------------------
 
@@ -535,10 +700,21 @@ class TimesFMService:
             if values.size == 0:
                 raise ValueError(f"series[{idx}] is empty")
 
+        # Single attribute read: a concurrent idle-unload may drop
+        # ``self._model``, but an in-flight call keeps its own reference and
+        # completes; the next request transparently reloads.
+        model = self._model
+        if model is None:
+            # The idle watchdog won the race against the load() fast path.
+            # Reload (the fresh load stamps a new last-use time, so the
+            # watchdog spares it) and read again.
+            self.load()
+            model = self._model
+
         started = time.perf_counter()
         if self._backend == BACKEND_TIMESFM3:
             outputs = list(
-                self._model.predict_batch(
+                model.predict_batch(
                     contexts=inputs,
                     horizon=int(horizon),
                     return_quantiles=True,
@@ -552,12 +728,14 @@ class TimesFMService:
                 raise RuntimeError(f"TimesFM 3.0 returned {len(outputs)} outputs for {len(inputs)} inputs")
             per_series_bands = [extract_quantile_band_3_0(np.asarray(output.quantiles)) for output in outputs]
         else:
-            _, quantile_forecast = self._model.forecast(
+            _, quantile_forecast = model.forecast(
                 horizon=int(horizon),
                 inputs=inputs,
             )
             p10_all, p50_all, p90_all = extract_quantile_band(np.asarray(quantile_forecast))
             per_series_bands = [(p10_all[idx], p50_all[idx], p90_all[idx]) for idx in range(len(inputs))]
+        # Successful model use: restart the idle-unload timer.
+        self._last_used_monotonic = time.monotonic()
         latency_ms = (time.perf_counter() - started) * 1000.0
         logger.debug(
             "TimesFM forecast: backend=%s batch=%d horizon=%d latency_ms=%.1f",

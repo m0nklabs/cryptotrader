@@ -11,7 +11,7 @@ for both.
 |---|---|
 | `POST /forecast` | Forecast the next `horizon` closes for one symbol. |
 | `POST /forecast/batch` | Forecast many symbols; cache misses share one batched model call. |
-| `GET /forecast/status` | Load status (`loaded`, `model_id`, `device`, `ready`); first call triggers the lazy load. |
+| `GET /forecast/status` | Load status (`loaded`, `model_id`, `device`, `ready`, `idle_seconds`, `idle_unload_seconds`); a call ensures the model is loaded. |
 
 Responses carry per-step `ts`, `p10`, `p50`, `p90` (80% prediction interval
 around the median), plus `model_id`, `context_len`, `device`, `cache`
@@ -49,6 +49,7 @@ records which model produced a result.
 | `TIMESFM_MAX_HORIZON` | `256` | Maximum horizon accepted by the API. |
 | `TIMESFM_CACHE_TTL` | `900` s | Forecast TTL-cache lifetime. |
 | `TIMESFM_PRELOAD` | `1` | `0` disables the startup preload thread. |
+| `TIMESFM_IDLE_UNLOAD` | `0` (disabled) | Seconds without a successful forecast after which the model is dropped from memory; the next request transparently reloads. |
 
 ## Caching
 
@@ -64,6 +65,34 @@ FastAPI event loop). The service is a lazy, thread-safe singleton; a failed
 load is remembered for 30 s (cooldown) instead of retrying the heavy load per
 request. Startup optionally preloads the model in a daemon thread
 (`api.main` lifespan, fail-open).
+
+## On-demand hosting with idle unload
+
+Without an explicit preload, the API process holds zero model memory until the
+first forecast request; with `TIMESFM_IDLE_UNLOAD` (seconds, `0` = disabled)
+it also returns to zero model memory when the lane goes idle. Motivation: the
+resident TimesFM 3.0 process held ~1468 MiB of GPU 0 around the clock while
+idle, competing with ComfyUI/Frigate/CI on the shared GPU pool.
+
+- `load()` stamps the last-use time; every successful `forecast()` refreshes
+  it. The `load()` fast path (model already loaded) deliberately does not
+  refresh the stamp, so status polls never keep an idle model resident.
+- After the first successful load with a TTL configured, a single daemon
+  watchdog thread per service polls every `min(30 s, ttl/4)` and unloads the
+  model once `monotonic() - last_used > ttl` (re-checked under the load lock,
+  so a fresh load is never dropped by a stale decision).
+- `unload()` is idempotent, thread-safe and also clears the load-failure
+  cooldown. It runs a `gc.collect()` to break reference cycles so tensors are
+  actually deallocated, and — for a model that was loaded on CUDA — a
+  `torch.cuda.empty_cache()` so the driver (and `nvidia-smi`) actually see
+  the memory freed; without it torch's caching allocator would keep the
+  blocks reserved. On CPU the freed pages may be retained by the allocator
+  for reuse (RSS does not necessarily shrink), but no live model objects
+  remain. `status()` reports `idle_seconds` (seconds since last use, `null`
+  while unloaded) and `idle_unload_seconds` (the configured TTL).
+- On-demand contract: the first request after an unload pays the reload
+  (~2-7 s on CPU); idle unload defaults to disabled — set
+  `TIMESFM_IDLE_UNLOAD=900` (15 min) for the intended deployment.
 
 ## Verification
 

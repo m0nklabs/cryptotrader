@@ -1,6 +1,23 @@
 # Changelog
 
 ## 2026-09-07
+### On-demand model hosting with idle-unload (forecasting lane)
+- The always-on API process no longer has to keep the TimesFM model resident:
+  with `TIMESFM_IDLE_UNLOAD` (seconds, `0` = disabled) a daemon watchdog drops
+  the model after that many seconds without a successful forecast, and the
+  next forecast/status request transparently reloads it (~2-7 s on CPU).
+  Motivation: the idle process held ~1468 MiB of GPU 0 around the clock while
+  competing with ComfyUI/Frigate/CI on the shared GPU pool.
+- `TimesFMService.unload()` (idempotent, thread-safe, clears the load-failure
+  cooldown), last-use tracking (`load()` stamps it, every successful
+  `forecast()` refreshes it; the `load()` fast path does not, so status polls
+  never keep an idle model resident), and a single per-service watchdog
+  polling every `min(30 s, ttl/4)`.
+- `GET /forecast/status` now also reports `idle_seconds` (seconds since last
+  use; `null` while unloaded) and `idle_unload_seconds` (configured TTL).
+- New env knob `TIMESFM_IDLE_UNLOAD` (default `0`); recommended deployment
+  value `900` (15 min). Documented in `.env.example` and `docs/FORECASTING.md`.
+
 ### Wallet endpoint on the main API (issue #452)
 - Add `GET /wallet/balances` to the main API (`api/routes/wallet.py`): the
   dashboard wallet card works through the vite `/api` proxy again. Same
