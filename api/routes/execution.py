@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from core.ai.types import ConsensusDecision, RoleName, RoleVerdict, SignalAction
 
-from execution_orchestrator import ExecutionOrchestrator
+from core.execution.execution_orchestrator import ExecutionOrchestrator
 
 logger = logging.getLogger(__name__)
 

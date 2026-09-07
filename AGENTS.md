@@ -28,9 +28,6 @@ TimesFM forecasting lane. React+Vite frontend, FastAPI backend, PostgreSQL.
 | `tests/` | Pytest suites (`tests/test_api_*.py`, `tests/unit/`, `tests/integration/`) |
 
 Root exceptions (deliberate, do not "clean" blindly):
-- `execution_orchestrator.py` — live module imported by `api/main.py` and
-  `api/routes/execution.py` via a root-level import; relocation into `core/`
-  is a tracked refactor (update all import sites + tests).
 - `backtest_results.json`, `backtest_comparison.json` — generated outputs that
   are also checked-in evidence: `tests/test_fee_proof_gate.py` asserts their
   existence. Regenerate via `scripts/run_backtest.py`.

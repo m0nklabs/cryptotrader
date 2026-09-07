@@ -19,7 +19,10 @@ from core.execution.paper import PaperExecutor
 from core.risk.limits import ExposureLimits
 from core.risk.sizing import PositionSize
 
-from execution_orchestrator import ExecutionOrchestrator, GateName  # noqa: E402
+from core.execution.execution_orchestrator import (  # noqa: E402
+    ExecutionOrchestrator,
+    GateName,
+)
 
 
 def _find_gate(result, gate: GateName):
