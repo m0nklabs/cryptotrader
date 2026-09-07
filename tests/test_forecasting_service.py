@@ -7,12 +7,15 @@ Covers:
   predict_batch kwargs for 3.0),
 - backend selection (auto-detect from model id, explicit override, invalid),
 - the forecast cache keyed on the last closed candle timestamp,
-- environment-driven configuration.
+- environment-driven configuration,
+- the on-demand lifecycle: unload(), idle watchdog unload after a TTL and the
+  transparent reload of the first forecast after an unload.
 """
 
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -494,9 +497,13 @@ class _FakeCuda:
 
     def __init__(self, available: bool):
         self._available = available
+        self.empty_cache_calls = 0
 
     def is_available(self) -> bool:
         return self._available
+
+    def empty_cache(self) -> None:
+        self.empty_cache_calls += 1
 
 
 class _FakeTorch:
@@ -557,3 +564,250 @@ def test_resolve_device_explicit_cuda_low_vram_raises(monkeypatch: pytest.Monkey
     service = TimesFMService(config=TimesFMConfig(device="cuda"))
     with pytest.raises(RuntimeError, match="free VRAM"):
         service._resolve_device()
+
+
+# ----------------------------------------------------------------------
+# On-demand lifecycle: unload + idle watchdog
+# ----------------------------------------------------------------------
+
+
+def _make_on_demand_service(idle_unload_seconds: float = 0.0) -> TimesFMService:
+    """Service with a fixed 2.5 config and the given idle-unload TTL."""
+    return TimesFMService(
+        config=TimesFMConfig(
+            model_id=MODEL_ID_DEFAULT_2_5,
+            backend=BACKEND_TIMESFM2_5,
+            device="cpu",
+            max_context=1024,
+            max_horizon=256,
+            idle_unload_seconds=idle_unload_seconds,
+        )
+    )
+
+
+def _patch_lazy_load(
+    service: TimesFMService,
+    stub: _StubTimesFM,
+    loads: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Route the service's lazy load to a stub (no torch, no timesfm import)."""
+
+    def _fake_load_model(device_request: str):
+        loads.append(device_request)
+        return stub, device_request
+
+    monkeypatch.setattr(service, "_resolve_device", lambda: "cpu")
+    monkeypatch.setattr(service, "_load_model", _fake_load_model)
+
+
+def test_unload_frees_model_and_is_idempotent():
+    """unload() drops model/device/failure/last-used state and is safe to repeat."""
+    service = _make_on_demand_service()
+    service._model = _StubTimesFM(np.zeros((1, 2)), np.zeros((1, 2, 10)))  # noqa: SLF001
+    service._device = "cpu"  # noqa: SLF001
+    service._load_failure = (time.monotonic(), RuntimeError("boom"))  # noqa: SLF001
+    service._last_used_monotonic = time.monotonic()  # noqa: SLF001
+
+    service.unload()
+
+    assert not service.loaded
+    assert service.device is None
+    assert service._model is None  # noqa: SLF001
+    assert service._load_failure is None  # noqa: SLF001
+    assert service._last_used_monotonic is None  # noqa: SLF001
+    status = service.status()
+    assert status["loaded"] is False
+    assert status["idle_seconds"] is None
+    assert status["idle_unload_seconds"] == 0.0
+
+    service.unload()  # idempotent: no error, state stays clean
+    assert not service.loaded
+    assert service._model is None  # noqa: SLF001
+
+
+def test_forecast_refreshes_last_used():
+    """A successful forecast stamps the last-use time used by the watchdog."""
+    service = _make_on_demand_service()
+    stub = _StubTimesFM(np.zeros((1, 2)), np.zeros((1, 2, 10)))
+    service._model = stub  # noqa: SLF001  (bypass the lazy torch load)
+    assert service._last_used_monotonic is None  # noqa: SLF001
+
+    service.forecast([np.arange(64)], horizon=2)
+
+    assert service._last_used_monotonic is not None  # noqa: SLF001
+    assert service._last_used_monotonic <= time.monotonic()  # noqa: SLF001
+
+
+def test_idle_watchdog_unloads_after_ttl(monkeypatch: pytest.MonkeyPatch):
+    """A tiny TTL makes the watchdog drop the model without forecast traffic."""
+    service = _make_on_demand_service(idle_unload_seconds=0.2)
+    loads: list[str] = []
+    stub = _StubTimesFM(np.zeros((1, 2)), np.zeros((1, 2, 10)))
+    _patch_lazy_load(service, stub, loads, monkeypatch)
+
+    service.load()
+    assert service.loaded
+    watchdog = service._idle_watchdog  # noqa: SLF001
+    assert watchdog is not None
+    assert watchdog.daemon is True
+    assert watchdog.is_alive()
+
+    # Poll interval is min(30 s, ttl / 4) = 50 ms: 0.6 s is ~12 polls, 3x TTL.
+    time.sleep(0.6)
+
+    assert not service.loaded
+    assert service._model is None  # noqa: SLF001
+    assert service._device is None  # noqa: SLF001
+    assert service._last_used_monotonic is None  # noqa: SLF001
+    assert service.status()["idle_seconds"] is None
+    assert loads == ["cpu"]  # the watchdog unloads; it never reloads
+
+
+def test_idle_watchdog_spares_recently_used_model(monkeypatch: pytest.MonkeyPatch):
+    """The watchdog re-checks under the lock and spares a fresh model."""
+    service = _make_on_demand_service(idle_unload_seconds=5.0)
+    loads: list[str] = []
+    stub = _StubTimesFM(np.zeros((1, 2)), np.zeros((1, 2, 10)))
+    _patch_lazy_load(service, stub, loads, monkeypatch)
+
+    service.load()
+    assert service._unload_if_idle(5.0) is False  # noqa: SLF001
+    assert service.loaded
+
+
+def test_forecast_after_unload_reloads(monkeypatch: pytest.MonkeyPatch):
+    """After an unload the next forecast transparently reloads the model."""
+    horizon = 2
+    point = np.zeros((1, horizon))
+    quantiles = np.zeros((1, horizon, 10))
+    service = _make_on_demand_service()
+    stub = _StubTimesFM(point, quantiles)
+    loads: list[str] = []
+    _patch_lazy_load(service, stub, loads, monkeypatch)
+
+    service.load()
+    service.forecast([np.arange(64)], horizon=horizon)
+    assert service.loaded
+    assert len(loads) == 1
+
+    service.unload()
+    assert not service.loaded
+
+    bands = service.forecast([np.arange(64)], horizon=horizon)
+    assert service.loaded
+    assert len(loads) == 2  # transparent reload through the lazy-load path
+    assert len(bands) == 1
+    assert len(stub.calls) == 2
+
+
+def test_unload_releases_cuda_cache(monkeypatch: pytest.MonkeyPatch):
+    """Unloading a CUDA model hands the cached blocks back to the driver."""
+
+    fake_torch = _FakeTorch(available=True)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    service = _make_on_demand_service()
+    service._model = object()  # any loaded-model stand-in  # noqa: SLF001
+    service._device = "cuda"  # noqa: SLF001
+
+    service.unload()
+
+    assert not service.loaded
+    assert fake_torch.cuda.empty_cache_calls == 1
+
+
+def test_unload_skips_cuda_cache_release_on_cpu(monkeypatch: pytest.MonkeyPatch):
+    """A CPU model unload does not touch the CUDA cache path."""
+
+    fake_torch = _FakeTorch(available=True)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    service = _make_on_demand_service()
+    service._model = object()  # noqa: SLF001
+    service._device = "cpu"  # noqa: SLF001
+
+    service.unload()
+
+    assert not service.loaded
+    assert fake_torch.cuda.empty_cache_calls == 0
+
+
+def test_forecast_retries_load_when_unload_races(monkeypatch: pytest.MonkeyPatch):
+    """An unload racing the load() fast path is absorbed by a reload, not a crash."""
+    horizon = 2
+    point = np.zeros((1, horizon))
+    quantiles = np.zeros((1, horizon, 10))
+    service = _make_on_demand_service()
+    stub = _StubTimesFM(point, quantiles)
+    loads: list[str] = []
+    _patch_lazy_load(service, stub, loads, monkeypatch)
+    service._model = stub  # noqa: SLF001  (pre-loaded: forecast() takes the fast path)
+
+    real_load = service.load
+
+    def racy_load() -> None:
+        # First invocation: drop the model like a concurrent watchdog would;
+        # later invocations delegate to the real lazy load.
+        if service._model is not None:
+            service.unload()
+            return
+        real_load()
+
+    monkeypatch.setattr(service, "load", racy_load)
+
+    bands = service.forecast([np.arange(64)], horizon=horizon)
+
+    assert service.loaded
+    assert loads == ["cpu"]  # the race triggered exactly one reload
+    assert len(bands) == 1
+    assert len(stub.calls) == 1
+
+
+def test_idle_watchdog_not_started_when_disabled(monkeypatch: pytest.MonkeyPatch):
+    """idle_unload_seconds=0 (the default) never spawns a watchdog thread."""
+    service = _make_on_demand_service(idle_unload_seconds=0.0)
+    loads: list[str] = []
+    stub = _StubTimesFM(np.zeros((1, 2)), np.zeros((1, 2, 10)))
+    _patch_lazy_load(service, stub, loads, monkeypatch)
+
+    service.load()
+    assert service.loaded
+    assert service._idle_watchdog is None  # noqa: SLF001
+
+
+def test_status_reports_idle_fields(monkeypatch: pytest.MonkeyPatch):
+    """status() exposes idle_seconds (since last use) and idle_unload_seconds."""
+    service = _make_on_demand_service(idle_unload_seconds=900.0)
+    loads: list[str] = []
+    stub = _StubTimesFM(np.zeros((1, 2)), np.zeros((1, 2, 10)))
+    _patch_lazy_load(service, stub, loads, monkeypatch)
+
+    status = service.status()  # unloaded
+    assert status["idle_seconds"] is None
+    assert status["idle_unload_seconds"] == 900.0
+
+    service.load()
+    status = service.status()
+    assert status["loaded"] is True
+    assert isinstance(status["idle_seconds"], float)
+    assert status["idle_seconds"] < 1.0
+    assert status["idle_unload_seconds"] == 900.0
+
+
+def test_config_idle_unload_from_env(monkeypatch: pytest.MonkeyPatch):
+    """TIMESFM_IDLE_UNLOAD parses seconds; 0 (default) disables the unload."""
+    config = load_config_from_env(env={})
+    assert config.idle_unload_seconds == 0.0
+
+    monkeypatch.setenv("TIMESFM_IDLE_UNLOAD", "900")
+    assert load_config_from_env().idle_unload_seconds == 900.0
+
+    monkeypatch.setenv("TIMESFM_IDLE_UNLOAD", "0")
+    assert load_config_from_env().idle_unload_seconds == 0.0
+
+    monkeypatch.setenv("TIMESFM_IDLE_UNLOAD", "abc")
+    with pytest.raises(ValueError, match="TIMESFM_IDLE_UNLOAD"):
+        load_config_from_env()
+
+    monkeypatch.setenv("TIMESFM_IDLE_UNLOAD", "-5")
+    with pytest.raises(ValueError, match="TIMESFM_IDLE_UNLOAD"):
+        load_config_from_env()

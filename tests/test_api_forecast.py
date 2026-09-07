@@ -50,6 +50,8 @@ class _FakeTimesFMService:
             "model_id": self.config.model_id,
             "device": self.device,
             "ready": True,
+            "idle_seconds": 0.0,
+            "idle_unload_seconds": self.config.idle_unload_seconds,
         }
 
     def forecast(self, series: list[np.ndarray], horizon: int) -> list[list[tuple[float, float, float]]]:
@@ -285,13 +287,22 @@ def test_forecast_batch_partial_errors(client, fake_service):
 
 
 def test_forecast_status_shape(client, fake_service):
-    """Status reports the loaded model identity and readiness."""
+    """Status reports the loaded model identity, readiness and idle fields."""
     response = client.get("/forecast/status")
 
     assert response.status_code == 200
     data = response.json()
-    assert set(data.keys()) == {"loaded", "model_id", "device", "ready"}
+    assert set(data.keys()) == {
+        "loaded",
+        "model_id",
+        "device",
+        "ready",
+        "idle_seconds",
+        "idle_unload_seconds",
+    }
     assert data["loaded"] is True
     assert data["ready"] is True
     assert data["model_id"] == MODEL_ID_DEFAULT
     assert data["device"] == "cpu"
+    assert data["idle_seconds"] == 0.0
+    assert data["idle_unload_seconds"] == 0.0
