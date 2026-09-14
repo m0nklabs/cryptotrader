@@ -3,7 +3,7 @@ python-dotenv>=1.2.2
 requests>=2.34.2
 
 # Technical analysis
-pandas>=3.0.3
+pandas>=3.0.5
 numpy>=2.5.1
 
 # Desktop notifications (optional, for signal alerts)
