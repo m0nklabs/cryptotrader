@@ -20,5 +20,5 @@ uvicorn>=0.51.0,<0.52.0
 httpx>=0.25.0  # Async HTTP client for notifications
 
 # WebSocket support (for real-time market data)
-websocket-client>=1.9.0
+websocket-client>=1.9.2
 websockets>=16.1
