@@ -37,11 +37,11 @@ export default function BacktestResults({ results }: Props) {
   const losingTrades = results.trades.filter((t) => parseFloat(t.pnl) < 0)
 
   return (
-    <div className="bg-[#1a1a2e] p-4 rounded border border-zinc-700">
+    <div className="bg-[var(--panel)] p-4 rounded border border-zinc-700">
       <h2 className="text-lg font-semibold mb-4 text-zinc-100">Backtest Results</h2>
 
       {/* Summary Header */}
-      <div className="mb-4 p-3 bg-[#0f0f1e] rounded border border-zinc-700">
+      <div className="mb-4 p-3 bg-[var(--panel-2)] rounded border border-zinc-700">
         <div className="text-xs text-zinc-400 mb-1">
           {results.exchange} {results.symbol} ({results.timeframe}) - {results.strategy.toUpperCase()}
         </div>
@@ -53,7 +53,7 @@ export default function BacktestResults({ results }: Props) {
       {/* Performance Metrics */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         {/* Total P&L */}
-        <div className="bg-[#0f0f1e] p-3 rounded border border-zinc-700">
+        <div className="bg-[var(--panel-2)] p-3 rounded border border-zinc-700">
           <div className="text-xs text-zinc-400 mb-1">Total P&L</div>
           <div className={`text-lg font-semibold ${colorClass(results.total_pnl)}`}>
             {fmt(results.total_pnl)}
@@ -61,7 +61,7 @@ export default function BacktestResults({ results }: Props) {
         </div>
 
         {/* Total Return */}
-        <div className="bg-[#0f0f1e] p-3 rounded border border-zinc-700">
+        <div className="bg-[var(--panel-2)] p-3 rounded border border-zinc-700">
           <div className="text-xs text-zinc-400 mb-1">Total Return</div>
           <div className={`text-lg font-semibold ${colorClass(results.total_return)}`}>
             {pct(results.total_return)}
@@ -69,7 +69,7 @@ export default function BacktestResults({ results }: Props) {
         </div>
 
         {/* Sharpe Ratio */}
-        <div className="bg-[#0f0f1e] p-3 rounded border border-zinc-700">
+        <div className="bg-[var(--panel-2)] p-3 rounded border border-zinc-700">
           <div className="text-xs text-zinc-400 mb-1">Sharpe Ratio</div>
           <div className={`text-lg font-semibold ${colorClass(results.sharpe_ratio)}`}>
             {results.sharpe_ratio.toFixed(2)}
@@ -77,7 +77,7 @@ export default function BacktestResults({ results }: Props) {
         </div>
 
         {/* Max Drawdown */}
-        <div className="bg-[#0f0f1e] p-3 rounded border border-zinc-700">
+        <div className="bg-[var(--panel-2)] p-3 rounded border border-zinc-700">
           <div className="text-xs text-zinc-400 mb-1">Max Drawdown</div>
           <div className="text-lg font-semibold text-red-400">
             {pct(results.max_drawdown)}
@@ -85,7 +85,7 @@ export default function BacktestResults({ results }: Props) {
         </div>
 
         {/* Win Rate */}
-        <div className="bg-[#0f0f1e] p-3 rounded border border-zinc-700">
+        <div className="bg-[var(--panel-2)] p-3 rounded border border-zinc-700">
           <div className="text-xs text-zinc-400 mb-1">Win Rate</div>
           <div className={`text-lg font-semibold ${colorClass(results.win_rate - 0.5)}`}>
             {pct(results.win_rate)}
@@ -93,7 +93,7 @@ export default function BacktestResults({ results }: Props) {
         </div>
 
         {/* Profit Factor */}
-        <div className="bg-[#0f0f1e] p-3 rounded border border-zinc-700">
+        <div className="bg-[var(--panel-2)] p-3 rounded border border-zinc-700">
           <div className="text-xs text-zinc-400 mb-1">Profit Factor</div>
           <div className={`text-lg font-semibold ${colorClass(results.profit_factor - 1)}`}>
             {results.profit_factor === Infinity ? '∞' : results.profit_factor.toFixed(2)}
@@ -102,7 +102,7 @@ export default function BacktestResults({ results }: Props) {
       </div>
 
       {/* Trade Statistics */}
-      <div className="mb-4 p-3 bg-[#0f0f1e] rounded border border-zinc-700">
+      <div className="mb-4 p-3 bg-[var(--panel-2)] rounded border border-zinc-700">
         <div className="text-sm font-medium text-zinc-300 mb-2">Trade Statistics</div>
         <div className="grid grid-cols-4 gap-2 text-xs">
           <div>
@@ -130,9 +130,9 @@ export default function BacktestResults({ results }: Props) {
       {results.trades.length > 0 && (
         <div>
           <div className="text-sm font-medium text-zinc-300 mb-2">Trade History</div>
-          <div className="bg-[#0f0f1e] rounded border border-zinc-700 max-h-64 overflow-y-auto">
+          <div className="bg-[var(--panel-2)] rounded border border-zinc-700 max-h-64 overflow-y-auto">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-[#0f0f1e] border-b border-zinc-700">
+              <thead className="sticky top-0 bg-[var(--panel-2)] border-b border-zinc-700">
                 <tr className="text-zinc-400">
                   <th className="text-left p-2">#</th>
                   <th className="text-left p-2">Side</th>
@@ -146,7 +146,7 @@ export default function BacktestResults({ results }: Props) {
                 {results.trades.map((trade, idx) => {
                   const pnl = parseFloat(trade.pnl)
                   return (
-                    <tr key={idx} className="border-b border-zinc-800 hover:bg-[#1a1a2e]">
+                    <tr key={idx} className="border-b border-zinc-800 hover:bg-[var(--panel)]">
                       <td className="p-2 text-zinc-400">{idx + 1}</td>
                       <td className="p-2">
                         <span

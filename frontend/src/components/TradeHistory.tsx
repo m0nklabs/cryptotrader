@@ -30,7 +30,7 @@ export function TradeHistory() {
   const auditLogs = auditData || [];
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0f] text-zinc-200 overflow-hidden">
+    <div className="h-full flex flex-col bg-[var(--bg-root)] text-zinc-200 overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-zinc-800">
         <h1 className="text-xl font-bold mb-3">Trade History</h1>

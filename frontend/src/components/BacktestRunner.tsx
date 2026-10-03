@@ -77,7 +77,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
   }
 
   return (
-    <div className="bg-[#1a1a2e] p-4 rounded border border-zinc-700">
+    <div className="bg-[var(--panel)] p-4 rounded border border-zinc-700">
       <h2 className="text-lg font-semibold mb-4 text-zinc-100">Backtest Configuration</h2>
 
       {/* Market Selection */}
@@ -88,7 +88,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
             type="text"
             value={exchange}
             onChange={(e) => setExchange(e.target.value)}
-            className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+            className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
           />
         </div>
         <div>
@@ -97,7 +97,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
             type="text"
             value={symbol}
             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-            className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+            className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
           />
         </div>
         <div>
@@ -105,7 +105,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
           <select
             value={timeframe}
             onChange={(e) => setTimeframe(e.target.value)}
-            className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+            className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
           >
             <option value="1m">1m</option>
             <option value="5m">5m</option>
@@ -124,7 +124,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
           <select
             value={strategy}
             onChange={(e) => setStrategy(e.target.value as BacktestStrategy)}
-            className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+            className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
           >
             {strategies.map((s) => (
               <option key={s.name} value={s.name}>
@@ -141,7 +141,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
             onChange={(e) => setInitialCapital(Number(e.target.value))}
             min={100}
             step={1000}
-            className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+            className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
           />
         </div>
         <div>
@@ -152,7 +152,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
             onChange={(e) => setDaysBack(Number(e.target.value))}
             min={1}
             max={365}
-            className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+            className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
           />
         </div>
       </div>
@@ -168,7 +168,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
               onChange={(e) => setRsiOversold(Number(e.target.value))}
               min={0}
               max={100}
-              className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+              className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
             />
           </div>
           <div>
@@ -179,7 +179,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
               onChange={(e) => setRsiOverbought(Number(e.target.value))}
               min={0}
               max={100}
-              className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+              className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
             />
           </div>
         </div>
@@ -195,7 +195,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
               value={smaFastPeriod}
               onChange={(e) => setSmaFastPeriod(Number(e.target.value))}
               min={1}
-              className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+              className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
             />
           </div>
           <div>
@@ -205,7 +205,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
               value={smaSlowPeriod}
               onChange={(e) => setSmaSlowPeriod(Number(e.target.value))}
               min={1}
-              className="w-full bg-[#0f0f1e] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
+              className="w-full bg-[var(--panel-2)] text-zinc-100 px-2 py-1 text-sm rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
             />
           </div>
         </div>
@@ -233,7 +233,7 @@ export default function BacktestRunner({ onResultsReady }: Props) {
 
       {/* Strategy Info */}
       {strategies.length > 0 && (
-        <div className="mt-3 p-2 bg-[#0f0f1e] rounded border border-zinc-700">
+        <div className="mt-3 p-2 bg-[var(--panel-2)] rounded border border-zinc-700">
           <div className="text-xs text-zinc-400">
             {strategies.find((s) => s.name === strategy)?.description || ''}
           </div>

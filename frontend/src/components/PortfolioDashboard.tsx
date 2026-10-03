@@ -42,10 +42,10 @@ export function PortfolioDashboard() {
   const pnlPercentage = equity > 0 ? (totalPnL / equity) * 100 : 0;
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0f] text-zinc-200 overflow-y-auto p-4 space-y-4">
+    <div className="h-full flex flex-col bg-[var(--bg-root)] text-zinc-200 overflow-y-auto p-4 space-y-4">
       {/* Header with summary stats */}
       <div className="grid grid-cols-4 gap-4">
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <div className="text-xs text-zinc-400 mb-1">Total Equity</div>
           <div className="text-2xl font-bold">
             ${equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -55,7 +55,7 @@ export function PortfolioDashboard() {
           </div>
         </div>
 
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <div className="text-xs text-zinc-400 mb-1">Total P&L</div>
           <div className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}
@@ -65,14 +65,14 @@ export function PortfolioDashboard() {
           </div>
         </div>
 
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <div className="text-xs text-zinc-400 mb-1">Unrealized P&L</div>
           <div className={`text-2xl font-bold ${unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {unrealizedPnL >= 0 ? '+' : ''}${unrealizedPnL.toFixed(2)}
           </div>
         </div>
 
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <div className="text-xs text-zinc-400 mb-1">Realized P&L</div>
           <div className={`text-2xl font-bold ${realizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {realizedPnL >= 0 ? '+' : ''}${realizedPnL.toFixed(2)}
@@ -99,7 +99,7 @@ export function PortfolioDashboard() {
       </div>
 
       {/* Positions table */}
-      <div className="bg-[#1a1a2e] rounded-lg border border-zinc-800 flex-1 overflow-hidden flex flex-col">
+      <div className="bg-[var(--panel)] rounded-lg border border-zinc-800 flex-1 overflow-hidden flex flex-col">
         <div className="px-4 py-3 border-b border-zinc-800">
           <h2 className="text-sm font-semibold">Open Positions ({positions.length})</h2>
         </div>

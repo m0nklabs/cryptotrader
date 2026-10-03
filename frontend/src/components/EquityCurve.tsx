@@ -121,11 +121,11 @@ export default function EquityCurve({ equityCurve, initialCapital }: Props) {
   }, [equityCurve, initialCapital])
 
   return (
-    <div className="bg-[#1a1a2e] p-4 rounded border border-zinc-700">
+    <div className="bg-[var(--panel)] p-4 rounded border border-zinc-700">
       <h3 className="text-sm font-medium text-zinc-300 mb-3">Equity Curve</h3>
       <canvas
         ref={canvasRef}
-        className="w-full h-64 bg-[#0f0f1e] rounded"
+        className="w-full h-64 bg-[var(--panel-2)] rounded"
         style={{ width: '100%', height: '256px' }}
       />
     </div>

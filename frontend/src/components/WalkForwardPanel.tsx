@@ -65,7 +65,7 @@ export default function WalkForwardPanel({ walkForward: wf }: Props) {
       <div
         role="alert"
         data-testid="walk-forward-insufficient"
-        className="bg-[#1a1a2e] p-4 rounded border border-red-700"
+        className="bg-[var(--panel)] p-4 rounded border border-red-700"
       >
         <h2 className="text-lg font-semibold mb-2 text-red-400">
           Walk-Forward Validation: Insufficient Data
@@ -89,7 +89,7 @@ export default function WalkForwardPanel({ walkForward: wf }: Props) {
       <div
         role="alert"
         data-testid="walk-forward-failed"
-        className="bg-[#1a1a2e] p-4 rounded border border-yellow-700"
+        className="bg-[var(--panel)] p-4 rounded border border-yellow-700"
       >
         <h2 className="text-lg font-semibold mb-2 text-yellow-400">
           Walk-Forward Validation: Failed
@@ -114,7 +114,7 @@ export default function WalkForwardPanel({ walkForward: wf }: Props) {
   return (
     <div
       data-testid="walk-forward-passed"
-      className="bg-[#1a1a2e] p-4 rounded border border-green-700"
+      className="bg-[var(--panel)] p-4 rounded border border-green-700"
     >
       <h2 className="text-lg font-semibold mb-2 text-green-400">
         Walk-Forward Validation: Passed
@@ -138,7 +138,7 @@ function WalkForwardMetrics({ wf }: { wf: WalkForwardResult }) {
           value={wf.oos_significant ? 'Yes' : 'No'}
           tone={wf.oos_significant ? 'positive' : 'negative'}
         />
-        <div className="bg-[#0f0f1e] p-3 rounded border border-zinc-700">
+        <div className="bg-[var(--panel-2)] p-3 rounded border border-zinc-700">
           <div className="text-xs text-zinc-400 mb-1">Overfitting Risk</div>
           <div
             className={`inline-block px-2 py-0.5 rounded text-sm font-medium border ${RISK_STYLES[wf.overfitting_risk]}`}
@@ -194,9 +194,9 @@ function WalkForwardMetrics({ wf }: { wf: WalkForwardResult }) {
           <summary className="text-xs text-zinc-400 cursor-pointer hover:text-zinc-200">
             Per-fold details ({wf.folds.length})
           </summary>
-          <div className="mt-2 bg-[#0f0f1e] rounded border border-zinc-700 max-h-48 overflow-y-auto">
+          <div className="mt-2 bg-[var(--panel-2)] rounded border border-zinc-700 max-h-48 overflow-y-auto">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-[#0f0f1e] border-b border-zinc-700">
+              <thead className="sticky top-0 bg-[var(--panel-2)] border-b border-zinc-700">
                 <tr className="text-zinc-400">
                   <th className="text-left p-2">#</th>
                   <th className="text-right p-2">Train Ret</th>
@@ -212,7 +212,7 @@ function WalkForwardMetrics({ wf }: { wf: WalkForwardResult }) {
                 {wf.folds.map((f, idx) => (
                   <tr
                     key={idx}
-                    className="border-b border-zinc-800 hover:bg-[#1a1a2e]"
+                    className="border-b border-zinc-800 hover:bg-[var(--panel)]"
                   >
                     <td className="p-2 text-zinc-400">{idx + 1}</td>
                     <td className="p-2 text-right text-zinc-300">
@@ -265,7 +265,7 @@ function Metric({
         ? 'text-red-400'
         : 'text-zinc-100'
   return (
-    <div className="bg-[#0f0f1e] p-3 rounded border border-zinc-700">
+    <div className="bg-[var(--panel-2)] p-3 rounded border border-zinc-700">
       <div className="text-xs text-zinc-400 mb-1">{label}</div>
       <div className={`text-lg font-semibold ${valueClass}`}>{value}</div>
     </div>

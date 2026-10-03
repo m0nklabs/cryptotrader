@@ -38,7 +38,7 @@ export default function BacktestView() {
 
       {/* No Results Placeholder */}
       {!results && (
-        <div className="bg-[#1a1a2e] p-8 rounded border border-zinc-700 text-center">
+        <div className="bg-[var(--panel)] p-8 rounded border border-zinc-700 text-center">
           <div className="text-zinc-400 text-sm">
             Configure parameters above and click "Run Backtest" to see results
           </div>

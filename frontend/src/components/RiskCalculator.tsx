@@ -66,7 +66,7 @@ export function RiskCalculator() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0f] text-zinc-200 overflow-y-auto p-4 space-y-4">
+    <div className="h-full flex flex-col bg-[var(--bg-root)] text-zinc-200 overflow-y-auto p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Risk Calculator</h1>
@@ -79,7 +79,7 @@ export function RiskCalculator() {
       </div>
 
       {/* Trade Direction */}
-      <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+      <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
         <div className="text-xs text-zinc-400 mb-2">Trade Direction</div>
         <div className="flex space-x-2">
           <button
@@ -103,7 +103,7 @@ export function RiskCalculator() {
 
       {/* Input Section */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <label className="text-xs text-zinc-400 block mb-1">Account Size ($)</label>
           <input
             type="number"
@@ -113,7 +113,7 @@ export function RiskCalculator() {
           />
         </div>
 
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <label className="text-xs text-zinc-400 block mb-1">Risk per Trade (%)</label>
           <input
             type="number"
@@ -124,7 +124,7 @@ export function RiskCalculator() {
           />
         </div>
 
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <label className="text-xs text-zinc-400 block mb-1">Entry Price ($)</label>
           <input
             type="number"
@@ -135,7 +135,7 @@ export function RiskCalculator() {
           />
         </div>
 
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <label className="text-xs text-zinc-400 block mb-1">Stop Loss ($)</label>
           <input
             type="number"
@@ -146,7 +146,7 @@ export function RiskCalculator() {
           />
         </div>
 
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <label className="text-xs text-zinc-400 block mb-1">Leverage (1x = no leverage)</label>
           <input
             type="number"
@@ -158,7 +158,7 @@ export function RiskCalculator() {
           />
         </div>
 
-        <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+        <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
           <label className="text-xs text-zinc-400 block mb-1">Target R:R Ratio</label>
           <input
             type="number"
@@ -172,7 +172,7 @@ export function RiskCalculator() {
       </div>
 
       {/* Results Section */}
-      <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+      <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
         <h3 className="text-sm font-semibold mb-3">Calculation Results</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -232,7 +232,7 @@ export function RiskCalculator() {
       </div>
 
       {/* Risk/Reward Visual */}
-      <div className="bg-[#1a1a2e] rounded-lg p-4 border border-zinc-800">
+      <div className="bg-[var(--panel)] rounded-lg p-4 border border-zinc-800">
         <h3 className="text-sm font-semibold mb-3">Risk/Reward Ratio: {actualRR.toFixed(2)}:1</h3>
         <div className="relative h-8 bg-zinc-900 rounded overflow-hidden">
           <div
