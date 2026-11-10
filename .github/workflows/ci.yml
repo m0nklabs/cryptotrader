@@ -12,7 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  id-token: write  # codecov-action v6 authenticates through GitHub OIDC
   contents: read
 
 jobs:
@@ -141,7 +140,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://cryptotrader:cryptotrader@localhost:${{ job.services.postgres.ports['5432'] }}/cryptotrader_test
         run: |
-          pytest -q --cov=core --cov=api --cov=db --cov=cex --cov=strategies --cov-report=xml -m "not integration"
+          pytest -q --cov=core --cov=api --cov=db --cov=cex --cov=strategies --cov-report=term-missing -m "not integration"
 
       - name: Integration Tests
         if: ${{ env.BITFINEX_API_KEY != '' }}
@@ -151,22 +150,6 @@ jobs:
 
       # Pinned by commit SHA (v7.0.0), not by tag: a mutable tag lets the uploader's behaviour
       # change between runs without any diff, which makes a green check meaningless.
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
-          verbose: true
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  frontend:
-    name: Frontend (build)
-    runs-on: [self-hosted, Linux]
-    needs: [autofix]
-    if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
-
-    steps:
       - name: Checkout
         uses: actions/checkout@v7
 
