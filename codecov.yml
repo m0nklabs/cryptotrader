@@ -1,0 +1,24 @@
+# Codecov configuration.
+#
+# Without this file Codecov applies its defaults, and the default patch status fails a PR
+# whose diff contains no coverable lines — so documentation-only pull requests show a red
+# codecov/patch (measured in m0nklabs/oelala: #236 docs-only = failure, #239 code = success).
+# A check that is red for a correct reason teaches people to ignore red checks, so both
+# statuses are informational and the paths that cannot be covered are ignored.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+ignore:
+  - "docs/**"
+  - "tests/**"
+  - "scripts/**"
+  # frontend/ is TypeScript/React: its tests run in the separate `frontend` job of ci.yml,
+  # which uploads no coverage, so those files never appear in the pytest coverage.xml.
+  # Ignoring the tree keeps a frontend-only diff from counting as "no coverable lines".
+  - "frontend/**"

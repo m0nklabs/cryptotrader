@@ -140,7 +140,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://cryptotrader:cryptotrader@localhost:${{ job.services.postgres.ports['5432'] }}/cryptotrader_test
         run: |
-          pytest -q --cov=core --cov=api --cov-report=xml -m "not integration"
+          pytest -q --cov=core --cov=api --cov=db --cov=cex --cov=strategies --cov-report=xml -m "not integration"
 
       - name: Integration Tests
         if: ${{ env.BITFINEX_API_KEY != '' }}
@@ -148,8 +148,10 @@ jobs:
           pytest -q -m "integration" --tb=short
         continue-on-error: true
 
+      # Pinned by commit SHA (v7.0.0), not by tag: a mutable tag lets the uploader's behaviour
+      # change between runs without any diff, which makes a green check meaningless.
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
