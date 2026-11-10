@@ -12,6 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  id-token: write  # codecov-action v6 authenticates through GitHub OIDC
   contents: read
 
 jobs:
