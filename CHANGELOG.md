@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-20
+### Bitfinex symbol translation for colon-separated markets (issue #469)
+- `core/market_data/bitfinex_symbols.py` translates internal symbols to the
+  candles API symbol instead of blindly prefixing `t`. Bitfinex serves some
+  markets only colon-separated (`tAVAX:USD`, `tDOGE:USD`, `tLINK:USD`) and
+  answers the concatenated shape with an empty list, which made those series
+  impossible to bootstrap: all nine `bitfinex-backfill@{AVAX,DOGE,LINK}USD-{1h,4h,1d}`
+  instances failed every tick with `No existing candles found to resume from`.
+- The split comes from the exchange's published pair list
+  (`/v2/conf/pub:list:pair:exchange`); concatenated markets and already-valid
+  API symbols keep their existing shape, and the stored candle identity is
+  unchanged (`AVAXUSD` in the database).
+- `bitfinex_backfill` and `bitfinex_gap_repair` now share that translation
+  instead of carrying a copy each; regression tests cover all 23 configured
+  symbols plus colon, prefixed and legacy forms.
+
 ## 2026-09-07
 ### On-demand model hosting with idle-unload (forecasting lane)
 - The always-on API process no longer has to keep the TimesFM model resident:
