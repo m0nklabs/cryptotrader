@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 import pytest
 
@@ -99,11 +100,64 @@ def test_normalization_is_idempotent() -> None:
         assert normalize_bitfinex_symbol(once) == once
 
 
-def test_backfill_and_gap_repair_share_the_same_translation() -> None:
-    """Both feeds must agree, or one of them silently writes nothing."""
-    from core.market_data import bitfinex_backfill, bitfinex_gap_repair
+@pytest.mark.parametrize("symbol", COLON_FORM_SYMBOLS)
+def test_backfill_feed_requests_the_translated_symbol(symbol: str) -> None:
+    """The request helper must receive the translation, not the raw internal symbol.
 
-    for symbol in CONCAT_FORM_SYMBOLS + COLON_FORM_SYMBOLS:
-        expected = normalize_bitfinex_symbol(symbol)
-        assert bitfinex_backfill.normalize_bitfinex_symbol(symbol) == expected
-        assert bitfinex_gap_repair.normalize_bitfinex_symbol(symbol) == expected
+    Asserting on the network boundary is what catches a feed that silently stops
+    using the shared normalizer (or grows a local ``t``-prefix again), which a
+    call to the imported helper alone would not.
+    """
+    from datetime import datetime, timezone
+
+    from core.market_data import bitfinex_backfill as backfill
+
+    with patch.object(backfill, "_fetch_bitfinex_candles_page", return_value=[]) as fetch:
+        list(
+            backfill._iter_bitfinex_candles(
+                exchange="bitfinex",
+                symbol=symbol,
+                timeframe="1d",
+                start=datetime(2025, 2, 2, tzinfo=timezone.utc),
+                end=datetime(2025, 2, 10, tzinfo=timezone.utc),
+            )
+        )
+
+    assert fetch.call_args.kwargs["symbol"] == f"t{symbol[:-3]}:USD"
+
+
+@pytest.mark.parametrize("symbol", COLON_FORM_SYMBOLS)
+def test_gap_repair_feed_requests_the_translated_symbol(symbol: str) -> None:
+    from datetime import datetime, timezone
+
+    from core.market_data import bitfinex_gap_repair as gap_repair
+
+    with patch.object(gap_repair, "_fetch_bitfinex_candles_page", return_value=[]) as fetch:
+        gap_repair._fetch_single_candle(
+            exchange="bitfinex",
+            symbol=symbol,
+            timeframe="4h",
+            open_time=datetime(2025, 12, 1, tzinfo=timezone.utc),
+        )
+
+    assert fetch.call_args.kwargs["symbol"] == f"t{symbol[:-3]}:USD"
+
+
+@pytest.mark.parametrize("symbol", ["BTCUSD", "SOLUSD", "EOSUSD"])
+def test_feeds_leave_concatenated_markets_alone(symbol: str) -> None:
+    from datetime import datetime, timezone
+
+    from core.market_data import bitfinex_backfill as backfill
+
+    with patch.object(backfill, "_fetch_bitfinex_candles_page", return_value=[]) as fetch:
+        list(
+            backfill._iter_bitfinex_candles(
+                exchange="bitfinex",
+                symbol=symbol,
+                timeframe="1h",
+                start=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                end=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            )
+        )
+
+    assert fetch.call_args.kwargs["symbol"] == f"t{symbol}"
