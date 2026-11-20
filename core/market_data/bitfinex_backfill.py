@@ -11,6 +11,7 @@ from typing import Iterable, Sequence
 
 import requests
 
+from core.market_data.bitfinex_symbols import normalize_bitfinex_symbol
 from core.storage import PostgresConfig, PostgresStores
 from core.types import Candle, MarketDataJob, Timeframe
 
@@ -50,15 +51,6 @@ def _to_ms(dt: datetime) -> int:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return int(dt.timestamp() * 1000)
-
-
-def _normalize_bitfinex_symbol(symbol: str) -> str:
-    s = symbol.strip()
-    if not s:
-        raise ValueError("symbol is required")
-    if not s.startswith("t"):
-        s = "t" + s
-    return s
 
 
 def _fetch_bitfinex_candles_page(
@@ -139,7 +131,7 @@ def _iter_bitfinex_candles(
     cursor_ms = start_ms
     while cursor_ms <= end_ms:
         page = _fetch_bitfinex_candles_page(
-            symbol=_normalize_bitfinex_symbol(symbol),
+            symbol=normalize_bitfinex_symbol(symbol),
             timeframe_api=spec.api,
             start_ms=cursor_ms,
             end_ms=end_ms,

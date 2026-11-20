@@ -23,15 +23,6 @@ def test_parse_dt_converts_offset_to_utc() -> None:
     assert dt.tzinfo == timezone.utc
 
 
-def test_normalize_bitfinex_symbol_adds_prefix_and_trims() -> None:
-    assert backfill._normalize_bitfinex_symbol(" BTCUSD ") == "tBTCUSD"
-
-
-def test_normalize_bitfinex_symbol_requires_value() -> None:
-    with pytest.raises(ValueError):
-        backfill._normalize_bitfinex_symbol("   ")
-
-
 def test_build_arg_parser_includes_backoff_parameters() -> None:
     """Verify that backoff/jitter CLI arguments are present and have correct defaults."""
     parser = backfill.build_arg_parser()

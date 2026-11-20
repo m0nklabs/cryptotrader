@@ -267,6 +267,13 @@ Notes:
 
 - The default symbol list is a curated set of common USD pairs; override via `--symbols "BTCUSD,ETHUSD,..."`.
 - Some symbols may not exist on Bitfinex; use `--ignore-errors` if you want best-effort.
+- Bitfinex serves some markets only colon-separated (`tAVAX:USD`, `tDOGE:USD`,
+  `tLINK:USD`) and answers the concatenated shape with an empty list. Keep the
+  internal symbol concatenated in env files and in the database (`AVAXUSD`);
+  `core/market_data/bitfinex_symbols.py` translates it for the API request. A
+  new symbol that ingests nothing is usually a wrong symbol shape — check the
+  exchange's published pair list (`/v2/conf/pub:list:pair:exchange`) and add the
+  base to `_COLON_FORM_USD_BASES` when Bitfinex lists it with a colon.
 
 Timeframes & deep history:
 

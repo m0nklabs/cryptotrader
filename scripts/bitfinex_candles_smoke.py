@@ -2,10 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from core.market_data.bitfinex_symbols import normalize_bitfinex_symbol
 
 
 _TIMEFRAMES_API: dict[str, str] = {
@@ -16,15 +24,6 @@ _TIMEFRAMES_API: dict[str, str] = {
     "4h": "4h",
     "1d": "1D",
 }
-
-
-def _normalize_bitfinex_symbol(symbol: str) -> str:
-    s = symbol.strip()
-    if not s:
-        raise SystemExit("symbol is required")
-    if not s.startswith("t"):
-        s = "t" + s
-    return s
 
 
 def _parse_args() -> argparse.Namespace:
@@ -39,7 +38,10 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
 
-    symbol = _normalize_bitfinex_symbol(args.symbol)
+    try:
+        symbol = normalize_bitfinex_symbol(args.symbol)
+    except ValueError:
+        raise SystemExit("symbol is required")
     tf_api = _TIMEFRAMES_API[args.timeframe]
 
     now_ms = int(time.time() * 1000)
