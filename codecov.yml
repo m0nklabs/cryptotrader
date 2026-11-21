@@ -1,0 +1,31 @@
+# Codecov configuration — https://docs.codecov.com/docs/codecov-yaml
+#
+# Both statuses are informational on purpose. This repository gates merges on its own CI jobs
+# (ruff, pytest, frontend build, Gitleaks, CodeQL); a coverage delta is useful evidence but must
+# never be the thing that blocks a pull request.
+coverage:
+  precision: 2
+  round: down
+  range: "60...90"
+
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# Paths that cannot appear in the pytest coverage report, so a diff touching only these would
+# otherwise produce a failing patch status for lines that are impossible to cover:
+#   docs/ and *.md — prose and screenshots.
+#   frontend/      — TypeScript/React, tested in the separate `frontend` job of
+#                    .github/workflows/ci.yml, which uploads no coverage.
+#   scripts/       — operator tooling, exercised by hand rather than by the suite.
+#   tests/         — the suite itself, not application code.
+ignore:
+  - "docs/**"
+  - "frontend/**"
+  - "scripts/**"
+  - "tests/**"
+  - "**/*.md"

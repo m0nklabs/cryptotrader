@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-11-10
+### CI coverage reporting (issue #470)
+- `codecov.yml` at the repo root makes `codecov/patch` and `codecov/project` informational and
+  ignores `docs/`, `tests/`, `scripts/`, `frontend/` and Markdown, so a diff that contains no
+  coverable lines (documentation-only, frontend-only) no longer reports a red check.
+- The upload step in `.github/workflows/ci.yml` pins `codecov/codecov-action` to a commit SHA
+  (v7.1.1, `303a32d7`) instead of the mutable `v7` tag, so the uploader cannot change under CI
+  unannounced. That SHA is the one `v7` already resolved to, so the pin is reproducibility only.
+- The unit-test job measures `db`, `cex` and `strategies` in addition to `core` and `api` — the
+  packages the test suite actually imports.
+- The `frontend` job stays a separate job. Its steps were folded into the backend job by a bad
+  edit during this work and restored; a frontend regression must not depend on the backend
+  having passed first.
+- Resolved blocker: the repository was deactivated in Codecov ("This repository has been
+  deactivated" on `app.codecov.io/github/m0nklabs/cryptotrader`), so uploads were accepted but
+  no status was posted. It is active again — `codecov/patch` reported from the `codecov` app on
+  the head of PR #472 (2026-11-20), so the upload now surfaces as a real check.
+
 ## 2026-09-07
 ### On-demand model hosting with idle-unload (forecasting lane)
 - The always-on API process no longer has to keep the TimesFM model resident:
