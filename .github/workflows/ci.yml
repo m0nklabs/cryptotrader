@@ -140,7 +140,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://cryptotrader:cryptotrader@localhost:${{ job.services.postgres.ports['5432'] }}/cryptotrader_test
         run: |
-          pytest -q --cov=core --cov=api --cov=db --cov=cex --cov=strategies --cov-report=term-missing -m "not integration"
+          pytest -q --cov=core --cov=api --cov=db --cov=cex --cov=strategies --cov-report=xml --cov-report=term-missing -m "not integration"
 
       - name: Integration Tests
         if: ${{ env.BITFINEX_API_KEY != '' }}
@@ -148,8 +148,26 @@ jobs:
           pytest -q -m "integration" --tb=short
         continue-on-error: true
 
-      # Pinned by commit SHA (v7.0.0), not by tag: a mutable tag lets the uploader's behaviour
-      # change between runs without any diff, which makes a green check meaningless.
+      # Pinned by commit SHA instead of the mutable `v7` tag: a tag can move, so a green
+      # check could silently be produced by a different uploader tomorrow. 303a32d7 is the
+      # commit the `v7` tag resolved to on 2026-11-21 (release v7.1.1), i.e. exactly the
+      # uploader that ran before this pin — pinning changes nothing but reproducibility.
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  frontend:
+    name: Frontend (build)
+    runs-on: [self-hosted, Linux]
+    needs: [autofix]
+    if: always() && (needs.autofix.result == 'success' || needs.autofix.result == 'skipped')
+
+    steps:
       - name: Checkout
         uses: actions/checkout@v7
 
