@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-11-22
+### Backtest equity is marked to market (issue #431)
+- `BacktestEngine` now revalues the open position on every candle instead of
+  carrying flat cash equity until a trade closes: total return, final equity,
+  max drawdown, volatility and Sharpe are computed from marked equity, so an
+  intra-trade excursion or a still-open position is no longer invisible.
+- `BacktestResult` gains `realized_pnl`, `unrealized_pnl`, `open_position`
+  (side/size/entry/mark/unrealized) and `end_of_run_policy`;
+  `total_pnl == realized_pnl + unrealized_pnl` for every run.
+- New `end_of_run_policy` (`mark_to_market` default, or `force_close`, which
+  liquidates at the last close and appends the liquidation to `trades`); an
+  unknown value is rejected with `ValueError`.
+- Walk-forward folds inherit the marked basis: a position carried out of the
+  warmup still marks only its in-window move, and `oos_decay`
+  (`test_return / train_return`) is asserted as the sign-carrying ratio it is
+  rather than as a non-negative value. Documented in `docs/BACKTESTING.md`.
+
 ## 2026-09-07
 ### On-demand model hosting with idle-unload (forecasting lane)
 - The always-on API process no longer has to keep the TimesFM model resident:
