@@ -70,9 +70,7 @@ class BacktestEngine:
         end_of_run_policy: str = "mark_to_market",
     ):
         if end_of_run_policy not in END_OF_RUN_POLICIES:
-            raise ValueError(
-                f"end_of_run_policy must be one of {END_OF_RUN_POLICIES}, got {end_of_run_policy!r}"
-            )
+            raise ValueError(f"end_of_run_policy must be one of {END_OF_RUN_POLICIES}, got {end_of_run_policy!r}")
         self.candle_store = candle_store
         self.initial_capital = initial_capital
         self.position_size_config = position_size_config
