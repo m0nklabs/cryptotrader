@@ -245,8 +245,6 @@ class BacktestEngine:
                 cash += float(trade.pnl)
                 if len(equity_curve) > 1:
                     equity_curve[-1] = cash
-                position = None
-                entry_price = None
                 self._current_position_size = None
             else:
                 unrealized_pnl = self._unrealized_pnl(position, entry_price, last_close)
