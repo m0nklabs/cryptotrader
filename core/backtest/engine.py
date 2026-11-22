@@ -20,10 +20,22 @@ from core.persistence.interfaces import CandleStore
 from core.risk.sizing import PositionSize, calculate_position_size
 from core.types import Candle
 
+# Policies for a position that is still open on the last candle of a run.
+END_OF_RUN_POLICIES = ("mark_to_market", "force_close")
+
 
 @dataclass
 class BacktestResult:
-    """Results from a backtest run."""
+    """Results from a backtest run.
+
+    ``equity_curve`` is marked to market on every candle: realized cash plus
+    the unrealized PnL of the position that is open at that candle. ``total_pnl``
+    therefore always equals ``realized_pnl + unrealized_pnl``.
+
+    ``open_position`` describes the position still open when the run ended; it is
+    ``None`` when the book is flat or when ``end_of_run_policy="force_close"``
+    liquidated the position at the last close.
+    """
 
     trades: list[Trade]
     equity_curve: list[float]
@@ -33,6 +45,10 @@ class BacktestResult:
     max_drawdown: float
     win_rate: float
     profit_factor: float
+    realized_pnl: float = 0.0
+    unrealized_pnl: float = 0.0
+    open_position: dict | None = None
+    end_of_run_policy: str = "mark_to_market"
 
 
 @dataclass
@@ -51,10 +67,16 @@ class BacktestEngine:
         candle_store: CandleStore | None,
         initial_capital: float = 10000.0,
         position_size_config: PositionSize | None = None,
+        end_of_run_policy: str = "mark_to_market",
     ):
+        if end_of_run_policy not in END_OF_RUN_POLICIES:
+            raise ValueError(
+                f"end_of_run_policy must be one of {END_OF_RUN_POLICIES}, got {end_of_run_policy!r}"
+            )
         self.candle_store = candle_store
         self.initial_capital = initial_capital
         self.position_size_config = position_size_config
+        self.end_of_run_policy = end_of_run_policy
         self._current_position_size: Decimal | None = None
 
     def load_candles(
@@ -107,6 +129,30 @@ class BacktestEngine:
         except (ValueError, ZeroDivisionError):
             return Decimal("1.0")  # fallback to fixed
 
+    def _position_size(self) -> Decimal:
+        """Quantity of the open position (fixed 1.0 when no sizing config is set)."""
+        size = self._current_position_size
+        return size if size is not None else Decimal("1.0")
+
+    def _unrealized_pnl(self, position: str | None, entry_price: Decimal | None, mark_price: Decimal) -> float:
+        """Unrealized PnL of the open position marked at ``mark_price``."""
+        if position is None or entry_price is None:
+            return 0.0
+
+        size = self._position_size()
+        if position == "LONG":
+            return float((mark_price - entry_price) * size)
+        return float((entry_price - mark_price) * size)
+
+    def _build_trade(self, position: str, entry_price: Decimal, exit_price: Decimal) -> Trade:
+        """Close the open position at ``exit_price`` and return the realized trade."""
+        return Trade(
+            entry_price=entry_price,
+            exit_price=exit_price,
+            side="BUY" if position == "LONG" else "SELL",
+            size=self._position_size(),
+        )
+
     def run(
         self,
         strategy: Strategy,
@@ -121,19 +167,25 @@ class BacktestEngine:
             stop_loss_pct: Stop loss percentage for position sizing (default 5%)
 
         Returns:
-            BacktestResult with trades and performance metrics
+            BacktestResult with trades and performance metrics. The equity curve
+            is marked to market on every candle (realized cash plus open-position
+            PnL); ``end_of_run_policy`` decides what happens to a position that is
+            still open on the last candle.
         """
         if not (0 < stop_loss_pct < 1):
             raise ValueError(f"stop_loss_pct must be in (0, 1), got {stop_loss_pct}")
 
         trades: list[Trade] = []
         equity_curve: list[float] = [self.initial_capital]
-        current_equity = self.initial_capital
+        cash = self.initial_capital  # realized equity, moves only when a trade closes
         position = None  # None, 'LONG', or 'SHORT'
         entry_price = None
+        last_close = None
         self._current_position_size = None
 
         for i, candle in enumerate(candles):
+            last_close = candle.close
+
             # Calculate indicators
             indicators = {}
             if i >= 14:  # Need enough candles for RSI
@@ -148,7 +200,7 @@ class BacktestEngine:
                     # Enter position with dynamic sizing
                     dynamic_size = self._calculate_dynamic_size(
                         entry_price=candle.close,
-                        equity=current_equity,
+                        equity=cash,
                         stop_loss_pct=stop_loss_pct,
                     )
                     if dynamic_size > 0:
@@ -162,25 +214,14 @@ class BacktestEngine:
                     )
 
                     if should_exit and entry_price is not None:
-                        # Get dynamic size for this position
-                        current_position_size = getattr(self, "_current_position_size", None)
-                        dynamic_size = current_position_size if current_position_size is not None else Decimal("1.0")
-
-                        # Close position
-                        trade_side = "BUY" if position == "LONG" else "SELL"
-                        trade = Trade(
-                            entry_price=entry_price,
-                            exit_price=candle.close,
-                            side=trade_side,
-                            size=dynamic_size,
-                        )
+                        trade = self._build_trade(position, entry_price, candle.close)
                         trades.append(trade)
-                        current_equity += float(trade.pnl)
+                        cash += float(trade.pnl)
 
                         # Enter new position with fresh dynamic sizing
                         dynamic_size = self._calculate_dynamic_size(
                             entry_price=candle.close,
-                            equity=current_equity,
+                            equity=cash,
                             stop_loss_pct=stop_loss_pct,
                         )
                         if dynamic_size > 0:
@@ -192,9 +233,34 @@ class BacktestEngine:
                             entry_price = None
                             self._current_position_size = None
 
-            equity_curve.append(current_equity)
+            # Mark the book to market: realized cash plus the open-position PnL
+            equity_curve.append(cash + self._unrealized_pnl(position, entry_price, candle.close))
 
-        # Calculate returns for Sharpe ratio
+        open_position: dict | None = None
+        unrealized_pnl = 0.0
+
+        if position is not None and entry_price is not None and last_close is not None:
+            if self.end_of_run_policy == "force_close":
+                # Liquidate at the last close so the final equity is fully realized
+                trade = self._build_trade(position, entry_price, last_close)
+                trades.append(trade)
+                cash += float(trade.pnl)
+                if len(equity_curve) > 1:
+                    equity_curve[-1] = cash
+                position = None
+                entry_price = None
+                self._current_position_size = None
+            else:
+                unrealized_pnl = self._unrealized_pnl(position, entry_price, last_close)
+                open_position = {
+                    "side": position,
+                    "size": float(self._position_size()),
+                    "entry_price": float(entry_price),
+                    "mark_price": float(last_close),
+                    "unrealized_pnl": unrealized_pnl,
+                }
+
+        # Calculate returns for Sharpe ratio from marked-to-market equity
         returns = []
         for i in range(1, len(equity_curve)):
             if equity_curve[i - 1] > 0:
@@ -207,6 +273,7 @@ class BacktestEngine:
         profit_factor = calculate_profit_factor(trades)
         final_equity = equity_curve[-1] if equity_curve else self.initial_capital
         total_pnl = final_equity - self.initial_capital
+        realized_pnl = cash - self.initial_capital
         epsilon = 1e-9
         if abs(self.initial_capital) < epsilon:
             total_return = 0.0
@@ -222,6 +289,10 @@ class BacktestEngine:
             max_drawdown=max_dd,
             win_rate=win_rate,
             profit_factor=profit_factor,
+            realized_pnl=realized_pnl,
+            unrealized_pnl=unrealized_pnl,
+            open_position=open_position,
+            end_of_run_policy=self.end_of_run_policy,
         )
 
     def compare_strategies(
