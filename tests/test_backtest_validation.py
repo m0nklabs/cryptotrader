@@ -401,8 +401,15 @@ class TestWalkForwardValidation:
 
         assert isinstance(result.mean_oos_decay, float)
         assert math.isfinite(result.mean_oos_decay)
-        # OOS decay should be non-negative (0 is valid when test_return is 0)
-        assert result.mean_oos_decay >= 0
+        # OOS decay is a sign-carrying ratio (test_return / train_return), so it is
+        # negative when a fold loses in-sample and gains out-of-sample. Assert the
+        # definition instead of a sign.
+        for fold in result.folds:
+            if abs(fold.train_return) > 1e-9:
+                assert fold.oos_decay == pytest.approx(fold.test_return / fold.train_return)
+            else:
+                assert fold.oos_decay == 0.0
+        assert result.mean_oos_decay == pytest.approx(sum(f.oos_decay for f in result.folds) / len(result.folds))
 
     def test_walk_forward_rsi_overfitting_assessment(self, rsi_candles):
         """Overfitting risk is assessed correctly."""
