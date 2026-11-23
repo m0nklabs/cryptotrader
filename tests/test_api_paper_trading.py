@@ -417,7 +417,8 @@ class TestOrderFillContract:
         )
         order_id = response.json()["order"]["order_id"]
 
-        assert client.delete(f"/orders/{order_id}").status_code == 200
+        cancelled_response = client.delete(f"/orders/{order_id}")
+        assert cancelled_response.status_code == 200
 
         listed = client.get("/orders").json()["orders"]
         assert len(listed) == 1
