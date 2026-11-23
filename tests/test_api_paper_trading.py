@@ -75,7 +75,7 @@ class TestOrderEndpoints:
         assert order["side"] == "BUY"
         assert order["order_type"] == "market"
         assert order["status"] == "FILLED"
-        assert Decimal(order["fill_price"]) > Decimal("50000")  # Slippage
+        assert Decimal(order["avg_fill_price"]) > Decimal("50000")  # Slippage
 
     def test_place_limit_order(self, client):
         """Test placing a limit order."""
@@ -96,7 +96,7 @@ class TestOrderEndpoints:
         assert order["order_id"] == 1
         assert order["status"] == "PENDING"
         assert order["limit_price"] == "49000"
-        assert order["fill_price"] is None
+        assert order["avg_fill_price"] is None
 
     def test_limit_order_requires_limit_price(self, client):
         """Test that limit orders require a limit price."""
@@ -218,6 +218,219 @@ class TestOrderEndpoints:
         response = client.delete(f"/orders/{order_id}")
         assert response.status_code == 400
         assert "Cannot cancel" in response.json()["detail"]["message"]
+
+
+class TestOrderFillContract:
+    """The paper order fill contract behind POST /orders, GET /orders and GET /orders/{id}."""
+
+    # The complete row shape. A missing or duplicated alias fails this set.
+    CONTRACT_FIELDS = {
+        "order_id",
+        "mode",
+        "symbol",
+        "side",
+        "order_type",
+        "status",
+        "requested_qty",
+        "filled_qty",
+        "remaining_qty",
+        "fill_ratio",
+        "avg_fill_price",
+        "limit_price",
+        "fees",
+        "slippage_bps",
+        "created_at",
+        "filled_at",
+    }
+
+    @staticmethod
+    def _executor(**fill_probs: str):
+        """Return the API's paper executor with deterministic fill probabilities."""
+        from api.main import _get_paper_executor
+
+        executor = _get_paper_executor()
+        for name, value in fill_probs.items():
+            setattr(executor, name, Decimal(value))
+        return executor
+
+    @staticmethod
+    def _market_order(client, qty: str = "1.0", market_price: str = "50000", symbol: str = "BTCUSD"):
+        """Place a market order through the API and return the response body."""
+        response = client.post(
+            "/orders",
+            json={
+                "symbol": symbol,
+                "side": "BUY",
+                "qty": qty,
+                "order_type": "market",
+                "market_price": market_price,
+            },
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def test_market_order_carries_the_full_fill_contract(self, client):
+        """POST and GET must emit the same, complete row for a filled order."""
+        self._executor(_partial_fill_prob="1", _missed_fill_prob="0")
+
+        placed = self._market_order(client)["order"]
+        assert set(placed) == self.CONTRACT_FIELDS
+
+        assert placed["mode"] == "paper"
+        assert placed["status"] == "FILLED"
+        assert Decimal(placed["requested_qty"]) == Decimal("1.0")
+        assert Decimal(placed["filled_qty"]) == Decimal("1.0")
+        assert Decimal(placed["remaining_qty"]) == Decimal("0")
+        assert Decimal(placed["fill_ratio"]) == Decimal("1")
+        assert Decimal(placed["avg_fill_price"]) > Decimal("50000")  # Slippage applied
+        assert Decimal(placed["fees"]) > 0
+        assert Decimal(placed["slippage_bps"]) == Decimal("5")
+        assert placed["created_at"] is not None
+        assert placed["filled_at"] is not None
+
+        listed = client.get("/orders").json()["orders"]
+        assert len(listed) == 1
+        # The list row is byte-identical to the placement row: one contract.
+        assert listed[0] == placed
+
+    def test_pending_limit_order_reports_nothing_filled(self, client):
+        """A resting limit order must not claim the requested qty as filled."""
+        response = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "limit",
+                "limit_price": "49000",
+            },
+        )
+        assert response.status_code == 200
+        order = response.json()["order"]
+
+        assert set(order) == self.CONTRACT_FIELDS
+        assert order["status"] == "PENDING"
+        assert Decimal(order["requested_qty"]) == Decimal("1.0")
+        assert Decimal(order["filled_qty"]) == Decimal("0")
+        assert Decimal(order["remaining_qty"]) == Decimal("1.0")
+        assert Decimal(order["fill_ratio"]) == Decimal("0")
+        assert order["avg_fill_price"] is None
+        assert order["filled_at"] is None
+
+    def test_partial_fill_reports_requested_filled_and_remaining(self, client):
+        """A PARTIAL fill exposes requested/filled/remaining and a true ratio."""
+        self._executor(_partial_fill_prob="0", _missed_fill_prob="0")
+
+        order = self._market_order(client, qty="2.0")["order"]
+        assert order["status"] == "PARTIAL"
+
+        requested = Decimal(order["requested_qty"])
+        filled = Decimal(order["filled_qty"])
+        remaining = Decimal(order["remaining_qty"])
+        assert requested == Decimal("2.0")
+        assert Decimal("0") < filled < requested
+        assert filled + remaining == requested
+        assert Decimal("0") < Decimal(order["fill_ratio"]) < Decimal("1")
+        assert order["avg_fill_price"] is not None
+        assert order["filled_at"] is not None
+
+    def test_missed_fill_reports_nothing_filled(self, client):
+        """A MISSED order fills nothing, so it must advertise no fill price."""
+        self._executor(_missed_fill_prob="1")
+
+        order = self._market_order(client, qty="1.0")["order"]
+        assert order["status"] == "MISSED"
+        assert Decimal(order["requested_qty"]) == Decimal("1.0")
+        assert Decimal(order["filled_qty"]) == Decimal("0")
+        assert Decimal(order["remaining_qty"]) == Decimal("1.0")
+        assert Decimal(order["fill_ratio"]) == Decimal("0")
+        assert order["avg_fill_price"] is None
+        assert order["filled_at"] is None
+
+        listed = client.get("/orders").json()["orders"]
+        assert [o["status"] for o in listed] == ["MISSED"]
+
+    def test_status_filter_accepts_every_executor_state(self, client):
+        """PARTIAL and MISSED are first-class filters, unknown values are rejected."""
+        self._executor(_partial_fill_prob="0", _missed_fill_prob="0")
+        partial = self._market_order(client, qty="2.0")["order"]
+        assert partial["status"] == "PARTIAL"
+
+        # A second order on the same symbol inside the cooldown window is
+        # rejected, so the missed fill is placed on a different symbol.
+        self._executor(_missed_fill_prob="1")
+        missed = self._market_order(client, symbol="ETHUSD", market_price="3000")["order"]
+        assert missed["status"] == "MISSED"
+
+        response = client.get("/orders", params={"status": "PARTIAL"})
+        assert response.status_code == 200
+        assert [o["order_id"] for o in response.json()["orders"]] == [partial["order_id"]]
+
+        response = client.get("/orders", params={"status": "MISSED"})
+        assert response.status_code == 200
+        assert [o["order_id"] for o in response.json()["orders"]] == [missed["order_id"]]
+
+        # Every executor state is an accepted filter value; empty lists are fine.
+        for status in ("PENDING", "FILLED", "CANCELLED", "PARTIAL", "MISSED"):
+            assert client.get("/orders", params={"status": status}).status_code == 200
+
+        # Anything outside the status model is a validation error, not a silent empty list.
+        assert client.get("/orders", params={"status": "BOGUS"}).status_code == 422
+
+    def test_get_single_order_returns_the_list_row(self, client):
+        """GET /orders/{id} serves exactly the row the list endpoint emits."""
+        self._executor(_partial_fill_prob="1", _missed_fill_prob="0")
+        placed = self._market_order(client)["order"]
+
+        response = client.get(f"/orders/{placed['order_id']}")
+        assert response.status_code == 200
+        assert response.json() == placed
+
+    def test_get_single_unknown_order_returns_structured_404(self, client):
+        """An unknown order ID is a structured 404, not a crash or an empty row."""
+        response = client.get("/orders/999")
+        assert response.status_code == 404
+        assert response.json() == {
+            "detail": {"error": "not_found", "message": "Order 999 not found"}
+        }
+
+    def test_list_route_is_not_shadowed_by_the_single_order_route(self, client):
+        """GET /orders must stay the list route instead of binding order_id."""
+        response = client.get("/orders")
+        assert response.status_code == 200
+        assert set(response.json()) == {"orders"}
+
+        # A non-numeric ID is a validation error, never a 404 out of the list route.
+        assert client.get("/orders/not-an-order").status_code == 422
+
+    def test_cancelled_order_stays_listed_with_its_fill_state(self, client):
+        """Cancelling keeps the order in the ledger, with nothing filled."""
+        response = client.post(
+            "/orders",
+            json={
+                "symbol": "BTCUSD",
+                "side": "BUY",
+                "qty": "1.0",
+                "order_type": "limit",
+                "limit_price": "49000",
+            },
+        )
+        order_id = response.json()["order"]["order_id"]
+
+        assert client.delete(f"/orders/{order_id}").status_code == 200
+
+        listed = client.get("/orders").json()["orders"]
+        assert len(listed) == 1
+        cancelled = listed[0]
+        assert cancelled["status"] == "CANCELLED"
+        assert cancelled["order_id"] == order_id
+        assert Decimal(cancelled["filled_qty"]) == Decimal("0")
+        assert Decimal(cancelled["remaining_qty"]) == Decimal("1.0")
+        assert cancelled["avg_fill_price"] is None
+
+        filtered = client.get("/orders", params={"status": "CANCELLED"}).json()["orders"]
+        assert [o["order_id"] for o in filtered] == [order_id]
+        assert client.get(f"/orders/{order_id}").json()["status"] == "CANCELLED"
 
 
 class TestPositionEndpoints:
@@ -432,6 +645,9 @@ class TestPaperTradingEndpointsExist:
         routes = route_paths(app)
         assert "/orders" in routes
         assert "/orders/{order_id}" in routes
+        methods = app.openapi()["paths"]["/orders/{order_id}"].keys()
+        assert "get" in methods
+        assert "delete" in methods
 
     def test_positions_endpoints_exist(self, route_paths):
         """Test that position endpoints are registered."""

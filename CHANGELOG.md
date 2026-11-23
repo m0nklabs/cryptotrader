@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-11-23
+### Paper order fill contract, single-order GET and a working orders panel (issue #163)
+- `GET /orders`, `GET /orders/{order_id}` (new) and the `POST /orders`
+  response now share one row contract: `mode` (`paper`), `requested_qty`,
+  `filled_qty`, `remaining_qty`, `fill_ratio`, `avg_fill_price`, `fees`,
+  `slippage_bps`, `created_at` and `filled_at`. The old `qty` / `fill_price`
+  aliases are gone; every caller was updated in the same change.
+- Two values are normalized by the API so a row cannot contradict itself: a
+  resting limit order no longer reports its requested quantity as filled, and
+  a `MISSED` order reports `avg_fill_price: null` instead of a price for a
+  fill that never happened.
+- The `status` filter accepts every executor state (`PENDING`, `FILLED`,
+  `CANCELLED`, `PARTIAL`, `MISSED`); `PARTIAL` and `MISSED` orders were
+  previously unfilterable.
+- New `GET /orders/{order_id}` returns one order and answers an unknown id with
+  the structured `{"error": "not_found", "message": ...}` 404 shape.
+- Frontend: `listOrders()` reads `${API_BASE}/orders` with optional `symbol`
+  and `status` parameters, so the orders panel finally shows placed orders.
+  The dead `WALLETS_SERVICE_ENABLED` / `localhost:8101` stub is removed, and
+  `OrdersTable` renders provenance, the fill fields and distinct colours for
+  `PARTIAL` (`--info`) and `MISSED` (`--danger`).
+- Documented in `docs/ORDER_STATUS_CONTRACT.md`; covered by
+  `tests/test_api_paper_trading.py` (`TestOrderFillContract`).
+
 ## 2026-09-07
 ### On-demand model hosting with idle-unload (forecasting lane)
 - The always-on API process no longer has to keep the TimesFM model resident:
