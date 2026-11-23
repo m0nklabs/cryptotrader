@@ -1448,7 +1448,7 @@ export default function App() {
               </Panel>
 
               <div className="ct-dock-bottom flex flex-col gap-3">
-                <Panel title="Orders" subtitle={`${orders.filter(o => o.status === 'PENDING' || o.status === 'ACTIVE').length} active / ${orders.filter(o => o.status === 'FILLED' || o.status === 'EXECUTED').length} filled`}>
+                <Panel title="Orders" subtitle={`${orders.filter(o => o.status === 'PENDING').length} pending / ${orders.filter(o => o.status === 'PARTIAL').length} partial / ${orders.filter(o => o.status === 'FILLED').length} filled`}>
                   <OrdersTable
                     orders={orders}
                     onCancel={handleCancelOrder}
@@ -1631,7 +1631,7 @@ export default function App() {
               <Panel title="Place Order" subtitle={`${chartSymbol} @ ${currentPrice?.toFixed(2) || '—'}`}>
                 <OrderForm symbol={chartSymbol} currentPrice={currentPrice} onSubmit={handlePlaceOrder} />
               </Panel>
-              <Panel title="Open Orders" subtitle={`${orders.length} active`}>
+              <Panel title="Paper Orders" subtitle={`${orders.length} tracked`}>
                 <OrdersTable orders={orders} onCancel={handleCancelOrder} loading={tradingLoading} />
               </Panel>
             </div>

@@ -883,21 +883,6 @@ class OrderRequest(BaseModel):
     market_price: Optional[Decimal] = Field(None, gt=0, description="Current market price (required for market orders)")
 
 
-class OrderResponse(BaseModel):
-    """Response for order operations."""
-
-    order_id: int
-    symbol: str
-    side: str
-    order_type: str
-    qty: str
-    limit_price: Optional[str] = None
-    status: str
-    fill_price: Optional[str] = None
-    created_at: Optional[str] = None
-    filled_at: Optional[str] = None
-
-
 class PositionResponse(BaseModel):
     """Response for position queries."""
 
@@ -909,17 +894,67 @@ class PositionResponse(BaseModel):
     realized_pnl: str
 
 
+# Every status the paper executor can report. Declared once so the list filter
+# and the response contract cannot drift apart.
+PaperOrderStatus = Literal["PENDING", "FILLED", "CANCELLED", "PARTIAL", "MISSED"]
+
+# Provenance marker carried by every row of the paper order contract.
+PAPER_ORDER_MODE = "paper"
+
+
+def _paper_order_fill_progress(order: PaperOrder) -> tuple[Decimal, Decimal, Decimal]:
+    """Return the (requested, filled, remaining) quantities of a paper order.
+
+    ``PaperOrder.fill_qty`` is pre-populated with the requested quantity by the
+    executor for orders that never traded (a resting limit order keeps
+    ``fill_qty == qty`` until its price crosses), so the filled quantity may
+    only be taken from the order once it actually reached a fill state.
+    Reporting the raw field would claim a resting limit order was fully filled.
+    """
+    requested = order.qty
+    filled = Decimal("0")
+    if order.status in ("FILLED", "PARTIAL") and order.fill_qty is not None:
+        filled = order.fill_qty
+    filled = max(Decimal("0"), min(filled, requested))
+    return requested, filled, max(Decimal("0"), requested - filled)
+
+
 def _order_to_response(order: PaperOrder) -> dict[str, Any]:
-    """Convert PaperOrder to API response dict."""
+    """Convert a PaperOrder into the paper order contract.
+
+    The row is self-describing: provenance (``mode``), requested/filled/
+    remaining quantities, fill ratio, average fill price, fees, slippage and
+    the lifecycle timestamps. Decimal amounts are string-encoded so the wire
+    format never rounds a quantity or a price.
+
+    Args:
+        order: The paper order to serialize.
+
+    Returns:
+        A JSON-ready dict describing the order.
+    """
+    requested_qty, filled_qty, remaining_qty = _paper_order_fill_progress(order)
+    fill_ratio = Decimal("0")
+    if requested_qty > 0:
+        fill_ratio = (filled_qty / requested_qty).quantize(Decimal("0.0001"))
     return {
         "order_id": order.order_id,
+        "mode": PAPER_ORDER_MODE,
         "symbol": order.symbol,
         "side": order.side,
         "order_type": order.order_type,
-        "qty": str(order.qty),
-        "limit_price": str(order.limit_price) if order.limit_price else None,
         "status": order.status,
-        "fill_price": str(order.fill_price) if order.fill_price else None,
+        "requested_qty": str(requested_qty),
+        "filled_qty": str(filled_qty),
+        "remaining_qty": str(remaining_qty),
+        "fill_ratio": str(fill_ratio),
+        # An average fill price only exists once at least part of the order
+        # traded; the market executor derives a price before simulating the
+        # fill, so a MISSED order would otherwise advertise a phantom price.
+        "avg_fill_price": str(order.fill_price) if order.fill_price is not None and filled_qty > 0 else None,
+        "limit_price": str(order.limit_price) if order.limit_price is not None else None,
+        "fees": str(order.fees),
+        "slippage_bps": str(order.slippage_bps) if order.slippage_bps is not None else None,
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "filled_at": order.filled_at.isoformat() if order.filled_at else None,
     }
@@ -1050,16 +1085,18 @@ async def place_order(request: OrderRequest) -> dict[str, Any]:
 @app.get("/orders")
 async def list_orders(
     symbol: Optional[str] = Query(None, description="Filter by symbol"),
-    status: Optional[Literal["PENDING", "FILLED", "CANCELLED"]] = Query(None, description="Filter by status"),
+    status: Optional[PaperOrderStatus] = Query(None, description="Filter by order status"),
 ) -> dict[str, Any]:
     """List paper trading orders.
 
     Args:
         symbol: Optional symbol filter.
-        status: Optional status filter.
+        status: Optional status filter; every executor state is accepted
+            (PENDING, FILLED, CANCELLED, PARTIAL, MISSED).
 
     Returns:
-        List of orders matching the filters.
+        List of orders matching the filters, each carrying the paper order
+        fill contract (see ``_order_to_response``).
     """
     executor = _get_paper_executor()
     orders = list(executor._orders.values())
@@ -1071,6 +1108,33 @@ async def list_orders(
         orders = [o for o in orders if o.status == status]
 
     return {"orders": [_order_to_response(o) for o in orders]}
+
+
+@app.get("/orders/{order_id}")
+async def get_order(
+    order_id: int = Path(..., description="Order ID to fetch"),
+) -> dict[str, Any]:
+    """Fetch a single paper order.
+
+    Args:
+        order_id: The order ID to fetch.
+
+    Returns:
+        The order in the same shape ``GET /orders`` emits.
+
+    Raises:
+        HTTPException: 404 when no order with that ID exists.
+    """
+    executor = _get_paper_executor()
+
+    order = executor.get_order(order_id)
+    if order is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Order {order_id} not found"},
+        )
+
+    return _order_to_response(order)
 
 
 @app.delete("/orders/{order_id}")

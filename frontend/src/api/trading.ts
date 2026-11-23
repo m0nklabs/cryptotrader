@@ -1,38 +1,40 @@
 /**
  * Paper trading API client.
- * Connects to backend endpoints for order and position management.
+ * Connects to the backend order and position endpoints, which are served by
+ * the paper executor through the main API.
  */
 
 const API_BASE = '/api';
-// Wallets-data service for real exchange data (not yet deployed)
-const WALLETS_API = 'http://localhost:8101';
-// Flag to indicate wallets-data service is available
-const WALLETS_SERVICE_ENABLED = false;
 
-export type OrderSide = 'BUY' | 'SELL' | 'buy' | 'sell';
-export type OrderType = 'market' | 'limit' | string;  // Bitfinex uses 'EXCHANGE LIMIT' etc.
-export type OrderStatus = 'PENDING' | 'FILLED' | 'CANCELLED' | 'ACTIVE' | string;
+export type OrderSide = 'BUY' | 'SELL';
+export type OrderType = 'market' | 'limit';
+export type OrderStatus = 'PENDING' | 'FILLED' | 'CANCELLED' | 'PARTIAL' | 'MISSED';
+/** Provenance of an order row; the order endpoints only serve paper orders. */
+export type OrderMode = 'paper';
 
+/**
+ * One row of the paper order contract: provenance, requested/filled/remaining
+ * quantities, average fill price, costs and the lifecycle timestamps.
+ * Decimal amounts travel as strings so no precision is lost in transit.
+ */
 export interface Order {
   order_id: number;
+  mode: OrderMode;
   symbol: string;
   side: OrderSide;
   order_type: OrderType;
-  // Paper trading fields
-  qty?: string;
-  limit_price?: string | null;
-  fill_price?: string | null;
-  slippage_bps?: string | null;
-  filled_at?: string | null;
-  // Exchange order fields (from wallets-data)
-  exchange?: string;
-  amount?: string;
-  amount_filled?: string;
-  price?: string | null;
-  avg_price?: string | null;
   status: OrderStatus;
+  requested_qty: string;
+  filled_qty: string;
+  remaining_qty: string;
+  /** filled_qty / requested_qty, 0 when the order never traded. */
+  fill_ratio: string;
+  avg_fill_price: string | null;
+  limit_price: string | null;
+  fees: string;
+  slippage_bps: string | null;
   created_at: string | null;
-  updated_at?: string | null;
+  filled_at: string | null;
 }
 
 export interface Position {
@@ -51,15 +53,6 @@ export interface PlaceOrderRequest {
   order_type: OrderType;
   limit_price?: string;
   market_price?: string;
-}
-
-export interface ApiResponse<T> {
-  success: boolean;
-  order?: T;
-  orders?: T[];
-  positions?: T[];
-  message?: string;
-  close_order?: Order;
 }
 
 export interface ApiError {
@@ -88,37 +81,25 @@ export async function placeOrder(request: PlaceOrderRequest): Promise<Order> {
 }
 
 /**
- * List orders - fetches real orders from wallets-data service.
- * Returns empty array if service is not available.
+ * List paper orders, optionally filtered by symbol and status.
  */
 export async function listOrders(params?: {
   symbol?: string;
   status?: OrderStatus;
 }): Promise<Order[]> {
-  // Wallets-data service not yet deployed
-  if (!WALLETS_SERVICE_ENABLED) {
-    return [];
-  }
+  const query = new URLSearchParams();
+  if (params?.symbol) query.set('symbol', params.symbol);
+  if (params?.status) query.set('status', params.status);
+  const search = query.toString();
 
-  // Fetch real orders from wallets-data (Bitfinex)
-  const res = await fetch(`${WALLETS_API}/orders`);
+  const res = await fetch(`${API_BASE}/orders${search ? `?${search}` : ''}`);
 
   if (!res.ok) {
     throw new Error('Failed to fetch orders');
   }
 
   const data = await res.json();
-  let orders = data.orders as Order[];
-
-  // Apply filters client-side
-  if (params?.symbol) {
-    orders = orders.filter(o => o.symbol === params.symbol);
-  }
-  if (params?.status) {
-    orders = orders.filter(o => o.status === params.status);
-  }
-
-  return orders;
+  return data.orders as Order[];
 }
 
 /**
