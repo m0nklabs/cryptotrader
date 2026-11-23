@@ -390,9 +390,7 @@ class TestOrderFillContract:
         """An unknown order ID is a structured 404, not a crash or an empty row."""
         response = client.get("/orders/999")
         assert response.status_code == 404
-        assert response.json() == {
-            "detail": {"error": "not_found", "message": "Order 999 not found"}
-        }
+        assert response.json() == {"detail": {"error": "not_found", "message": "Order 999 not found"}}
 
     def test_list_route_is_not_shadowed_by_the_single_order_route(self, client):
         """GET /orders must stay the list route instead of binding order_id."""
