@@ -124,7 +124,17 @@ export default function OrdersTable({
                   {formatQty(order.remaining_qty)}
                 </td>
                 <td className="py-1 pr-2 text-right font-mono">
-                  {formatPrice(order.avg_fill_price)}
+                  <div>{formatPrice(order.avg_fill_price)}</div>
+                  {/* A resting limit order has no fill price yet, so the
+                      execution threshold must stay visible on its own line. */}
+                  {order.limit_price !== null && (
+                    <div
+                      className="text-[9px] text-[var(--muted)]"
+                      title="Resting limit price"
+                    >
+                      limit {formatPrice(order.limit_price)}
+                    </div>
+                  )}
                 </td>
                 <td className="py-1 pr-2 text-right font-mono">
                   {formatPrice(order.fees)}
