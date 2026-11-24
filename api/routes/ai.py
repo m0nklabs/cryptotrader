@@ -16,9 +16,15 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from core.ai.context import (
+    DEFAULT_MAX_CONTEXT_AGE_SECONDS,
+    EvaluationContext,
+    build_evaluation_context,
+)
 from core.ai.prompts.registry import PromptRegistry
 from core.ai.providers.base import ProviderRegistry
 from core.ai.providers.deepseek import DEEPSEEK_R1_CONFIG, DEEPSEEK_V3_CONFIG, DeepSeekProvider
@@ -435,15 +441,32 @@ class SystemPromptCreate(BaseModel):
 
 
 class EvaluationRequest(BaseModel):
-    """Multi-Brain evaluation request."""
+    """Multi-Brain evaluation request.
+
+    ``build_context`` (default) makes the server assemble the evaluation
+    context from the authoritative sources instead of trusting the client to
+    attach one; the supplied ``candles`` / ``portfolio`` / ``risk_limits``
+    fields are then ignored. Set it to ``False`` only for tooling that already
+    owns a verified snapshot (the response then records ``context: null``).
+    """
 
     symbol: str
     timeframe: str = "1h"
-    candles: list[dict] | None = None
-    indicators: dict | None = None
-    portfolio: dict | None = None
-    risk_limits: dict | None = None
-    roles: list[str] | None = None
+    exchange: str = "bitfinex"
+    candles: list[dict] | None = Field(None, alias="candles")
+    indicators: dict | None = Field(None, alias="indicators")
+    portfolio: dict | None = Field(None, alias="portfolio")
+    risk_limits: dict | None = Field(None, alias="riskLimits")
+    roles: list[str] | None = Field(None, alias="roles")
+    build_context: bool = Field(True, alias="buildContext")
+    max_context_age_s: float = Field(
+        DEFAULT_MAX_CONTEXT_AGE_SECONDS,
+        alias="maxContextAgeS",
+        ge=0,
+        description="Freshness budget for every context input, in seconds.",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class EvaluationResponse(BaseModel):
@@ -459,8 +482,24 @@ class EvaluationResponse(BaseModel):
     total_cost_usd: float = Field(0.0, alias="totalCostUsd")
     total_latency_ms: float = Field(0.0, alias="totalLatencyMs")
     created_at: datetime = Field(..., alias="createdAt")
+    context: dict | None = Field(
+        None,
+        description="Context snapshot the decision was built from (version, ages, missing inputs).",
+    )
+    abstained: bool = Field(False, description="True when the consensus is not executable.")
+    abstain_reasons: list[str] = Field(
+        default_factory=list,
+        alias="abstainReasons",
+        description="Why an executable recommendation was refused.",
+    )
+    role_failures: list[dict] = Field(
+        default_factory=list,
+        alias="roleFailures",
+        description="Roles that errored, with provider and model.",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
+
 
 
 class UsageSummaryResponse(BaseModel):
@@ -787,6 +826,199 @@ async def activate_prompt(prompt_id: str = PathParam(..., description="Prompt ID
 # =============================================================================
 
 
+# =============================================================================
+# Issue #432 - authoritative evaluation context assembly
+# =============================================================================
+
+CANDLE_CONTEXT_LIMIT = 200
+
+
+def _normalize_store_symbol(symbol: str) -> str:
+    """Map a display symbol to the candle store's concatenated form.
+
+    The store keys on ``BTCUSD``; the AI panel types ``BTC/USD``.
+    """
+    return symbol.replace("/", "").replace("-", "").replace("_", "").strip().upper()
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Candle and snapshot timestamps are stored as naive UTC."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+async def _load_market_context(
+    db: AsyncSession,
+    *,
+    exchange: str,
+    symbol: str,
+    timeframe: str,
+    limit: int = CANDLE_CONTEXT_LIMIT,
+) -> tuple[list[dict], datetime | None]:
+    """Read the most recent closed candles and the close time of the last one."""
+    result = await db.execute(
+        text(
+            """
+            SELECT open_time, close_time, open, high, low, close, volume
+            FROM candles
+            WHERE exchange = :exchange AND symbol = :symbol AND timeframe = :timeframe
+            ORDER BY open_time DESC
+            LIMIT :limit
+            """
+        ),
+        {"exchange": exchange, "symbol": symbol, "timeframe": timeframe, "limit": limit},
+    )
+    rows = list(result.mappings().all())
+    rows.reverse()  # oldest first, matching the roles' expectations
+    candles = [
+        {
+            "open_time": _as_utc(row["open_time"]).isoformat() if row["open_time"] else None,
+            "close_time": _as_utc(row["close_time"]).isoformat() if row["close_time"] else None,
+            "open": float(row["open"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "close": float(row["close"]),
+            "volume": float(row["volume"]),
+        }
+        for row in rows
+    ]
+    candles_as_of = _as_utc(rows[-1]["close_time"]) if rows else None
+    return candles, candles_as_of
+
+
+async def _load_portfolio_context(
+    db: AsyncSession,
+    *,
+    exchange: str,
+) -> tuple[dict, datetime | None]:
+    """Read the latest portfolio snapshot for the exchange."""
+    result = await db.execute(
+        text(
+            """
+            SELECT total_value, cash_balance, positions_value,
+                   unrealized_pnl, realized_pnl, snapshot_time
+            FROM portfolio_snapshots
+            WHERE exchange = :exchange OR exchange IS NULL
+            ORDER BY snapshot_time DESC
+            LIMIT 1
+            """
+        ),
+        {"exchange": exchange},
+    )
+    row = result.mappings().first()
+    if row is None:
+        return {}, None
+    portfolio = {
+        "total_value": float(row["total_value"]),
+        "cash_balance": float(row["cash_balance"]),
+        "positions_value": float(row["positions_value"]),
+        "unrealized_pnl": float(row["unrealized_pnl"]),
+        "realized_pnl": float(row["realized_pnl"]),
+    }
+    return portfolio, _as_utc(row["snapshot_time"])
+
+
+async def _build_evaluation_context(request: EvaluationRequest, db: AsyncSession) -> EvaluationContext:
+    """Assemble the snapshot the pipeline is allowed to reason from.
+
+    Risk limits are configuration, not an observation: they carry no timestamp
+    and the repo has no authoritative source for them yet, so they are taken
+    from the request. Their absence does not stop the roles but forbids an
+    executable verdict.
+    """
+    store_symbol = _normalize_store_symbol(request.symbol)
+    try:
+        candles, candles_as_of = await _load_market_context(
+            db,
+            exchange=request.exchange,
+            symbol=store_symbol,
+            timeframe=request.timeframe,
+        )
+    except Exception:
+        # A store read failure is missing evidence, not a reason to guess.
+        logger.exception("AI context: candle store read failed; treating the series as absent")
+        candles, candles_as_of = [], None
+    try:
+        portfolio, portfolio_as_of = await _load_portfolio_context(db, exchange=request.exchange)
+    except Exception:
+        logger.exception("AI context: portfolio snapshot read failed; treating it as absent")
+        portfolio, portfolio_as_of = {}, None
+
+    return build_evaluation_context(
+        symbol=request.symbol,
+        market_symbol=store_symbol,
+        timeframe=request.timeframe,
+        exchange=request.exchange,
+        max_age_seconds=request.max_context_age_s,
+        candles=candles,
+        candles_as_of=candles_as_of,
+        portfolio=portfolio,
+        portfolio_as_of=portfolio_as_of,
+        risk_limits=request.risk_limits,
+    )
+
+
+def _abstain_reasoning(context: EvaluationContext) -> str:
+    """One-sentence explanation of a refused executable recommendation."""
+    reasons = "; ".join(context.abstain_reasons) or "context incomplete"
+    return f"Abstained - no executable recommendation possible ({reasons})."
+
+
+async def _abstain_without_evaluation(
+    request: EvaluationRequest,
+    context: EvaluationContext,
+    roles: list[RoleName] | None,
+    router_instance,
+) -> EvaluationResponse:
+    """Return a neutral decision without calling any provider.
+
+    Nothing can be evaluated without a market series, so no role is queried,
+    no cost is incurred, and the refusal is still recorded in the decision log.
+    """
+    reasoning = _abstain_reasoning(context)
+    created_at = datetime.now(timezone.utc)
+
+    try:
+        factory = _get_session_factory()
+        async with factory() as db:
+            logged = await ai_crud.log_decision_with_usage(
+                db,
+                symbol=request.symbol,
+                timeframe=request.timeframe,
+                final_action="NEUTRAL",
+                final_confidence=0.0,
+                verdicts=[],
+                reasoning=reasoning,
+                total_cost_usd=0.0,
+                total_latency_ms=0.0,
+                usage_records=[],
+            )
+            logged_at = getattr(logged, "created_at", None)
+            if isinstance(logged_at, datetime):
+                created_at = logged_at
+    except Exception:
+        logger.exception("AI abstention persistence failed; returning the abstention anyway")
+
+    return EvaluationResponse(
+        symbol=request.symbol,
+        timeframe=request.timeframe,
+        final_action="NEUTRAL",
+        final_confidence=0.0,
+        reasoning=reasoning,
+        verdicts=[],
+        total_cost_usd=0.0,
+        total_latency_ms=0.0,
+        created_at=created_at,
+        context=context.to_dict(),
+        abstained=True,
+        abstain_reasons=context.abstain_reasons,
+        role_failures=[],
+    )
+
+
 @router.post("/evaluate", response_model=EvaluationResponse)
 async def evaluate_opportunity(request: EvaluationRequest):
     """Trigger Multi-Brain evaluation for a symbol.
@@ -794,8 +1026,15 @@ async def evaluate_opportunity(request: EvaluationRequest):
     Runs the full Multi-Brain pipeline with all active roles to generate
     a consensus trading decision.
 
+    Since issue #432 the server assembles the evaluation context from the
+    authoritative sources (candle store, portfolio snapshots) instead of
+    trusting the client. Without a current market series the evaluation does
+    not run at all; without a current portfolio or risk limits the consensus is
+    clamped to ``NEUTRAL``. An executable recommendation therefore always
+    carries timestamped evidence.
+
     Args:
-        request: Evaluation request with symbol, timeframe, and context data
+        request: Evaluation request with symbol, timeframe, and optional context data
     """
     router_instance = _get_router()
     factory = _get_session_factory()
@@ -844,6 +1083,21 @@ async def evaluate_opportunity(request: EvaluationRequest):
                     )
                 raise HTTPException(status_code=429, detail=error_detail)
 
+    # Assemble the authoritative context (issue #432). A budget-blocked request
+    # must still answer 429, so this runs after the budget gate.
+    context: EvaluationContext | None = None
+    if request.build_context:
+        async with factory() as db:
+            context = await _build_evaluation_context(request, db)
+        if not context.can_run:
+            logger.warning(
+                "AI evaluate abstained: symbol=%s timeframe=%s reasons=%s",
+                request.symbol,
+                request.timeframe,
+                context.abstain_reasons,
+            )
+            return await _abstain_without_evaluation(request, context, roles, router_instance)
+
     # Log incoming evaluation request
     logger.info(
         "AI evaluate request: symbol=%s timeframe=%s roles=%s",
@@ -856,12 +1110,23 @@ async def evaluate_opportunity(request: EvaluationRequest):
     decision = await router_instance.evaluate_opportunity(
         symbol=request.symbol,
         timeframe=request.timeframe,
-        candles=request.candles,
+        candles=list(context.candles) if context is not None else request.candles,
         indicators=request.indicators,
-        portfolio=request.portfolio,
-        risk_limits=request.risk_limits,
+        portfolio=dict(context.portfolio) if context is not None else request.portfolio,
+        risk_limits=dict(context.risk_limits) if context is not None else request.risk_limits,
         roles=roles,
     )
+
+    # Fail closed: a decision built from degraded context may not be executable.
+    if context is not None and not context.executable_ready:
+        logger.warning(
+            "AI evaluate clamped to NEUTRAL: symbol=%s reasons=%s",
+            request.symbol,
+            context.abstain_reasons,
+        )
+        decision.final_action = "NEUTRAL"
+        decision.final_confidence = 0.0
+        decision.reasoning = f"{decision.reasoning}\n\n{_abstain_reasoning(context)}"
 
     logger.info(
         "AI evaluate result: symbol=%s action=%s confidence=%.2f cost=$%.4f latency=%dms roles=%d vetoed=%s",
@@ -928,6 +1193,17 @@ async def evaluate_opportunity(request: EvaluationRequest):
         if usage_records:
             router_instance.clear_usage_log()
 
+    role_failures = [
+        {
+            "role": record["role"],
+            "provider": record["provider"],
+            "model": record["model"],
+            "error": record["error"],
+        }
+        for record in usage_records
+        if not record["success"]
+    ]
+
     return EvaluationResponse(
         symbol=request.symbol,
         timeframe=request.timeframe,
@@ -939,6 +1215,10 @@ async def evaluate_opportunity(request: EvaluationRequest):
         total_cost_usd=decision.total_cost_usd,
         total_latency_ms=decision.total_latency_ms,
         created_at=logged_created_at,  # Use DB timestamp or fallback
+        context=context.to_dict() if context is not None else None,
+        abstained=context is not None and not context.executable_ready,
+        abstain_reasons=context.abstain_reasons if context is not None else [],
+        role_failures=role_failures,
     )
 
 
