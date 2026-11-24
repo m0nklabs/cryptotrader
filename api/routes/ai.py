@@ -501,7 +501,6 @@ class EvaluationResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-
 class UsageSummaryResponse(BaseModel):
     """Usage summary response."""
 

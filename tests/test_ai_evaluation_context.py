@@ -273,6 +273,7 @@ def mock_ai_router():
 @pytest.fixture
 def crud_mocks():
     """Patch decision persistence and expose the log mock."""
+
     async def mock_log_decision(db, **kwargs):  # noqa: ANN001 - mirrors the CRUD signature
         return Mock(created_at=datetime.now(timezone.utc))
 
@@ -280,10 +281,13 @@ def crud_mocks():
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("api.routes.ai._get_session_factory", return_value=lambda: session), patch(
-        "api.routes.ai.ai_crud.log_decision_with_usage",
-        side_effect=mock_log_decision,
-    ) as log_decision:
+    with (
+        patch("api.routes.ai._get_session_factory", return_value=lambda: session),
+        patch(
+            "api.routes.ai.ai_crud.log_decision_with_usage",
+            side_effect=mock_log_decision,
+        ) as log_decision,
+    ):
         yield log_decision
 
 
@@ -294,14 +298,17 @@ def _post_evaluate(client: TestClient, mock_ai_router: Mock, payload: dict):
 
 def test_abstains_without_market_data(client, mock_ai_router, crud_mocks) -> None:
     """Empty candle store -> NEUTRAL, no provider call, reasons recorded."""
-    with patch(
-        "api.routes.ai._load_market_context",
-        new_callable=AsyncMock,
-        return_value=([], None),
-    ), patch(
-        "api.routes.ai._load_portfolio_context",
-        new_callable=AsyncMock,
-        return_value=({"total_value": 1000.0}, _NOW),
+    with (
+        patch(
+            "api.routes.ai._load_market_context",
+            new_callable=AsyncMock,
+            return_value=([], None),
+        ),
+        patch(
+            "api.routes.ai._load_portfolio_context",
+            new_callable=AsyncMock,
+            return_value=({"total_value": 1000.0}, _NOW),
+        ),
     ):
         response = _post_evaluate(client, mock_ai_router, {"symbol": "BTC/USD", "timeframe": "1h"})
 
@@ -319,14 +326,17 @@ def test_abstains_without_market_data(client, mock_ai_router, crud_mocks) -> Non
 def test_stale_market_data_never_reaches_a_provider(client, mock_ai_router, crud_mocks) -> None:
     """A stale series is refused exactly like a missing one."""
     stale = _NOW - timedelta(days=3)
-    with patch(
-        "api.routes.ai._load_market_context",
-        new_callable=AsyncMock,
-        return_value=(_candles(close_time=stale), stale),
-    ), patch(
-        "api.routes.ai._load_portfolio_context",
-        new_callable=AsyncMock,
-        return_value=({"total_value": 1000.0}, _NOW),
+    with (
+        patch(
+            "api.routes.ai._load_market_context",
+            new_callable=AsyncMock,
+            return_value=(_candles(close_time=stale), stale),
+        ),
+        patch(
+            "api.routes.ai._load_portfolio_context",
+            new_callable=AsyncMock,
+            return_value=({"total_value": 1000.0}, _NOW),
+        ),
     ):
         response = _post_evaluate(
             client,
@@ -345,14 +355,17 @@ def test_stale_market_data_never_reaches_a_provider(client, mock_ai_router, crud
 def test_missing_risk_limits_clamp_the_consensus(client, mock_ai_router, crud_mocks) -> None:
     """Roles may answer, but a BUY without risk limits is not executable."""
     now = datetime.now(timezone.utc)
-    with patch(
-        "api.routes.ai._load_market_context",
-        new_callable=AsyncMock,
-        return_value=(_candles(close_time=now), now),
-    ), patch(
-        "api.routes.ai._load_portfolio_context",
-        new_callable=AsyncMock,
-        return_value=({"total_value": 1000.0}, now),
+    with (
+        patch(
+            "api.routes.ai._load_market_context",
+            new_callable=AsyncMock,
+            return_value=(_candles(close_time=now), now),
+        ),
+        patch(
+            "api.routes.ai._load_portfolio_context",
+            new_callable=AsyncMock,
+            return_value=({"total_value": 1000.0}, now),
+        ),
     ):
         response = _post_evaluate(client, mock_ai_router, {"symbol": "BTC/USD", "timeframe": "1h"})
 
@@ -369,14 +382,17 @@ def test_missing_risk_limits_clamp_the_consensus(client, mock_ai_router, crud_mo
 def test_complete_context_keeps_an_executable_verdict(client, mock_ai_router, crud_mocks) -> None:
     """All inputs current: the provider's BUY survives."""
     now = datetime.now(timezone.utc)
-    with patch(
-        "api.routes.ai._load_market_context",
-        new_callable=AsyncMock,
-        return_value=(_candles(close_time=now), now),
-    ), patch(
-        "api.routes.ai._load_portfolio_context",
-        new_callable=AsyncMock,
-        return_value=({"total_value": 1000.0}, now),
+    with (
+        patch(
+            "api.routes.ai._load_market_context",
+            new_callable=AsyncMock,
+            return_value=(_candles(close_time=now), now),
+        ),
+        patch(
+            "api.routes.ai._load_portfolio_context",
+            new_callable=AsyncMock,
+            return_value=({"total_value": 1000.0}, now),
+        ),
     ):
         response = _post_evaluate(
             client,
@@ -401,14 +417,17 @@ def test_server_context_reaches_the_router(client, mock_ai_router, crud_mocks) -
     """The assembled snapshot, not the request body, feeds the pipeline."""
     now = datetime.now(timezone.utc)
     candles = _candles(close_time=now)
-    with patch(
-        "api.routes.ai._load_market_context",
-        new_callable=AsyncMock,
-        return_value=(candles, now),
-    ), patch(
-        "api.routes.ai._load_portfolio_context",
-        new_callable=AsyncMock,
-        return_value=({"total_value": 42.0}, now),
+    with (
+        patch(
+            "api.routes.ai._load_market_context",
+            new_callable=AsyncMock,
+            return_value=(candles, now),
+        ),
+        patch(
+            "api.routes.ai._load_portfolio_context",
+            new_callable=AsyncMock,
+            return_value=({"total_value": 42.0}, now),
+        ),
     ):
         _post_evaluate(
             client,
@@ -463,14 +482,17 @@ def test_role_failures_are_reported(client, mock_ai_router, crud_mocks) -> None:
             error="timeout",
         )
     ]
-    with patch(
-        "api.routes.ai._load_market_context",
-        new_callable=AsyncMock,
-        return_value=(_candles(close_time=now), now),
-    ), patch(
-        "api.routes.ai._load_portfolio_context",
-        new_callable=AsyncMock,
-        return_value=({"total_value": 1000.0}, now),
+    with (
+        patch(
+            "api.routes.ai._load_market_context",
+            new_callable=AsyncMock,
+            return_value=(_candles(close_time=now), now),
+        ),
+        patch(
+            "api.routes.ai._load_portfolio_context",
+            new_callable=AsyncMock,
+            return_value=({"total_value": 1000.0}, now),
+        ),
     ):
         response = _post_evaluate(
             client,
