@@ -39,6 +39,38 @@ def _mock_budget_check():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _executable_context():
+    """Serve an executable context snapshot (issue #432).
+
+    Since #432 the server assembles the evaluation context itself and clamps
+    the consensus to NEUTRAL when it is missing or stale. These contract tests
+    are about the pass-through contract of an evaluation that *does* have its
+    evidence, so the assembly is stubbed here. The fail-closed behaviour has
+    its own suite: tests/test_ai_evaluation_context.py.
+    """
+    from core.ai.context import build_evaluation_context
+
+    now = datetime.now(timezone.utc)
+    snapshot = build_evaluation_context(
+        symbol="BTCUSD",
+        timeframe="1h",
+        now=now,
+        candles=[{"open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 10.0}],
+        candles_as_of=now,
+        portfolio={"total_value": 10000.0},
+        portfolio_as_of=now,
+        risk_limits={"max_order_notional": 1000.0},
+    )
+
+    with patch(
+        "api.routes.ai._build_evaluation_context",
+        new_callable=AsyncMock,
+        return_value=snapshot,
+    ):
+        yield snapshot
+
+
 @pytest.fixture
 def client():
     """Create a test client for AI API endpoints."""
@@ -279,12 +311,17 @@ def test_evaluate_with_roles_filter(client, mock_ai_router, ai_crud_mocks):
 
 
 def test_evaluate_with_context_data(client, mock_ai_router, ai_crud_mocks):
-    """Test POST /api/ai/evaluate accepts optional context data."""
+    """Caller-supplied context still reaches the router when it opts out of assembly.
+
+    With ``buildContext: false`` the caller owns the snapshot; the server
+    records ``context: null`` instead of vouching for data it never checked.
+    """
     mock_session_factory, mock_log_decision, _ = ai_crud_mocks
 
     request_payload = {
         "symbol": "BTCUSD",
         "timeframe": "1h",
+        "buildContext": False,
         "candles": [{"open": 40000, "close": 40500, "high": 40600, "low": 39900}],
         "indicators": {"rsi": 65, "macd": "bullish"},
         "portfolio": {"btc_balance": 0.5, "usd_balance": 10000},
