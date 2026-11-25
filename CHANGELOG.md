@@ -15,11 +15,16 @@
   the consensus to `NEUTRAL`. `BUY`/`SELL` now always carries timestamped
   evidence.
 - The response gains `context` (version, per-input timestamps, ages, missing
-  and stale inputs, `executable_ready`), `abstained`, `abstainReasons` and
-  `roleFailures`, so a decision can be audited after the fact.
+  and stale inputs, `executableReady`), `abstained`, `abstainReasons` and
+  `roleFailures`, so a decision can be audited after the fact. The snapshot
+  uses the same camelCase keys as the rest of the JSON contract.
 - New request fields `exchange`, `buildContext` (default `true`) and
-  `maxContextAgeS` (default `3600`); `buildContext: false` restores the
-  pass-through contract and reports `context: null`.
+  `maxContextAgeS` (default `3600`, server-capped at 7 days so a caller
+  cannot widen the window until old data counts as fresh); `buildContext:
+  false` restores the pass-through contract and reports `context: null`.
+- Client-supplied `indicators` are ignored when the server assembles the
+  context: there is no authoritative indicator source to replace them, and an
+  unrecorded client input would contradict the provenance the snapshot claims.
 - The AI evaluation panel shows the abstention reasons, the provenance strip
   and the failed roles.
 - Documented in `docs/AI_EVALUATIONS.md`; covered by

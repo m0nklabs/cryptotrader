@@ -22,6 +22,7 @@ from sqlalchemy.orm import sessionmaker
 
 from core.ai.context import (
     DEFAULT_MAX_CONTEXT_AGE_SECONDS,
+    MAX_CONTEXT_AGE_SECONDS,
     EvaluationContext,
     build_evaluation_context,
 )
@@ -445,9 +446,12 @@ class EvaluationRequest(BaseModel):
 
     ``build_context`` (default) makes the server assemble the evaluation
     context from the authoritative sources instead of trusting the client to
-    attach one; the supplied ``candles`` / ``portfolio`` / ``risk_limits``
-    fields are then ignored. Set it to ``False`` only for tooling that already
-    owns a verified snapshot (the response then records ``context: null``).
+    attach one; the supplied ``candles``, ``indicators`` and ``portfolio``
+    fields are then ignored. ``risk_limits`` is still taken from the request:
+    it is configuration and the repo has no authoritative source for it yet,
+    but an absent or unusable one forbids an executable verdict. Set
+    ``build_context`` to ``False`` only for tooling that already owns a
+    verified snapshot (the response then records ``context: null``).
     """
 
     symbol: str
@@ -463,7 +467,10 @@ class EvaluationRequest(BaseModel):
         DEFAULT_MAX_CONTEXT_AGE_SECONDS,
         alias="maxContextAgeS",
         ge=0,
-        description="Freshness budget for every context input, in seconds.",
+        le=MAX_CONTEXT_AGE_SECONDS,
+        description=(
+            f"Freshness budget for every context input, in seconds (server-capped at {MAX_CONTEXT_AGE_SECONDS:.0f}s)."
+        ),
     )
 
     model_config = ConfigDict(populate_by_name=True)
@@ -1110,7 +1117,10 @@ async def evaluate_opportunity(request: EvaluationRequest):
         symbol=request.symbol,
         timeframe=request.timeframe,
         candles=list(context.candles) if context is not None else request.candles,
-        indicators=request.indicators,
+        # Indicators are the one input with no authoritative server-side source,
+        # so a server-assembled context must not smuggle client values into an
+        # evaluation the response presents as built from verified evidence.
+        indicators=None if context is not None else request.indicators,
         portfolio=dict(context.portfolio) if context is not None else request.portfolio,
         risk_limits=dict(context.risk_limits) if context is not None else request.risk_limits,
         roles=roles,

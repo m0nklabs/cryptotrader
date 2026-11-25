@@ -215,8 +215,12 @@ def test_snapshot_serialises_to_json() -> None:
     payload = json.loads(json.dumps(context.to_dict()))
 
     assert payload["version"] == CONTEXT_VERSION
-    assert payload["executable_ready"] is False
+    assert payload["executableReady"] is False
     assert {item["name"] for item in payload["inputs"]} == {"candles", "portfolio", "risk_limits"}
+    # The payload is served as-is (FastAPI does not alias a plain dict), so the
+    # camelCase keys are the API contract the frontend types read.
+    assert {"builtAt", "maxAgeSeconds", "marketSymbol", "dataAgeSeconds", "canRun", "executableReady"} <= set(payload)
+    assert all({"asOf", "ageSeconds", "missingReason"} <= set(item) for item in payload["inputs"])
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +323,7 @@ def test_abstains_without_market_data(client, mock_ai_router, crud_mocks) -> Non
     assert body["abstained"] is True
     assert body["verdicts"] == []
     assert any("candles" in reason for reason in body["abstainReasons"])
-    assert body["context"]["can_run"] is False
+    assert body["context"]["canRun"] is False
     mock_ai_router.evaluate_opportunity.assert_not_called()
 
 
@@ -409,8 +413,8 @@ def test_complete_context_keeps_an_executable_verdict(client, mock_ai_router, cr
     assert body["finalAction"] == "BUY"
     assert body["abstained"] is False
     assert body["abstainReasons"] == []
-    assert body["context"]["executable_ready"] is True
-    assert body["context"]["market_symbol"] == "BTCUSD"
+    assert body["context"]["executableReady"] is True
+    assert body["context"]["marketSymbol"] == "BTCUSD"
 
 
 def test_server_context_reaches_the_router(client, mock_ai_router, crud_mocks) -> None:
@@ -443,6 +447,70 @@ def test_server_context_reaches_the_router(client, mock_ai_router, crud_mocks) -
     call_kwargs = mock_ai_router.evaluate_opportunity.call_args.kwargs
     assert call_kwargs["candles"] == candles
     assert call_kwargs["portfolio"] == {"total_value": 42.0}
+
+
+def test_client_indicators_are_not_forwarded_with_a_server_context(client, mock_ai_router, crud_mocks) -> None:
+    """Indicators have no authoritative source, so they may not slip past it.
+
+    ``buildContext: true`` promises an evaluation built from verified evidence.
+    Client-supplied indicators are neither replaced from a trusted source nor
+    recorded in the snapshot, so they must not reach the roles at all.
+    """
+    now = datetime.now(timezone.utc)
+    with (
+        patch(
+            "api.routes.ai._load_market_context",
+            new_callable=AsyncMock,
+            return_value=(_candles(close_time=now), now),
+        ),
+        patch(
+            "api.routes.ai._load_portfolio_context",
+            new_callable=AsyncMock,
+            return_value=({"total_value": 1000.0}, now),
+        ),
+    ):
+        response = _post_evaluate(
+            client,
+            mock_ai_router,
+            {
+                "symbol": "BTC/USD",
+                "timeframe": "1h",
+                "riskLimits": {"max_order_notional": 500.0},
+                "indicators": {"rsi": 1.0},
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert mock_ai_router.evaluate_opportunity.call_args.kwargs["indicators"] is None
+
+
+def test_client_indicators_survive_the_legacy_path(client, mock_ai_router, crud_mocks) -> None:
+    """With assembly disabled the pass-through contract still forwards them."""
+    response = _post_evaluate(
+        client,
+        mock_ai_router,
+        {
+            "symbol": "BTC/USD",
+            "timeframe": "1h",
+            "buildContext": False,
+            "indicators": {"rsi": 1.0},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert mock_ai_router.evaluate_opportunity.call_args.kwargs["indicators"] == {"rsi": 1.0}
+
+
+def test_freshness_budget_is_server_capped(client, mock_ai_router, crud_mocks) -> None:
+    """A caller cannot widen the freshness window until stale data looks fresh."""
+    response = _post_evaluate(
+        client,
+        mock_ai_router,
+        {"symbol": "BTC/USD", "timeframe": "1h", "maxContextAgeS": 1000000000000},
+    )
+
+    assert response.status_code == 422, response.text
+    assert mock_ai_router.evaluate_opportunity.await_count == 0
 
 
 def test_legacy_path_without_context_build_is_unchanged(client, mock_ai_router, crud_mocks) -> None:

@@ -33,10 +33,14 @@ inputs to be current.
 | `roles` | string[] | all active | Roles to query |
 | `riskLimits` | object | — | Risk limits. Configuration, so no timestamp is required; **there is no authoritative server-side source for these yet**, so a request without them cannot be executable |
 | `buildContext` | bool | `true` | Assemble the context server-side. `false` restores the pre-#432 pass-through contract and reports `context: null` |
-| `maxContextAgeS` | number | `3600` | Freshness budget applied to every input |
+| `maxContextAgeS` | number | `3600` | Freshness budget applied to every input; server-capped at `604800` (7 days), so a caller cannot widen the window until old data counts as fresh |
 
 With `buildContext: true` (the default) the supplied `candles`, `indicators`
-and `portfolio` fields are ignored: the authoritative sources win.
+and `portfolio` fields are ignored: the authoritative sources win. That is
+enforced, not merely documented — client indicators are dropped before the
+roles are called, because there is no authoritative indicator source to
+replace them with and an unrecorded, client-supplied input would undermine
+the provenance the snapshot promises.
 
 ## Where the context comes from
 
@@ -63,13 +67,13 @@ The snapshot itself carries the provenance:
 ```json
 {
   "version": 2,
-  "built_at": "2026-11-24T11:00:00+00:00",
-  "max_age_seconds": 3600,
-  "market_symbol": "BTCUSD",
+  "builtAt": "2026-11-24T11:00:00+00:00",
+  "maxAgeSeconds": 3600,
+  "marketSymbol": "BTCUSD",
   "exchange": "bitfinex",
-  "data_age_seconds": 42.5,
-  "can_run": true,
-  "executable_ready": false,
+  "dataAgeSeconds": 42.5,
+  "canRun": true,
+  "executableReady": false,
   "missing": ["risk_limits"],
   "stale": [],
   "inputs": [
@@ -78,16 +82,19 @@ The snapshot itself carries the provenance:
       "provided": true,
       "required": true,
       "usable": true,
-      "as_of": "2026-11-24T10:59:00+00:00",
-      "age_seconds": 60.0,
-      "missing_reason": null
+      "asOf": "2026-11-24T10:59:00+00:00",
+      "ageSeconds": 60.0,
+      "missingReason": null
     }
   ]
 }
 ```
 
-`data_age_seconds` is the age of the **oldest usable** input, so one stale
-input cannot hide behind a fresh one.
+The snapshot keys are camelCase, like the rest of the `/api/ai` contract: it
+is served as plain JSON, so FastAPI's alias serialization does not reach
+inside it and the keys are fixed where the payload is built
+(`core/ai/context.py`). `dataAgeSeconds` is the age of the **oldest usable**
+input, so one stale input cannot hide behind a fresh one.
 
 ## Dashboard
 
@@ -113,7 +120,13 @@ input cannot hide behind a fresh one.
 - `buildContext: false` keeps the legacy contract;
 - failed roles are reported in `roleFailures`.
 
-## Known gap
+## Known gaps
+
+Indicators have no authoritative server-side source yet either, and the
+`core/indicators/` calculators are not wired into the context assembly. With
+`buildContext: true` no indicators reach the roles at all; deriving them from
+the authoritative candle series is the follow-up that lets them count as
+evidence.
 
 Risk limits have no authoritative server-side source yet (`RiskLimits` in
 `core/risk/limits.py` is never instantiated outside a request body). Until

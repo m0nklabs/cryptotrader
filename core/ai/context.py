@@ -42,6 +42,16 @@ CONTEXT_VERSION = 2
 DEFAULT_MAX_CONTEXT_AGE_SECONDS = 3600.0
 """Default freshness budget for every context input, in seconds."""
 
+MAX_CONTEXT_AGE_SECONDS = 604800.0
+"""Server-side upper bound for a caller-supplied freshness budget (7 days).
+
+The budget is what decides whether evidence counts as current, so letting a
+caller raise it without limit would make the fail-closed rule caller-defined:
+a years-old series could be classified as fresh and produce an executable
+verdict. The bound keeps the policy server-owned while still allowing a
+generous, explicit opt-in above the one-hour default.
+"""
+
 CLOCK_SKEW_TOLERANCE_SECONDS = 60.0
 """A timestamp this far in the future is treated as unusable evidence."""
 
@@ -72,15 +82,19 @@ class ContextInput:
         return self.provided and self.missing_reason is None
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the provenance for the HTTP response."""
+        """Serialize the provenance for the HTTP response.
+
+        Keys are camelCase to match the rest of the ``/api/ai`` JSON contract
+        and the TypeScript types in ``frontend/src/api/ai.ts``.
+        """
         return {
             "name": self.name,
             "provided": self.provided,
             "required": self.required,
             "usable": self.usable,
-            "as_of": self.as_of.isoformat() if self.as_of else None,
-            "age_seconds": round(self.age_seconds, 3) if self.age_seconds is not None else None,
-            "missing_reason": self.missing_reason,
+            "asOf": self.as_of.isoformat() if self.as_of else None,
+            "ageSeconds": round(self.age_seconds, 3) if self.age_seconds is not None else None,
+            "missingReason": self.missing_reason,
         }
 
 
@@ -93,7 +107,6 @@ class EvaluationContext:
     max_age_seconds: float
     inputs: tuple[ContextInput, ...]
     candles: tuple[Mapping[str, Any], ...]
-    indicators: Mapping[str, Any]
     portfolio: Mapping[str, Any]
     risk_limits: Mapping[str, Any]
     market_symbol: str = ""
@@ -143,16 +156,21 @@ class EvaluationContext:
         return max(ages) if ages else 0.0
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the snapshot for the HTTP response and the audit trail."""
+        """Serialize the snapshot for the HTTP response and the audit trail.
+
+        Keys are camelCase: FastAPI's alias serialization stops at a plain
+        ``dict``, so the API contract for this payload is set here and must
+        match the TypeScript types in ``frontend/src/api/ai.ts``.
+        """
         return {
             "version": self.version,
-            "built_at": self.built_at.isoformat(),
-            "max_age_seconds": self.max_age_seconds,
-            "market_symbol": self.market_symbol,
+            "builtAt": self.built_at.isoformat(),
+            "maxAgeSeconds": self.max_age_seconds,
+            "marketSymbol": self.market_symbol,
             "exchange": self.exchange,
-            "data_age_seconds": round(self.data_age_seconds, 3),
-            "can_run": self.can_run,
-            "executable_ready": self.executable_ready,
+            "dataAgeSeconds": round(self.data_age_seconds, 3),
+            "canRun": self.can_run,
+            "executableReady": self.executable_ready,
             "missing": self.missing,
             "stale": self.stale,
             "inputs": [item.to_dict() for item in self.inputs],
@@ -233,7 +251,6 @@ def build_evaluation_context(
     max_age_seconds: float = DEFAULT_MAX_CONTEXT_AGE_SECONDS,
     candles: Sequence[Mapping[str, Any]] | None = None,
     candles_as_of: datetime | None = None,
-    indicators: Mapping[str, Any] | None = None,
     portfolio: Mapping[str, Any] | None = None,
     portfolio_as_of: datetime | None = None,
     risk_limits: Mapping[str, Any] | None = None,
@@ -254,7 +271,6 @@ def build_evaluation_context(
         max_age_seconds: Freshness budget applied to every input.
         candles: Closed candles, oldest first.
         candles_as_of: Close time of the last closed candle.
-        indicators: Pre-computed indicator values (optional, derived from candles).
         portfolio: Holdings / exposure payload.
         portfolio_as_of: Timestamp of that payload.
         risk_limits: Risk limits payload.
@@ -302,7 +318,6 @@ def build_evaluation_context(
         max_age_seconds=max_age_seconds,
         inputs=inputs,
         candles=tuple(candles or ()),
-        indicators=dict(indicators or {}),
         portfolio=dict(portfolio or {}),
         risk_limits=dict(risk_limits or {}),
         market_symbol=store_symbol,
