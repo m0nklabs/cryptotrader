@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useEvaluate, useRoles } from '../hooks/useAi'
-import type { SignalAction, RoleName, ConsensusDecision, RoleVerdict } from '../api/ai'
+import type {
+  SignalAction,
+  RoleName,
+  ConsensusDecision,
+  EvaluationContextSnapshot,
+  RoleVerdict,
+} from '../api/ai'
 
 /**
  * AI Evaluation Panel — Manual Multi-Brain evaluation trigger.
@@ -150,7 +156,25 @@ export default function AiEvaluationPanel() {
               Consensus Decision
             </h3>
             <ConsensusCard decision={decision} />
+            {decision.abstained && <AbstainNotice decision={decision} />}
+            <ContextProvenance context={decision.context ?? null} />
           </section>
+
+          {(decision.roleFailures?.length ?? 0) > 0 && (
+            <section>
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                Role Failures ({decision.roleFailures?.length})
+              </h3>
+              <div className="rounded border border-amber-600/50 bg-amber-900/10 px-3 py-2 flex flex-col gap-1">
+                {decision.roleFailures?.map((failure, idx) => (
+                  <div key={`${failure.role}-${idx}`} className="text-[10px] font-mono text-zinc-400">
+                    <span className="text-amber-400 capitalize">{failure.role}</span> ·{' '}
+                    {failure.provider}/{failure.model} — {failure.error ?? 'unknown error'}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Per-Role Verdicts */}
           <section>
@@ -200,6 +224,89 @@ function ConsensusCard({ decision }: { decision: ConsensusDecision }) {
       <div className="flex items-center gap-3 text-[10px] text-zinc-500 font-mono">
         <span>cost: ${decision.totalCostUsd.toFixed(4)}</span>
         <span>latency: {decision.totalLatencyMs.toFixed(0)}ms</span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * AbstainNotice explains why the consensus is not executable.
+ *
+ * Issue #432: a NEUTRAL without a reason is indistinguishable from a neutral
+ * opinion. These are the reasons the server recorded.
+ */
+function AbstainNotice({ decision }: { decision: ConsensusDecision }) {
+  const reasons = decision.abstainReasons ?? []
+
+  return (
+    <div className="mt-2 rounded border border-amber-600/50 bg-amber-900/10 px-3 py-2">
+      <div className="font-semibold text-amber-400 mb-1 text-xs">
+        ABSTAINED — not executable
+      </div>
+      {reasons.length === 0 ? (
+        <div className="text-[10px] text-zinc-400">No reason was recorded.</div>
+      ) : (
+        <ul className="text-[10px] text-zinc-300 list-disc list-inside">
+          {reasons.map((reason, idx) => (
+            <li key={`${reason}-${idx}`}>{reason}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/**
+ * ContextProvenance shows what the decision was actually built from.
+ *
+ * Issue #432: confidence is not evidence. The panel has to say which inputs
+ * were current, which were stale, and how old they were.
+ */
+function ContextProvenance({ context }: { context: EvaluationContextSnapshot | null }) {
+  if (!context) {
+    return (
+      <div className="mt-2 text-[10px] text-zinc-500 font-mono">
+        context: not assembled (client-supplied)
+      </div>
+    )
+  }
+
+  const formatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
+
+  return (
+    <div className="mt-2 rounded border border-zinc-700 bg-zinc-800/60 px-2 py-1.5">
+      <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-500 mb-1">
+        <span>context v{context.version}</span>
+        <span>·</span>
+        <span>{context.exchange}/{context.marketSymbol}</span>
+        <span>·</span>
+        <span>oldest input: {formatter.format(context.dataAgeSeconds)}s</span>
+        <span className="ml-auto">
+          {context.executableReady ? (
+            <span className="text-green-500">executable</span>
+          ) : (
+            <span className="text-amber-400">not executable</span>
+          )}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {context.inputs.map((input) => (
+          <span
+            key={input.name}
+            title={input.missingReason ?? 'usable'}
+            className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+              input.usable
+                ? 'border-green-700 text-green-400'
+                : input.required
+                  ? 'border-amber-600 text-amber-400'
+                  : 'border-zinc-600 text-zinc-400'
+            }`}
+          >
+            {input.name}
+            {input.ageSeconds !== null && ` ${formatter.format(input.ageSeconds)}s`}
+            {input.usable ? '' : ' ⚠'}
+          </span>
+        ))}
       </div>
     </div>
   )

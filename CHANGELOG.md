@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-11-24
+### AI evaluations: server-side context and fail-closed abstention (issue #432)
+- `POST /api/ai/evaluate` now assembles the evaluation context itself instead
+  of trusting the client: the last 200 closed candles for the symbol from the
+  candle store, the newest portfolio snapshot for the exchange, and the risk
+  limits from the request. The dashboard previously sent only a symbol and a
+  timeframe, so role output could look actionable without any market
+  structure, holdings, exposure or risk limits.
+- Nothing evaluated without evidence: an absent, stale or undated candle
+  series means no role is queried, no provider cost is incurred and the answer
+  is `NEUTRAL` with `abstained: true` and the reasons. A usable series with a
+  missing or stale portfolio/risk limits still queries the roles but clamps
+  the consensus to `NEUTRAL`. `BUY`/`SELL` now always carries timestamped
+  evidence.
+- The response gains `context` (version, per-input timestamps, ages, missing
+  and stale inputs, `executableReady`), `abstained`, `abstainReasons` and
+  `roleFailures`, so a decision can be audited after the fact. The snapshot
+  uses the same camelCase keys as the rest of the JSON contract.
+- New request fields `exchange`, `buildContext` (default `true`) and
+  `maxContextAgeS` (default `3600`, server-capped at 7 days so a caller
+  cannot widen the window until old data counts as fresh); `buildContext:
+  false` restores the pass-through contract and reports `context: null`.
+- Client-supplied `indicators` are ignored when the server assembles the
+  context: there is no authoritative indicator source to replace them, and an
+  unrecorded client input would contradict the provenance the snapshot claims.
+- The AI evaluation panel shows the abstention reasons, the provenance strip
+  and the failed roles.
+- Documented in `docs/AI_EVALUATIONS.md`; covered by
+  `tests/test_ai_evaluation_context.py`.
+
 ## 2026-09-07
 ### On-demand model hosting with idle-unload (forecasting lane)
 - The always-on API process no longer has to keep the TimesFM model resident:

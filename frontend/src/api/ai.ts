@@ -57,16 +57,61 @@ export type ConsensusDecision = {
   totalCostUsd: number
   totalLatencyMs: number
   createdAt: string
+  /** null when the evaluation ran without server-side context assembly. */
+  context?: EvaluationContextSnapshot | null
+  /** True when the consensus is not executable (missing or stale context). */
+  abstained?: boolean
+  abstainReasons?: string[]
+  roleFailures?: RoleFailure[]
 }
 
 export type EvaluationRequest = {
   symbol: string
   timeframe?: string
+  exchange?: string
   candles?: Record<string, unknown>[]
   indicators?: Record<string, unknown>
   portfolio?: Record<string, unknown>
   riskLimits?: Record<string, unknown>
   roles?: RoleName[]
+  /** Server assembles the evaluation context from authoritative sources (default true). */
+  buildContext?: boolean
+  /** Freshness budget per context input, in seconds. */
+  maxContextAgeS?: number
+}
+
+/** Provenance of one evaluation-context input (issue #432). */
+export type ContextInputSnapshot = {
+  name: string
+  provided: boolean
+  required: boolean
+  usable: boolean
+  asOf: string | null
+  ageSeconds: number | null
+  missingReason: string | null
+}
+
+/** Snapshot the consensus was built from: version, ages, missing inputs. */
+export type EvaluationContextSnapshot = {
+  version: number
+  builtAt: string
+  maxAgeSeconds: number
+  marketSymbol: string
+  exchange: string
+  dataAgeSeconds: number
+  canRun: boolean
+  executableReady: boolean
+  missing: string[]
+  stale: string[]
+  inputs: ContextInputSnapshot[]
+}
+
+/** A role that errored during the evaluation. */
+export type RoleFailure = {
+  role: RoleName
+  provider: ProviderName
+  model: string
+  error: string | null
 }
 
 export type UsageRecord = {

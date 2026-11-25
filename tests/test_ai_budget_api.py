@@ -45,6 +45,36 @@ def mock_db_factory():
         yield db_session
 
 
+@pytest.fixture(autouse=True)
+def _executable_context():
+    """Serve an executable context snapshot (issue #432).
+
+    These tests are about budget enforcement, so the context assembly that
+    runs after the budget gate is stubbed with current evidence.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from core.ai.context import build_evaluation_context
+
+    now = datetime.now(timezone.utc)
+    snapshot = build_evaluation_context(
+        symbol="BTCUSDT",
+        timeframe="1h",
+        now=now,
+        candles=[{"open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 10.0}],
+        candles_as_of=now,
+        portfolio={"total_value": 10000.0},
+        portfolio_as_of=now,
+        risk_limits={"max_order_notional": 1000.0},
+    )
+    with patch(
+        "api.routes.ai._build_evaluation_context",
+        new_callable=AsyncMock,
+        return_value=snapshot,
+    ):
+        yield snapshot
+
+
 @pytest.fixture
 def client(mock_router, mock_db_factory):
     """Create test client for FastAPI app with mocked dependencies."""
