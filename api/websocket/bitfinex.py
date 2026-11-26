@@ -61,11 +61,24 @@ class BitfinexWebSocketClient:
                         data = json.loads(message)
 
                         if isinstance(data, dict):
-                            if data.get("event") == "subscribed":
+                            event = data.get("event")
+                            if event == "subscribed":
                                 chan_id = data.get("chanId")
                                 symbol = data.get("symbol")
                                 if isinstance(chan_id, int) and isinstance(symbol, str):
                                     channel_map[chan_id] = symbol
+                            elif event == "error":
+                                # Bitfinex answers a rejected subscription with
+                                # {"event": "error", "code": 10300, "msg": "symbol: invalid"}.
+                                # Discarding that message made a misconfigured symbol look
+                                # like a healthy, quiet subscription: no log line, no status
+                                # and no price (issue #473). Surface it instead.
+                                logger.error(
+                                    "Bitfinex WebSocket rejected a subscription: code=%s msg=%s",
+                                    data.get("code"),
+                                    data.get("msg"),
+                                )
+                                await on_status("error")
                             continue
 
                         if isinstance(data, list) and len(data) >= 2:

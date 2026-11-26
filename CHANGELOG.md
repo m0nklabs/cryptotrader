@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-26
+### Rejected Bitfinex subscriptions are no longer silent (issue #473)
+- `api/websocket/bitfinex.py` discarded every `{"event": "error", ...}` frame, so a symbol the
+  exchange refuses to stream produced no log line, no status change and no price — a
+  misconfigured market looked exactly like a healthy, quiet subscription. Bitfinex rejects the
+  concatenated identifiers used by three markets (`tAVAXUSD`, `tDOGEUSD`, `tLINKUSD`) with
+  `code=10300, msg=symbol: invalid`, which is what made this invisible rather than loud.
+- The rejection is now logged at `ERROR` level with the exchange's code and message, and the
+  connection publishes `status: "error"` on `/ws/prices`, a state the dashboard already renders
+  but that no server path ever emitted before.
+- Regression test `test_bitfinex_rejected_subscription_is_surfaced` drives the real message loop
+  and asserts both the log record and the status event.
+- Not covered here: the symbol *translation* part of #473 needs
+  `core.market_data.bitfinex_symbols.normalize_bitfinex_symbol`, which ships with #472 and does
+  not exist on `master` yet.
+
 ## 2026-09-07
 ### On-demand model hosting with idle-unload (forecasting lane)
 - The always-on API process no longer has to keep the TimesFM model resident:
