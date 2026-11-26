@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 import sys
 from unittest.mock import AsyncMock, patch
@@ -160,6 +161,49 @@ async def test_bitfinex_stream_prices_parses_message() -> None:
     assert updates[0]["symbol"] == "BTCUSD"
     assert "connected" in statuses
     assert "disconnected" in statuses
+
+
+@pytest.mark.asyncio
+async def test_bitfinex_rejected_subscription_is_surfaced(caplog: pytest.LogCaptureFixture) -> None:
+    """A rejected subscription must not look like a healthy, quiet subscription (#473)."""
+    messages = [json.dumps({"event": "error", "code": 10300, "msg": "symbol: invalid"})]
+    socket = _FakeBitfinexSocket(messages)
+    statuses: list[str] = []
+    updates: list[dict[str, object]] = []
+    stop_event = asyncio.Event()
+
+    async def on_status(status: str) -> None:
+        statuses.append(status)
+        if status == "error":
+            stop_event.set()
+
+    async def on_price(update: dict[str, object]) -> None:
+        updates.append(update)
+
+    client = BitfinexWebSocketClient()
+    with (
+        patch("api.websocket.bitfinex.websockets.connect", return_value=socket),
+        caplog.at_level(logging.ERROR, logger="api.websocket.bitfinex"),
+    ):
+        await asyncio.wait_for(
+            client.stream_prices(
+                symbols={"AVAXUSD"},
+                on_price=on_price,
+                on_status=on_status,
+                stop_event=stop_event,
+            ),
+            timeout=1.0,
+        )
+
+    assert "error" in statuses
+    assert updates == []
+    errors = [record for record in caplog.records if record.levelno == logging.ERROR]
+    assert len(errors) == 1
+    message = errors[0].getMessage()
+    assert "10300" in message
+    assert "symbol: invalid" in message
+    # The frame carries no symbol, so the requested set is the only correlation.
+    assert "AVAXUSD" in message
 
 
 @pytest.mark.asyncio

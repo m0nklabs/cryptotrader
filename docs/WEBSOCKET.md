@@ -36,6 +36,10 @@ Notes:
 ```json
 { "type": "price", "exchange": "bitfinex", "symbol": "BTCUSD", "price": 12345.67, "timestamp": 1710000000000 }
 ```
+- `error` — the upstream exchange rejected a subscription, for example Bitfinex answering
+  `{"event": "error", "code": 10300, "msg": "symbol: invalid"}`. The rejection is also logged at
+  `ERROR` level with its code and message, so a symbol that can never receive data is visible in
+  the logs and in the dashboard instead of looking like a healthy, quiet subscription.
 
 ## Architecture
 
