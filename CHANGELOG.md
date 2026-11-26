@@ -7,9 +7,11 @@
   misconfigured market looked exactly like a healthy, quiet subscription. Bitfinex rejects the
   concatenated identifiers used by three markets (`tAVAXUSD`, `tDOGEUSD`, `tLINKUSD`) with
   `code=10300, msg=symbol: invalid`, which is what made this invisible rather than loud.
-- The rejection is now logged at `ERROR` level with the exchange's code and message, and the
-  connection publishes `status: "error"` on `/ws/prices`, a state the dashboard already renders
-  but that no server path ever emitted before.
+- The rejection is now logged at `ERROR` level with the exchange's code and message plus the set
+  of requested symbols — the frame carries no symbol and replies cannot be paired to sends
+  without racing live frames, so that set is the only honest correlation. The connection also
+  publishes `status: "error"` on `/ws/prices`, a state the dashboard already renders but that no
+  server path ever emitted before.
 - Regression test `test_bitfinex_rejected_subscription_is_surfaced` drives the real message loop
   and asserts both the log record and the status event.
 - Not covered here: the symbol *translation* part of #473 needs

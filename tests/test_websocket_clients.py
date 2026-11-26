@@ -199,8 +199,11 @@ async def test_bitfinex_rejected_subscription_is_surfaced(caplog: pytest.LogCapt
     assert updates == []
     errors = [record for record in caplog.records if record.levelno == logging.ERROR]
     assert len(errors) == 1
-    assert "10300" in errors[0].getMessage()
-    assert "symbol: invalid" in errors[0].getMessage()
+    message = errors[0].getMessage()
+    assert "10300" in message
+    assert "symbol: invalid" in message
+    # The frame carries no symbol, so the requested set is the only correlation.
+    assert "AVAXUSD" in message
 
 
 @pytest.mark.asyncio
