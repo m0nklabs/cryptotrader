@@ -8,6 +8,8 @@ import OrdersTable from './components/OrdersTable'
 import PositionsTable from './components/PositionsTable'
 import Sidebar from './components/Sidebar'
 import { VIEW_IDS, type ViewId } from './nav'
+import ErrorBoundary from './components/ErrorBoundary'
+import { ViewErrorFallback } from './components/ViewErrorFallback'
 import ShortcutHelp from './components/ShortcutHelp'
 import OpportunityScore from './components/OpportunityScore'
 import CoinDossier from './components/CoinDossier'
@@ -1262,6 +1264,15 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto px-3 py-3">
+          {/* One boundary per view: a render error degrades that view only
+              instead of blanking the dashboard. The key resets the boundary
+              state whenever the operator switches views. */}
+          <ErrorBoundary
+            key={activeView}
+            fallback={(error, retry) => (
+              <ViewErrorFallback viewId={activeView} error={error} onRetry={retry} />
+            )}
+          >
           {/* Dashboard view - shows all panels */}
           {activeView === VIEW_IDS.DASHBOARD && (
           <div className="ct-dock-grid gap-3">
@@ -2058,6 +2069,7 @@ export default function App() {
 
           {/* Forecast view — TimesFM quantile forecasting */}
           {activeView === VIEW_IDS.FORECAST && <ForecastPanel />}
+          </ErrorBoundary>
         </main>
 
         <footer className="border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
