@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 
 import ErrorBoundary from '../components/ErrorBoundary'
+import { AppCrashFallback } from '../components/AppCrashFallback'
 import { ViewErrorFallback } from '../components/ViewErrorFallback'
 import { VIEW_IDS, type ViewId } from '../nav'
 
@@ -93,5 +94,52 @@ describe('ErrorBoundary view wiring', () => {
 
     expect(screen.getByText('healthy view content')).toBeInTheDocument()
     expect(screen.queryByText('This view failed to render')).not.toBeInTheDocument()
+  })
+})
+
+describe('AppCrashFallback (app shell)', () => {
+  function ShellThatThrows(): ReactElement {
+    throw new Error('shell exploded')
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('renders the full-page crash panel with the error message and both actions', () => {
+    render(<AppCrashFallback error={new Error('shell exploded')} onRetry={() => undefined} />)
+
+    expect(screen.getByText('The dashboard failed to start')).toBeInTheDocument()
+    expect(screen.getByText('shell exploded')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reload page' })).toBeInTheDocument()
+  })
+
+  it('calls the retry handler when the operator clicks "Try again"', async () => {
+    const user = userEvent.setup()
+    const onRetry = vi.fn()
+
+    render(<AppCrashFallback error={new Error('shell exploded')} onRetry={onRetry} />)
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('is what the shell boundary shows when the shell throws', () => {
+    render(
+      <ErrorBoundary
+        fallback={(error, retry) => <AppCrashFallback error={error} onRetry={retry} />}
+      >
+        <ShellThatThrows />
+      </ErrorBoundary>,
+    )
+
+    expect(screen.getByText('The dashboard failed to start')).toBeInTheDocument()
+    expect(screen.getByText('shell exploded')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
 })
