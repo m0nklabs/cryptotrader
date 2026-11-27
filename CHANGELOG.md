@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-11-27
+### Dashboard view error boundaries (issue #170)
+- Each dashboard view now renders inside its own `ErrorBoundary`
+  (`frontend/src/App.tsx`), keyed on the active view id: a render error in one
+  view degrades to an inline "This view failed to render" panel with a
+  "Retry this view" button instead of blanking the whole dashboard. Switching
+  views remounts the boundary and clears the latched error.
+- New `frontend/src/components/ViewErrorFallback.tsx` renders that panel from
+  the FLIP CSS tokens, so it follows light/dark mode without hardcoded colours.
+- New last-resort boundary in `frontend/src/main.tsx` around the app shell:
+  if the shell itself throws, the operator gets a full-page "The dashboard
+  failed to start" panel with the error message plus "Try again" and
+  "Reload page".
+- Tests: `frontend/src/__tests__/ErrorBoundary.test.tsx` covers fallback
+  rendering, recovery after retry, and the view-key reset. Per-view
+  `StatefulPanel`/`ViewWrapper` adoption remains item 2 of the epic.
+- Docs: `docs/FRONTEND.md` gains an "Observability: view error boundaries"
+  section.
+
 ## 2026-09-07
 ### On-demand model hosting with idle-unload (forecasting lane)
 - The always-on API process no longer has to keep the TimesFM model resident:

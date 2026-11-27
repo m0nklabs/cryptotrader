@@ -61,6 +61,50 @@ The chart supports selecting the candle timeframe (e.g. `1m`, `5m`, `1h`) via th
 
 Note: for “deep history” backfills, `1m` can be limited depending on the exchange/symbol. In that case, ingest a higher timeframe (e.g. `1h`, `4h`, `1d`) and select it in the UI.
 
+## Observability: view error boundaries
+
+The dashboard ships two React error boundaries, so a rendering bug degrades one
+region of the UI instead of blanking the whole page.
+
+| Boundary | Where | Catches | What the operator sees |
+|---|---|---|---|
+| Per-view boundary | `<main>` in `frontend/src/App.tsx`, keyed on `activeView` | A render error inside the currently selected view | Inline panel: "This view failed to render", the view id, the error message and a "Retry this view" button. Sidebar, header and footer stay usable. |
+| App-shell boundary | `frontend/src/main.tsx`, around `<QueryClientProvider><App /></QueryClientProvider>` | A render error in the shell itself (sidebar, header, providers) | Full-page "The dashboard failed to start" panel with the error message plus "Try again" and "Reload page". |
+
+Both fallbacks are styled with the FLIP tokens from `frontend/src/index.css`
+(`--panel`, `--line`, `--danger`, `--muted`, …), so they follow the light/dark
+theme. Keep it that way: no literal colours in fallback UI.
+
+### Behaviour notes
+
+- The per-view boundary carries `key={activeView}`. Switching views remounts it
+  and clears a latched error, so one broken view cannot pin the dashboard in an
+  error state. Do not remove that key.
+- "Retry this view" resets the boundary state in place and re-renders the same
+  view; if the cause is still present the fallback comes straight back.
+- Both boundaries log to the browser console (`[ErrorBoundary]`, error plus
+  component stack) — the first place to look when an operator reports a screen
+  that used to work.
+- These boundaries catch render and lifecycle errors. Async failures (a rejected
+  fetch, an unreachable backend) are still handled by each view's own
+  loading/error state; aligning those onto `StatefulPanel`/`ViewWrapper` is item
+  2 of issue #170 and deliberately not part of the wiring above.
+
+### Adding a new view under the boundary
+
+Add the view id to `VIEW_IDS` in `frontend/src/nav.ts`, then render it inside the
+existing boundary block in `App.tsx` — do not add another wrapper:
+
+```tsx
+{activeView === VIEW_IDS.MY_VIEW && <MyView />}
+```
+
+Nothing else is required: the surrounding `<ErrorBoundary key={activeView}>`
+already covers it. Add a separate boundary only for an independent subtree that
+should fail on its own (for example a chart canvas inside a panel); reuse
+`ErrorBoundary` from `frontend/src/components/ErrorBoundary.tsx` with a local
+fallback in that case.
+
 ## Run as a service (systemd --user)
 
 This repo includes a user-level systemd unit:
